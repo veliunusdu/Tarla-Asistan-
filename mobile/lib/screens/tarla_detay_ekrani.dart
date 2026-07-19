@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/tarla.dart';
 import '../models/faaliyet.dart';
 import '../services/database_helper.dart';
-// ÖNEMLİ: Dosya adının 'faaliyet_ekleme_ekrani.dart' olduğundan emin ol
 import 'faaliyet_ekleme_ekrani.dart';
 
 class TarlaDetayEkrani extends StatefulWidget {
@@ -31,96 +30,114 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: Text(widget.tarla.name, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.green.shade800, Colors.green.shade400],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    // DefaultTabController ile 2 sekme oluşturuyoruz
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          title: Text(widget.tarla.name, style: const TextStyle(color: Colors.white)),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: Colors.white),
+          bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            tabs: [
+              Tab(text: "Geçmiş", icon: Icon(Icons.history)),
+              Tab(text: "Yapılacak", icon: Icon(Icons.event_note)),
+            ],
           ),
         ),
-        child: Column(
-          children: [
-            const SizedBox(height: 120),
-            _buildGlassCard(
-              child: ListTile(
-                title: Text("Ürün: ${widget.tarla.cropType}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                subtitle: Text("Boyut: ${widget.tarla.size} dönüm", style: const TextStyle(color: Colors.white70)),
-                trailing: const Icon(Icons.grass, color: Colors.white),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green.shade800, Colors.green.shade400],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: FutureBuilder<List<Faaliyet>>(
+            future: _faaliyetler,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Colors.white));
+              }
+              
+              final allFaaliyetler = snapshot.data ?? [];
+              // Geçmiş ve Yapılacakları filtreliyoruz
+              final gecmisler = allFaaliyetler.where((f) => f.isCompleted).toList();
+              final yapilacaklar = allFaaliyetler.where((f) => !f.isCompleted).toList();
+
+              return TabBarView(
+                children: [
+                  _buildList(gecmisler, true),
+                  _buildList(yapilacaklar, false),
+                ],
+              );
+            },
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.green.shade800,
+          onPressed: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FaaliyetEklemeEkrani(tarlaId: widget.tarla.id),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Align(alignment: Alignment.centerLeft, child: Text("Geçmiş Faaliyetler", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
-            ),
-            Expanded(
-              child: FutureBuilder<List<Faaliyet>>(
-                future: _faaliyetler,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) return const Center(child: Text("Henüz faaliyet yok.", style: TextStyle(color: Colors.white54)));
-                  
-                  final faaliyetler = snapshot.data!;
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: faaliyetler.length,
-                    itemBuilder: (context, index) {
-                      final f = faaliyetler[index];
-                      return Dismissible(
-                        key: Key(f.id.toString()), 
-                        background: Container(
-                          color: Colors.red.withValues(alpha: 0.6),
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          child: const Icon(Icons.delete, color: Colors.white),
-                        ),
-                        onDismissed: (direction) async {
-                          await DatabaseHelper.instance.deleteFaaliyet(f.id);
-                          _loadFaaliyetler();
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          child: _buildGlassCard(
-                            child: ListTile(
-                              leading: const Icon(Icons.history, color: Colors.white),
-                              title: Text(f.type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              subtitle: Text(f.note ?? "", style: const TextStyle(color: Colors.white70)),
-                              trailing: Text(f.timestamp.toString().split(' ')[0], style: const TextStyle(color: Colors.white54)),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
+            );
+            if (result == true) _loadFaaliyetler();
+          },
+          child: const Icon(Icons.add),
+        ),
+      ),
+    );
+  }
+
+  // Liste oluşturucu yardımcı metod
+  Widget _buildList(List<Faaliyet> items, bool isGecmis) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          isGecmis ? "Henüz kayıtlı faaliyet yok." : "Planlanan faaliyet yok.",
+          style: const TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 150, left: 16, right: 16),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final f = items[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: _buildGlassCard(
+            child: ListTile(
+              leading: Icon(isGecmis ? Icons.check_circle : Icons.schedule, color: Colors.white),
+              title: Text(f.type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(f.note, style: const TextStyle(color: Colors.white70)),
+                  if (f.dueDate != null) 
+                    Text("Tarih: ${f.dueDate.toString().split(' ')[0]}", style: const TextStyle(color: Colors.orangeAccent)),
+                ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete, color: Colors.white54),
+                onPressed: () async {
+                  await DatabaseHelper.instance.deleteFaaliyet(f.id);
+                  _loadFaaliyetler();
                 },
               ),
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.green.shade800,
-        onPressed: () async {
-          // Navigasyon kısmı:
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-             builder: (context) => FaaliyetEklemeEkrani(tarlaId: int.parse(widget.tarla.id.toString())),            ),
-          );
-          // Ekrandan geri dönüldüğünde (kayıt yapıldıysa) listeyi yenile
-          if (result == true) _loadFaaliyetler();
-        },
-        child: const Icon(Icons.add),
-      ),
+          ),
+        );
+      },
     );
   }
 

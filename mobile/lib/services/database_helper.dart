@@ -1,8 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-// Modelleri import etmeyi unutma
 import '../models/tarla.dart'; 
-import '../models/faaliyet.dart'; // Faaliyet modelini import ettik
+import '../models/faaliyet.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -22,7 +21,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Versiyonu 2'ye çıkardık
       onCreate: _createDB,
     );
   }
@@ -41,7 +40,7 @@ class DatabaseHelper {
       )
     ''');
     
-    // Faaliyet Tablosu
+    // Faaliyet Tablosu (dueDate ve isCompleted eklendi)
     await db.execute('''
       CREATE TABLE faaliyetler (
         id TEXT PRIMARY KEY,
@@ -50,14 +49,15 @@ class DatabaseHelper {
         note TEXT,
         audioPath TEXT,
         photos TEXT,
-        timestamp TEXT NOT NULL
+        timestamp TEXT NOT NULL,
+        dueDate TEXT,
+        isCompleted INTEGER
       )
     ''');
   }
 
   // --- TARLA METODLARI ---
 
-  // Yeni tarla ekleme
   Future<int> insertTarla(Tarla tarla) async {
     final db = await instance.database;
     return await db.insert(
@@ -67,7 +67,6 @@ class DatabaseHelper {
     );
   }
 
-  // Tüm tarlaları listeleme
   Future<List<Tarla>> getTarlalar() async {
     final db = await instance.database;
     final List<Map<String, dynamic>> result = await db.query('tarlalar');
@@ -90,26 +89,26 @@ class DatabaseHelper {
       'faaliyetler', 
       where: 'tarlaId = ?', 
       whereArgs: [tarlaId],
-      orderBy: 'timestamp DESC', // En son yapılan işi en üstte gösterir
+      orderBy: 'timestamp DESC',
     );
     
     return result.map((json) => Faaliyet.fromJson(json)).toList();
   }
+
   // --- İSTATİSTİK SORGULARI ---
 
-  // Toplam tarla sayısını getirir
   Future<int> getTarlaSayisi() async {
     final db = await instance.database;
     final result = await db.rawQuery('SELECT COUNT(*) FROM tarlalar');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  // Toplam dönüm miktarını getirir
   Future<double> getToplamDonum() async {
     final db = await instance.database;
     final result = await db.rawQuery('SELECT SUM(size) as total FROM tarlalar');
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
+
   // --- SİLME İŞLEMLERİ ---
 
   Future<int> deleteFaaliyet(String id) async {

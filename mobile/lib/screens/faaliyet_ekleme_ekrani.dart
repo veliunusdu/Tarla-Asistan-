@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+// Modellerin ve Servislerin doğru import edildiğinden emin ol (yolunu kontrol et)
+import '../models/faaliyet.dart'; 
+import '../services/database_helper.dart';
 
 class FaaliyetEklemeEkrani extends StatefulWidget {
-  final int tarlaId; // Tarla ID'yi dışarıdan alıyoruz
+  final String tarlaId;
 
   const FaaliyetEklemeEkrani({super.key, required this.tarlaId});
 
@@ -47,22 +50,16 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Faaliyet Ekle"),
-        backgroundColor: Colors.green.shade700,
-      ),
+      appBar: AppBar(title: const Text("Faaliyet Ekle")),
       body: Padding(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
             TextField(
               controller: _faaliyetController,
-              maxLength: 200, // 200 karakter sınırı
-              keyboardType: TextInputType.text, // Türkçe klavye desteği
-              textCapitalization: TextCapitalization.sentences,
+              maxLength: 200,
               decoration: InputDecoration(
                 labelText: "Faaliyet Detayı",
-                hintText: "Örn: Tarlaya gübre atıldı...",
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                 suffixIcon: IconButton(
                   icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
@@ -72,17 +69,35 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
               ),
             ),
             const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Kaydetme mantığı buraya gelecek
-                  print("Tarla ID: ${widget.tarlaId}, Faaliyet: ${_faaliyetController.text}");
-                  Navigator.pop(context); // Ekranı kapat
-                },
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(15)),
-                child: const Text("Kaydet"),
-              ),
+            ElevatedButton(
+              onPressed: () async {
+                // 1. Kontrol: Boş kayıt yapmasın
+                if (_faaliyetController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Lütfen bir faaliyet girin!")),
+                  );
+                  return;
+                }
+
+                // 2. Faaliyet nesnesini oluştur
+                final yeniFaaliyet = Faaliyet(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(), // Benzersiz ID
+                  tarlaId: widget.tarlaId,
+                  type: _faaliyetController.text, // TextField'daki veriyi alıyoruz
+                  note: "", 
+                  timestamp: DateTime.now(),
+                  isCompleted: true, // "Geçmiş" listesinde görünmesi için true yapıyoruz
+                );
+
+                // 3. VERİTABANINA KAYDET
+                await DatabaseHelper.instance.insertFaaliyet(yeniFaaliyet);
+
+                // 4. Ekrana bilgi ver ve geri dön
+                if (mounted) {
+                  Navigator.pop(context, true); // 'true' değeri, TarlaDetayEkrani'ne verinin yenilenmesi gerektiğini söyler
+                }
+              },
+              child: const Text("Kaydet"),
             )
           ],
         ),
