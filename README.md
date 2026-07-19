@@ -1,49 +1,98 @@
-Tarla Asistanı 🌾
-"Her sabah tarlan için en önemli üç işi gösterir."
+# Tarla Asistanı 🌾
 
-Tarla Asistanı; çiftçilerin günlük tarımsal faaliyetlerini en az eforla planlamalarını sağlayan, sahadan kolayca veri toplamalarına imkan tanıyan ve uzman ziraat mühendisleriyle merkezi bir dijital panelde buluşmalarını köprüleyen yapay zekâ destekli tarla yönetim sistemidir.
+> **"Shows the three most important tasks for your farm every morning."**
 
-🚀 Temel Özellikler (MVP)
-📱 Çiftçi Mobil Uygulaması (Saha Odaklı)
-Net Görev Listesi: Ana ekranda gereksiz veri yoğunluğundan arındırılmış, o gün yapılması gereken en kritik 3 eylem kartı.
+Tarla Asistanı (Farm Assistant) is an AI-powered digital farm management system designed to help farmers plan their daily agricultural activities with minimum effort. It enables easy data collection from the field and bridges communication between farmers and agronomists (agricultural engineers) through a centralized web panel.
 
-Çevrimdışı (Offline) Destek: Kırsal alanda internet kesilse dahi veri girişi ve internet geldiğinde Idempotency-Key ile mükerrer kaydı önleyen arka plan senkronizasyonu.
+---
 
-Hızlı Sorun Bildirme: Sahadaki hastalık veya gelişim problemini sadece fotoğraf çekip sesli not bırakarak doğrudan uzmana iletme.
+## 🚀 Key Features (MVP)
 
-💻 Ziraat Mühendisi Web Paneli (Karar Odaklı)
-Vaka Takip Sistemi: Çiftçilerden gelen fotoğraflı/sesli sorun bildirimlerini aciliyet seviyesine göre merkezi olarak listeleme.
+### 📱 Farmer Mobile Application (Field-Oriented)
+*   **Actionable Daily Tasks:** Displays the 3 most critical tasks for the day, keeping the interface simple and free of information clutter.
+*   **Offline-First Support:** Allows data entry in rural areas without internet. Changes are synchronized automatically once a connection is established, utilizing an `Idempotency-Key` to prevent duplicate records.
+*   **Voice Activity Logs:** Allows logging of activities (irrigation, fertilization, spraying, etc.) using voice notes, which are converted to structured logs automatically.
+*   **Rapid Problem Reporting:** Farmers can take photos of crop diseases or growth anomalies and record voice messages to report issues directly to agronomists.
 
-Tarla Geçmiş Takvimi: Mühendisin reçete yazmadan veya tavsiye vermeden önce tarlanın o sezondaki tüm geçmiş faaliyetlerini (sulama, gübreleme, ilaçlama) tek bir takvimde görebilmesi.
+### 💻 Agronomist Web Panel (Decision-Oriented)
+*   **Case Tracking System:** Centralizes and prioritizes incoming photo/voice problem reports from farmers based on urgency.
+*   **Farm History Feed:** Provides a comprehensive chronological view of all activities (irrigation, fertilization, spraying) performed on a farm during the season before making recommendations.
+*   **Task Assignment:** Agronomists can create specific tasks for farmers, instantly sending push notifications to their devices.
 
-Talimat Oluşturma: Çiftçiye doğrudan görev atayabilme ve push bildirim mekanizması.
+---
 
-🛠️ Teknoloji Yığını
-Sistem, ölçeklenebilirliği korumak amacıyla Modüler Monolit mimariyle tasarlanmıştır:
+## 📁 Repository Structure
 
-Backend: Python, FastAPI, SQLAlchemy, Alembic
-
-Veritabanı: PostgreSQL + PostGIS (Coğrafi konum verileri için) & Redis (OTP & Cache)
-
-Mobil Uygulama: Flutter (veya React Native)
-
-Web Panel: React / Next.js, TypeScript & Tailwind CSS
-
-📁 Proje Klasör Yapısı
-Plaintext
+```text
 Tarla-Asistani/
-├── backend/       # FastAPI Backend API ve Kural Motoru
-├── mobile/        # Mobil Uygulama (Çevrimdışı Önbellek & Donanım Entegrasyonu)
-├── web/           # Mühendis Karar Destek Paneli (Frontend)
-└── docs/          # PROJECT_OVERVIEW, DATABASE ve API Dokümantasyonları
-💻 İlk Kurulum (Geliştiriciler İçin)
-Projeyi klonlayın:
+│
+├── docs/                      # Detailed English documentation
+│   ├── PROJECT_OVERVIEW.md     # Vision, target users, values & roadmap
+│   ├── PRODUCT_REQUIREMENTS.md # User stories, functional & non-functional requirements
+│   ├── TECHNICAL_DOCUMENTATION.md # Architecture, layers, offline-first design
+│   ├── DATABASE.md             # Schema definitions and PostgreSQL entities
+│   ├── API_DOCUMENTATION.md    # RESTful API endpoints and response payloads
+│   ├── DESIGN.md               # UI/UX guides, typography, and contrast rules
+│   ├── AGRICULTURAL_RULES.md   # Risk parameters, thresholds & AI boundaries
+│   ├── DECISIONS.md            # Architecture Decision Records (ADRs)
+│   ├── SECURITY.md             # Encryption, RBAC & API security details
+│   ├── TESTING_STRATEGY.md     # Unit, integration, E2E & UAT strategies
+│   ├── DEPLOYMENT.md           # Continuous delivery & environment settings
+│   ├── BACKLOG.md              # Product backlog & sprint breakdowns
+│   └── CHANGELOG.md            # Keep a Changelog tracking file
+│
+├── backend/                    # FastAPI (Python) backend codebase
+├── mobile/                     # Flutter (Dart) mobile application
+├── web/                        # React / Next.js (TypeScript) agronomist panel
+└── README.md                   # This overview file
+```
 
-Bash
-git clone https://github.com/[kullanici-adi]/Tarla-Asistani.git
-Gerekli ortam değişkenlerini tanımlamak için .env.example dosyalarını kopyalayıp .env adıyla yapılandırın.
+---
 
-Altyapıyı (PostgreSQL, PostGIS, Redis) ayağa kaldırmak için ana dizinde Docker'ı tetikleyin:
+## 🛠️ Technology Stack
 
-Bash
+| Layer | Technologies |
+| :--- | :--- |
+| **Backend** | Python, FastAPI, SQLAlchemy, Alembic, PostgreSQL + PostGIS, Redis |
+| **Mobile App** | Flutter, Dart, SQLite/Hive |
+| **Web Panel** | React, Next.js, TypeScript, Tailwind CSS |
+| **AI / Services** | Speech-to-Text (Whisper/GCP), OpenAI API (Analysis), Firebase Cloud Messaging (FCM) |
+| **DevOps** | Docker, Docker Compose, GitHub Actions |
+
+---
+
+## 💻 Local Setup (For Developers)
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/veliunusdu/Tarla-Asistan-.git
+cd Tarla-Asistan-
+```
+
+### 2. Configure Environment Variables
+Copy the `.env.example` files to `.env` in both the `backend/` and `web/` folders and configure your keys (SMS APIs, database credentials, OpenWeather keys, etc.).
+
+### 3. Spin up Infrastructure
+Run Docker Compose in the root directory to set up PostgreSQL, PostGIS, and Redis:
+```bash
 docker-compose up -d
+```
+
+### 4. Running the Project
+Refer to individual READMEs inside `/backend`, `/mobile`, and `/web` for starting development servers.
+
+---
+
+## 📖 Documentation Index
+For in-depth explanations of modules, schemas, and UX guidelines, explore the files in the [`docs/`](./docs) directory:
+- 💡 [Project Vision & Roadmap](./docs/PROJECT_OVERVIEW.md)
+- 📝 [Product Requirements (PRD)](./docs/PRODUCT_REQUIREMENTS.md)
+- ⚙️ [Technical Architecture](./docs/TECHNICAL_DOCUMENTATION.md)
+- 🗄️ [Database Entity Diagrams](./docs/DATABASE.md)
+- 🔌 [REST API Endpoints](./docs/API_DOCUMENTATION.md)
+- 🛡️ [Security Guidelines](./docs/SECURITY.md)
+
+---
+
+## 📜 License
+This project is licensed under the MIT License - see the LICENSE file for details.
