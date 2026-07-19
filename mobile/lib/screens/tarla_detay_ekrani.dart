@@ -30,18 +30,18 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
 
   @override
   Widget build(BuildContext context) {
-    // DefaultTabController ile 2 sekme oluşturuyoruz
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         extendBodyBehindAppBar: true,
         appBar: AppBar(
-          title: Text(widget.tarla.name, style: const TextStyle(color: Colors.white)),
+          title: Text(widget.tarla.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           backgroundColor: Colors.transparent,
           elevation: 0,
           iconTheme: const IconThemeData(color: Colors.white),
           bottom: const TabBar(
             indicatorColor: Colors.white,
+            indicatorWeight: 3,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white60,
             tabs: [
@@ -66,7 +66,6 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
               }
               
               final allFaaliyetler = snapshot.data ?? [];
-              // Geçmiş ve Yapılacakları filtreliyoruz
               final gecmisler = allFaaliyetler.where((f) => f.isCompleted).toList();
               final yapilacaklar = allFaaliyetler.where((f) => !f.isCompleted).toList();
 
@@ -82,6 +81,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
         floatingActionButton: FloatingActionButton(
           backgroundColor: Colors.white,
           foregroundColor: Colors.green.shade800,
+          elevation: 5,
           onPressed: () async {
             final result = await Navigator.push(
               context,
@@ -97,38 +97,39 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
     );
   }
 
-  // Liste oluşturucu yardımcı metod
   Widget _buildList(List<Faaliyet> items, bool isGecmis) {
     if (items.isEmpty) {
       return Center(
         child: Text(
           isGecmis ? "Henüz kayıtlı faaliyet yok." : "Planlanan faaliyet yok.",
-          style: const TextStyle(color: Colors.white54),
+          style: const TextStyle(color: Colors.white70, fontSize: 16),
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 150, left: 16, right: 16),
+      // DÜZELTME BURADA: top padding 140 yapıldı ki TabBar'ın altına denk gelsin
+      padding: const EdgeInsets.only(top: 200, left: 16, right: 16, bottom: 50),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final f = items[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 12),
           child: _buildGlassCard(
             child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               leading: Icon(isGecmis ? Icons.check_circle : Icons.schedule, color: Colors.white),
-              title: Text(f.type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Text(f.type, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(f.note, style: const TextStyle(color: Colors.white70)),
+                  if (f.note.isNotEmpty) Text(f.note, style: const TextStyle(color: Colors.white70)),
                   if (f.dueDate != null) 
-                    Text("Tarih: ${f.dueDate.toString().split(' ')[0]}", style: const TextStyle(color: Colors.orangeAccent)),
+                    Text("Tarih: ${f.dueDate.toString().split(' ')[0]}", style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
                 ],
               ),
               trailing: IconButton(
-                icon: const Icon(Icons.delete, color: Colors.white54),
+                icon: const Icon(Icons.delete, color: Colors.white60),
                 onPressed: () async {
                   await DatabaseHelper.instance.deleteFaaliyet(f.id);
                   _loadFaaliyetler();
