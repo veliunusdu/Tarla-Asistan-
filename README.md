@@ -1,5 +1,3 @@
-Projenizin kök dizinine ekleyebileceğiniz, hem sade hem de projeyi çok net özetleyen profesyonel README.md içeriği:
-
 Tarla Asistanı 🌾
 "Her sabah tarlan için en önemli üç işi gösterir."
 
