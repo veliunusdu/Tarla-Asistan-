@@ -1,0 +1,69 @@
+name: tarla-asistani
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tarla_asistani}
+      POSTGRES_USER: ${POSTGRES_USER:-tarla}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tarla-local}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tarla} -d ${POSTGRES_DB:-tarla_asistani}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: local
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tarla}:${POSTGRES_PASSWORD:-tarla-local}@db:5432/${POSTGRES_DB:-tarla_asistani}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-deploy}
+      OTP_HASH_SECRET: ${OTP_HASH_SECRET:-local-only-otp-secret-change-before-deploy}
+      OTP_EXPOSE_IN_RESPONSE: ${OTP_EXPOSE_IN_RESPONSE:-true}
+      AGRONOMIST_PHONE_NUMBERS: ${AGRONOMIST_PHONE_NUMBERS:-+905551112233}
+      CORS_ORIGINS: http://localhost:3000,http://localhost:${WEB_PORT:-3000}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

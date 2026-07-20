@@ -9,22 +9,40 @@ PostgreSQL will be used as the relational database management system in the Tarl
 Represents all actors in the system (Farmer, Agronomist, Admin).
 - `id` (UUID, PK)
 - `phone_number` (String, Unique)
-- `first_name` (String)
-- `last_name` (String)
-- `role` (Enum: FARMER, AGRONOMIST, ADMIN)
+- `role` (Enum: FARMER, AGRONOMIST)
 - `created_at` (Timestamp)
+- `updated_at` (Timestamp)
 
-### 2.2 Farms (farms)
-Holds information about the fields/farms belonging to farmers.
+### 2.2 Profiles (profiles)
+Stores the required and optional user profile fields separately from identity.
+- `user_id` (UUID, PK/FK -> users.id)
+- `full_name` (String)
+- `province` (String)
+- `district` (String)
+- `terms_accepted` (Boolean)
+- `notifications_enabled` (Boolean)
+- `created_at`, `updated_at` (Timestamp)
+
+### 2.3 Refresh Sessions (refresh_tokens)
+Stores only SHA-256 hashes of opaque refresh tokens.
 - `id` (UUID, PK)
 - `user_id` (UUID, FK -> users.id)
+- `family_id` (UUID)
+- `token_hash` (String, Unique)
+- `expires_at`, `revoked_at`, `created_at` (Timestamp)
+
+### 2.4 Farms (farms)
+Holds information about the fields/farms belonging to farmers.
+- `id` (UUID, PK)
+- `owner_id` (UUID, FK -> users.id)
 - `name` (String)
 - `latitude` (Float)
 - `longitude` (Float)
 - `size_in_hectares` (Float)
+- `archived_at` (Timestamp, Nullable)
 - `created_at` (Timestamp)
 
-### 2.3 Crop Periods (crops)
+### 2.5 Crop Periods (crops)
 Represents the crop planted in the field.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -33,7 +51,7 @@ Represents the crop planted in the field.
 - `harvested_at` (Date, Nullable)
 - `status` (Enum: ACTIVE, ARCHIVED)
 
-### 2.4 Tasks (tasks)
+### 2.6 Tasks (tasks)
 Daily tasks assigned to the farmer or generated automatically.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -44,7 +62,7 @@ Daily tasks assigned to the farmer or generated automatically.
 - `due_date` (Date)
 - `created_by` (UUID, FK -> users.id)
 
-### 2.5 Activity Logs (activities)
+### 2.7 Activity Logs (activities)
 Holds operations (irrigation, fertilization, etc.) performed by the farmer in the field.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -53,7 +71,7 @@ Holds operations (irrigation, fertilization, etc.) performed by the farmer in th
 - `activity_date` (Timestamp)
 - `media_url` (String, Nullable)
 
-### 2.6 Cases (cases)
+### 2.8 Cases (cases)
 Problems reported by the farmer with photos/voice.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -62,7 +80,7 @@ Problems reported by the farmer with photos/voice.
 - `status` (Enum: OPEN, IN_PROGRESS, WAITING_INFO, RESOLVED, CLOSED)
 - `created_at` (Timestamp)
 
-### 2.7 Messages (messages)
+### 2.9 Messages (messages)
 Agronomist-farmer correspondence within the case.
 - `id` (UUID, PK)
 - `case_id` (UUID, FK -> cases.id)
@@ -72,6 +90,8 @@ Agronomist-farmer correspondence within the case.
 - `created_at` (Timestamp)
 
 ## 3. Relationship Schema (ERD - Summary)
+- 1 User -> 0..1 Profile
+- 1 User -> N Refresh Sessions
 - 1 User (FARMER) -> N Farms
 - 1 Farm -> N Crops (Only 1 can be active at a time)
 - 1 Farm -> N Tasks

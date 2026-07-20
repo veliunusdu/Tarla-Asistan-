@@ -1,0 +1,1 @@
+"""Tarla Asistanı backend application."""

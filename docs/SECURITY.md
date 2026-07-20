@@ -9,7 +9,11 @@ Security measures to be taken to protect user data and agricultural data in the 
 ## 2. Authentication and Token Management
 - **JWT (JSON Web Token)** will be used for API security.
 - Access Tokens will be short-lived (e.g., 1 hour), and Refresh Tokens will be longer-lived (e.g., 30 days) and revocable from the database.
+- Refresh tokens are opaque random values, stored only as SHA-256 hashes, rotated
+  on every use, and revoked on logout.
 - SMS verification codes (OTP) for farmer logins will be valid for a maximum of 3 minutes and will be subject to attempt limits (Rate Limiting).
+- OTP values are HMAC-hashed in Redis, single-use, and never exposed or logged
+  outside explicitly enabled local development.
 
 ## 3. Authorization (Role-Based Access Control)
 - **IDOR (Insecure Direct Object Reference) Protection:** The `farm_id` or `case_id` parameters requested by users will be validated within the scope of the requesting user's authorization (e.g., a farmer cannot retrieve someone else's farm by ID).
