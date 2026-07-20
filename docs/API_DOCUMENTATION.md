@@ -32,11 +32,48 @@
 
 // Response (200 OK)
 {
-  "token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "refresh_token": "opaque-random-token",
+  "token_type": "bearer",
+  "expires_in": 3600,
   "user": {
     "id": "uuid",
     "role": "FARMER"
   }
+}
+```
+
+### 2.3 Refresh Session
+`POST /auth/refresh`
+```json
+{
+  "refresh_token": "opaque-random-token"
+}
+```
+- Rotates the refresh token. A used, expired, or revoked token returns `401`.
+
+### 2.4 Logout
+`POST /auth/logout`
+```json
+{
+  "refresh_token": "opaque-random-token"
+}
+```
+- Revokes the refresh session and returns `204 No Content`.
+
+### 2.5 Current User
+`GET /auth/me`
+- **Auth:** `Bearer Token`
+
+### 2.6 Complete Profile
+`PUT /users/me`
+```json
+{
+  "full_name": "Veli Ünüşdü",
+  "province": "Konya",
+  "district": "Selçuklu",
+  "terms_accepted": true,
+  "notifications_enabled": true
 }
 ```
 
@@ -46,6 +83,9 @@
 `GET /farms`
 - **Auth:** `Bearer Token`
 - **Response:** List of farms belonging to the user.
+
+Ownership is checked server-side. A farm that does not belong to the active user
+is returned as `404` so its existence is not disclosed.
 
 ### 3.2 Add Farm
 `POST /farms`

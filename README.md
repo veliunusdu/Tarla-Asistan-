@@ -81,6 +81,22 @@ docker-compose up -d
 ### 4. Running the Project
 Refer to individual READMEs inside `/backend`, `/mobile`, and `/web` for starting development servers.
 
+### Sprint 1 quick start
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Agronomist panel: `http://localhost:3000`
+- API and Swagger: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
+
+The local development agronomist phone defaults to `+905551112233`. Development
+OTP display is enabled by Compose only; keep `OTP_EXPOSE_IN_RESPONSE=false` in
+shared environments. If a port is already occupied, set `WEB_PORT` or `API_PORT`
+in the root `.env` file before starting Compose.
+
 ---
 
 ## 📖 Documentation Index
