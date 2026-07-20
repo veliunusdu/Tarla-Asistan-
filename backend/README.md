@@ -33,3 +33,11 @@ ruff check app tests
 `OTP_EXPOSE_IN_RESPONSE=true` yalnızca yerel geliştirme içindir. Staging ve
 production ortamlarında kapalı tutulmalı, `request-otp` akışı gerçek SMS
 sağlayıcısına bağlanmalıdır.
+
+## Hava durumu sağlayıcısı
+
+Varsayılan `WEATHER_PROVIDER=open_meteo` adaptörü tarlanın koordinatlarına göre
+saatlik tahmini normalize eder. Sağlayıcı değiştirilecekse aynı `WeatherProvider`
+arayüzünü uygulayan yeni adaptör eklenir. Son başarılı yanıt veritabanında
+saklanır; sağlayıcı kesintisinde API bu kaydı `is_stale=true` ve açıklayıcı bir
+`stale_reason` ile döndürür. `WEATHER_STALE_AFTER_HOURS` varsayılan olarak 3'tür.

@@ -12,8 +12,15 @@ The priority of tasks (CRITICAL, HIGH, MEDIUM, LOW) is determined according to t
 
 ## 2. Weather Rules
 - **Frost Risk:** If the temperature is expected to drop to 0°C and below, a notification is sent at least 24 hours before the event.
-- **Strong Wind:** If the wind speed exceeds a certain limit (e.g., >30 km/h), "Spraying Tasks" are automatically cancelled or postponed.
-- **Before Rain:** If there is high-probability precipitation within the next 12 hours, a warning is displayed to the farmer for "Irrigation Tasks" in the form of "Rain is expected, would you like to postpone irrigation?".
+- **Strong Wind:** If the wind speed reaches 30 km/h within 24 hours, the farmer
+  is advised to consider postponing spraying and to check field conditions.
+- **Heavy Rain:** If precipitation probability reaches 70% and hourly
+  precipitation reaches 5 mm within 12 hours, the farmer is advised to review
+  irrigation and drainage.
+
+Weather rules create cautious, traceable alerts; they never make the final
+agricultural decision for the farmer. Provider failure never presents cached
+weather as current: the latest successful snapshot is visibly marked stale.
 
 ## 3. Artificial Intelligence (AI) Boundaries
 Agricultural advice is of critical importance. Wrong advice can lead to complete crop loss.

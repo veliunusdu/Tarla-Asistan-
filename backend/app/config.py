@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:3000"]
     )
+    weather_provider: str = "open_meteo"
+    open_meteo_base_url: str = "https://api.open-meteo.com/v1/forecast"
+    weather_timeout_seconds: float = Field(default=8, gt=0, le=30)
+    weather_stale_after_hours: int = Field(default=3, ge=1, le=24)
 
     @field_validator("cors_origins", "agronomist_phone_numbers", mode="before")
     @classmethod

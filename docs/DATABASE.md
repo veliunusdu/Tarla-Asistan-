@@ -39,19 +39,38 @@ Holds information about the fields/farms belonging to farmers.
 - `latitude` (Float)
 - `longitude` (Float)
 - `size_in_hectares` (Float)
+- `irrigation_method` (Enum: DRIP, SPRINKLER, FLOOD, RAINFED, OTHER)
+- `soil_type` (String, Nullable)
+- `note` (String, Nullable)
 - `archived_at` (Timestamp, Nullable)
-- `created_at` (Timestamp)
+- `created_at`, `updated_at` (Timestamp)
 
-### 2.5 Crop Periods (crops)
+`(owner_id, archived_at)` ve `(owner_id, name)` bileşik indeksleri listeleme ve
+aynı ad uyarısı sorgularını destekler.
+
+### 2.5 Crop Periods (crop_periods)
 Represents the crop planted in the field.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
-- `crop_type` (String)
+- `crop_type` (Enum: WHEAT, BARLEY, CORN, SUNFLOWER, TOMATO)
+- `variety` (String, Nullable)
 - `planted_at` (Date)
 - `harvested_at` (Date, Nullable)
 - `status` (Enum: ACTIVE, ARCHIVED)
+- `created_at`, `updated_at` (Timestamp)
 
-### 2.6 Tasks (tasks)
+PostgreSQL kısmi benzersiz indeksi bir tarlada en fazla bir `ACTIVE` dönem
+olmasını veritabanı seviyesinde de güvenceye alır.
+
+### 2.6 Weather Snapshots (weather_snapshots)
+Stores normalized successful provider responses for safe fallback.
+- `id` (UUID, PK)
+- `farm_id` (UUID, FK -> farms.id)
+- `provider` (String)
+- `payload` (JSON)
+- `fetched_at` (Timestamp)
+
+### 2.7 Tasks (tasks)
 Daily tasks assigned to the farmer or generated automatically.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -62,7 +81,7 @@ Daily tasks assigned to the farmer or generated automatically.
 - `due_date` (Date)
 - `created_by` (UUID, FK -> users.id)
 
-### 2.7 Activity Logs (activities)
+### 2.8 Activity Logs (activities)
 Holds operations (irrigation, fertilization, etc.) performed by the farmer in the field.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -71,7 +90,7 @@ Holds operations (irrigation, fertilization, etc.) performed by the farmer in th
 - `activity_date` (Timestamp)
 - `media_url` (String, Nullable)
 
-### 2.8 Cases (cases)
+### 2.9 Cases (cases)
 Problems reported by the farmer with photos/voice.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -80,7 +99,7 @@ Problems reported by the farmer with photos/voice.
 - `status` (Enum: OPEN, IN_PROGRESS, WAITING_INFO, RESOLVED, CLOSED)
 - `created_at` (Timestamp)
 
-### 2.9 Messages (messages)
+### 2.10 Messages (messages)
 Agronomist-farmer correspondence within the case.
 - `id` (UUID, PK)
 - `case_id` (UUID, FK -> cases.id)
@@ -93,7 +112,8 @@ Agronomist-farmer correspondence within the case.
 - 1 User -> 0..1 Profile
 - 1 User -> N Refresh Sessions
 - 1 User (FARMER) -> N Farms
-- 1 Farm -> N Crops (Only 1 can be active at a time)
+- 1 Farm -> N Crop Periods (Only 1 can be active at a time)
+- 1 Farm -> N Weather Snapshots
 - 1 Farm -> N Tasks
 - 1 Farm -> N Activities
 - 1 Farm -> N Cases
