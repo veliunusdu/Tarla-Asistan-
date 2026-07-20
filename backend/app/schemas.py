@@ -1,14 +1,21 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 import phonenumbers
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import (
+    ActivitySource,
+    ActivityStatus,
+    ActivityType,
     CropPeriodStatus,
     CropType,
     IrrigationMethod,
+    TaskConfidence,
+    TaskPriority,
+    TaskSource,
+    TaskStatus,
     UserRole,
 )
 
@@ -259,3 +266,269 @@ class FarmWeatherResponse(BaseModel):
     stale_reason: str | None
     points: list[WeatherPointResponse]
     risks: list[WeatherRiskResponse]
+
+
+class TaskCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=160)
+    description: str = Field(min_length=2, max_length=4000)
+    reason: str = Field(min_length=2, max_length=2000)
+    priority: TaskPriority = TaskPriority.HIGH
+    confidence: TaskConfidence = TaskConfidence.HIGH
+    due_date: date = Field(default_factory=date.today)
+    crop_period_id: uuid.UUID | None = None
+
+    @field_validator("title", "description", "reason")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Metin alanı boş olamaz.")
+        return stripped
+
+
+class TaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    farm_id: uuid.UUID
+    crop_period_id: uuid.UUID | None
+    created_by_id: uuid.UUID | None
+    title: str
+    description: str
+    reason: str
+    priority: TaskPriority
+    status: TaskStatus
+    source: TaskSource
+    confidence: TaskConfidence
+    due_date: date
+    not_applied_reason: str | None
+    completion_note: str | None
+    photo_url: str | None
+    viewed_at: datetime | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    expert_review_recommended: bool
+
+
+class DailyTaskListResponse(BaseModel):
+    date: date
+    items: list[TaskResponse]
+    critical_weather_alerts: list[TaskResponse]
+    overdue: list[TaskResponse]
+    visible_limit: int = 3
+
+
+class TaskStatusUpdate(BaseModel):
+    status: TaskStatus
+    not_applied_reason: str | None = Field(default=None, max_length=500)
+    note: str | None = Field(default=None, max_length=1000)
+    photo_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("not_applied_reason", "note", "photo_url")
+    @classmethod
+    def strip_optional_task_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_transition_payload(self) -> "TaskStatusUpdate":
+        allowed = {
+            TaskStatus.VIEWED,
+            TaskStatus.PLANNED,
+            TaskStatus.COMPLETED,
+            TaskStatus.NOT_APPLIED,
+            TaskStatus.CANCELLED,
+        }
+        if self.status not in allowed:
+            raise ValueError("Bu görev durumuna doğrudan geçilemez.")
+        if self.status == TaskStatus.NOT_APPLIED and not self.not_applied_reason:
+            raise ValueError("Uygulanmama nedeni zorunludur.")
+        return self
+
+
+class TaskCompleteRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+    photo_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("note", "photo_url")
+    @classmethod
+    def strip_optional_completion_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+
+class ActivityCreate(BaseModel):
+    activity_type: ActivityType
+    description: str = Field(min_length=2, max_length=4000)
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    crop_period_id: uuid.UUID | None = None
+    input_method: ActivitySource = ActivitySource.MANUAL
+    duration_minutes: int | None = Field(default=None, gt=0, le=100_000)
+    amount: float | None = Field(default=None, gt=0, le=1_000_000_000)
+    unit: str | None = Field(default=None, max_length=40)
+    photo_url: str | None = Field(default=None, max_length=2048)
+    voice_url: str | None = Field(default=None, max_length=2048)
+    voice_transcript: str | None = Field(default=None, max_length=10_000)
+    performed_by: str | None = Field(default=None, max_length=120)
+    cost: float | None = Field(default=None, ge=0, le=1_000_000_000)
+
+    @field_validator(
+        "description",
+        "unit",
+        "photo_url",
+        "voice_url",
+        "voice_transcript",
+        "performed_by",
+    )
+    @classmethod
+    def strip_activity_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("description")
+    @classmethod
+    def require_activity_description(cls, value: str | None) -> str:
+        if not value:
+            raise ValueError("Faaliyet açıklaması boş olamaz.")
+        return value
+
+    @field_validator("occurred_at")
+    @classmethod
+    def reject_future_activity(cls, value: datetime) -> datetime:
+        normalized = (
+            value.replace(tzinfo=timezone.utc)
+            if value.tzinfo is None
+            else value.astimezone(timezone.utc)
+        )
+        if normalized > datetime.now(timezone.utc):
+            raise ValueError("Tamamlanmış faaliyet tarihi gelecekte olamaz.")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_activity_source(self) -> "ActivityCreate":
+        if self.input_method == ActivitySource.TASK:
+            raise ValueError("TASK kaynaklı faaliyet yalnızca görev tamamlama ile oluşur.")
+        if (
+            self.input_method == ActivitySource.VOICE
+            and not self.voice_url
+            and not self.voice_transcript
+        ):
+            raise ValueError("Sesli faaliyet için kayıt veya döküm gereklidir.")
+        return self
+
+
+class ActivityUpdate(BaseModel):
+    activity_type: ActivityType | None = None
+    description: str | None = Field(default=None, min_length=2, max_length=4000)
+    occurred_at: datetime | None = None
+    crop_period_id: uuid.UUID | None = None
+    duration_minutes: int | None = Field(default=None, gt=0, le=100_000)
+    amount: float | None = Field(default=None, gt=0, le=1_000_000_000)
+    unit: str | None = Field(default=None, max_length=40)
+    photo_url: str | None = Field(default=None, max_length=2048)
+    voice_url: str | None = Field(default=None, max_length=2048)
+    voice_transcript: str | None = Field(default=None, max_length=10_000)
+    performed_by: str | None = Field(default=None, max_length=120)
+    cost: float | None = Field(default=None, ge=0, le=1_000_000_000)
+
+    @field_validator(
+        "description",
+        "unit",
+        "photo_url",
+        "voice_url",
+        "voice_transcript",
+        "performed_by",
+    )
+    @classmethod
+    def strip_activity_update_text(cls, value: str | None) -> str | None:
+        return value.strip() or None if value is not None else None
+
+    @field_validator("occurred_at")
+    @classmethod
+    def reject_future_activity_update(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        normalized = (
+            value.replace(tzinfo=timezone.utc)
+            if value.tzinfo is None
+            else value.astimezone(timezone.utc)
+        )
+        if normalized > datetime.now(timezone.utc):
+            raise ValueError("Tamamlanmış faaliyet tarihi gelecekte olamaz.")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_activity_update(self) -> "ActivityUpdate":
+        if not self.model_fields_set:
+            raise ValueError("En az bir alan güncellenmelidir.")
+        required_fields = ("activity_type", "description", "occurred_at")
+        if any(
+            field_name in self.model_fields_set
+            and getattr(self, field_name) is None
+            for field_name in required_fields
+        ):
+            raise ValueError(
+                "Faaliyet türü, açıklaması ve gerçekleşme tarihi boş olamaz."
+            )
+        return self
+
+
+class ActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    farm_id: uuid.UUID
+    crop_period_id: uuid.UUID | None
+    task_id: uuid.UUID | None
+    created_by_id: uuid.UUID | None
+    activity_type: ActivityType
+    status: ActivityStatus
+    source: ActivitySource
+    description: str
+    occurred_at: datetime
+    duration_minutes: int | None
+    amount: float | None
+    unit: str | None
+    photo_url: str | None
+    voice_url: str | None
+    voice_transcript: str | None
+    performed_by: str | None
+    cost: float | None
+    confirmed_at: datetime | None
+    archived_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ActivityListResponse(BaseModel):
+    items: list[ActivityResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class ActivityRevisionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    activity_id: uuid.UUID
+    changed_by_id: uuid.UUID | None
+    previous_values: dict
+    changed_at: datetime
+
+
+class JournalEntryResponse(BaseModel):
+    entry_type: str
+    id: uuid.UUID
+    occurred_at: datetime
+    title: str
+    description: str
+    metadata: dict[str, str | int | float | bool | None]
+
+
+class FarmJournalResponse(BaseModel):
+    items: list[JournalEntryResponse]
+    total: int
+    limit: int
+    offset: int

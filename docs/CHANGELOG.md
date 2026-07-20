@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-20 - Sprint 3 (Veli)
+- Added expert-created and automatically generated daily farm tasks.
+- Added task priority, reason, confidence, status transitions and overdue
+  handling.
+- Limited the main daily list to three tasks while keeping critical weather
+  alerts separate.
+- Added database-backed task deduplication and idempotent task completion.
+- Added manual and voice-draft activity records, confirmation, edit history,
+  archive and restore flows.
+- Added a combined farm journal for confirmed activities and completed tasks.
+- Added migration `20260720_0004` and backend test coverage.
+
 ## 2026-07-20 - Sprint 2 (Veli)
 - Added owner-scoped farm create, list, detail, update and soft-archive APIs.
 - Added duplicate farm-name warnings and input validation.
