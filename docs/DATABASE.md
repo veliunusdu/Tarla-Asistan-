@@ -74,23 +74,53 @@ Stores normalized successful provider responses for safe fallback.
 Daily tasks assigned to the farmer or generated automatically.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
+- `crop_period_id` (UUID, FK -> crop_periods.id, Nullable)
+- `created_by_id` (UUID, FK -> users.id, Nullable)
 - `title` (String)
 - `description` (Text)
+- `reason` (Text)
 - `priority` (Enum: LOW, MEDIUM, HIGH, CRITICAL)
-- `status` (Enum: NEW, COMPLETED, IGNORED)
+- `status` (Enum: NEW, VIEWED, PLANNED, COMPLETED, NOT_APPLIED, OVERDUE,
+  CANCELLED)
+- `source` (Enum: SYSTEM, CROP_CALENDAR, WEATHER, EXPERT)
+- `confidence` (Enum: LOW, MEDIUM, HIGH)
 - `due_date` (Date)
-- `created_by` (UUID, FK -> users.id)
+- `dedupe_key` (String)
+- `not_applied_reason`, `completion_note`, `photo_url` (Nullable)
+- `viewed_at`, `completed_at`, `created_at`, `updated_at` (Timestamp)
+
+`(farm_id, due_date, dedupe_key)` benzersiz indeksi aynı günlük görevin tekrar
+üretilmesini veritabanı seviyesinde engeller.
 
 ### 2.8 Activity Logs (activities)
 Holds operations (irrigation, fertilization, etc.) performed by the farmer in the field.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
-- `activity_type` (Enum: IRRIGATION, FERTILIZATION, SPRAYING, PRUNING, OTHER)
+- `crop_period_id` (UUID, FK -> crop_periods.id, Nullable)
+- `task_id` (UUID, FK -> tasks.id, Nullable, Unique)
+- `created_by_id` (UUID, FK -> users.id, Nullable)
+- `activity_type` (Enum: IRRIGATION, FERTILIZATION, SPRAYING, PRUNING,
+  FIELD_CHECK, HARVEST, OTHER)
+- `status` (Enum: DRAFT, CONFIRMED)
+- `source` (Enum: MANUAL, VOICE, TASK)
 - `description` (Text)
-- `activity_date` (Timestamp)
-- `media_url` (String, Nullable)
+- `occurred_at` (Timestamp)
+- `duration_minutes`, `amount`, `unit`, `performed_by`, `cost` (Nullable)
+- `photo_url`, `voice_url`, `voice_transcript` (Nullable)
+- `confirmed_at`, `archived_at`, `created_at`, `updated_at` (Timestamp)
 
-### 2.9 Cases (cases)
+Görev tamamlama kaydında `task_id` benzersizdir; tekrarlanan tamamlama
+istekleri ikinci bir faaliyet oluşturmaz.
+
+### 2.9 Activity Revisions (activity_revisions)
+Faaliyet düzenlemelerinde değişen alanların önceki değerlerini korur.
+- `id` (UUID, PK)
+- `activity_id` (UUID, FK -> activities.id)
+- `changed_by_id` (UUID, FK -> users.id, Nullable)
+- `previous_values` (JSON)
+- `changed_at` (Timestamp)
+
+### 2.10 Cases (cases)
 Problems reported by the farmer with photos/voice.
 - `id` (UUID, PK)
 - `farm_id` (UUID, FK -> farms.id)
@@ -99,7 +129,7 @@ Problems reported by the farmer with photos/voice.
 - `status` (Enum: OPEN, IN_PROGRESS, WAITING_INFO, RESOLVED, CLOSED)
 - `created_at` (Timestamp)
 
-### 2.10 Messages (messages)
+### 2.11 Messages (messages)
 Agronomist-farmer correspondence within the case.
 - `id` (UUID, PK)
 - `case_id` (UUID, FK -> cases.id)
@@ -116,6 +146,8 @@ Agronomist-farmer correspondence within the case.
 - 1 Farm -> N Weather Snapshots
 - 1 Farm -> N Tasks
 - 1 Farm -> N Activities
+- 1 Task -> 0..1 Completion Activity
+- 1 Activity -> N Revisions
 - 1 Farm -> N Cases
 - 1 Case -> N Messages
 - 1 User (AGRONOMIST) -> N Cases (Assigned cases)

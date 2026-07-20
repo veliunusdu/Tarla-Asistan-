@@ -11,7 +11,9 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
+    Text,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -47,6 +49,57 @@ class CropType(str, enum.Enum):
 class CropPeriodStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
+
+
+class TaskPriority(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class TaskStatus(str, enum.Enum):
+    NEW = "NEW"
+    VIEWED = "VIEWED"
+    PLANNED = "PLANNED"
+    COMPLETED = "COMPLETED"
+    NOT_APPLIED = "NOT_APPLIED"
+    OVERDUE = "OVERDUE"
+    CANCELLED = "CANCELLED"
+
+
+class TaskSource(str, enum.Enum):
+    SYSTEM = "SYSTEM"
+    CROP_CALENDAR = "CROP_CALENDAR"
+    WEATHER = "WEATHER"
+    EXPERT = "EXPERT"
+
+
+class TaskConfidence(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class ActivityType(str, enum.Enum):
+    IRRIGATION = "IRRIGATION"
+    FERTILIZATION = "FERTILIZATION"
+    SPRAYING = "SPRAYING"
+    PRUNING = "PRUNING"
+    FIELD_CHECK = "FIELD_CHECK"
+    HARVEST = "HARVEST"
+    OTHER = "OTHER"
+
+
+class ActivityStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    CONFIRMED = "CONFIRMED"
+
+
+class ActivitySource(str, enum.Enum):
+    MANUAL = "MANUAL"
+    VOICE = "VOICE"
+    TASK = "TASK"
 
 
 class User(Base):
@@ -177,6 +230,12 @@ class Farm(Base):
     weather_snapshots: Mapped[list["WeatherSnapshot"]] = relationship(
         back_populates="farm", cascade="all, delete-orphan"
     )
+    tasks: Mapped[list["Task"]] = relationship(
+        back_populates="farm", cascade="all, delete-orphan"
+    )
+    activities: Mapped[list["Activity"]] = relationship(
+        back_populates="farm", cascade="all, delete-orphan"
+    )
 
     @property
     def current_crop(self) -> "CropPeriod | None":
@@ -241,3 +300,147 @@ class WeatherSnapshot(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     farm: Mapped[Farm] = relationship(back_populates="weather_snapshots")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+    __table_args__ = (
+        Index("ix_tasks_farm_due_status", "farm_id", "due_date", "status"),
+        Index("ix_tasks_farm_created", "farm_id", "created_at"),
+        Index(
+            "uq_tasks_farm_due_dedupe",
+            "farm_id",
+            "due_date",
+            "dedupe_key",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    farm_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("farms.id", ondelete="CASCADE"), index=True
+    )
+    crop_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("crop_periods.id", ondelete="SET NULL"), index=True
+    )
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    priority: Mapped[TaskPriority] = mapped_column(
+        Enum(TaskPriority, name="task_priority")
+    )
+    status: Mapped[TaskStatus] = mapped_column(
+        Enum(TaskStatus, name="task_status"), default=TaskStatus.NEW
+    )
+    source: Mapped[TaskSource] = mapped_column(
+        Enum(TaskSource, name="task_source")
+    )
+    confidence: Mapped[TaskConfidence] = mapped_column(
+        Enum(TaskConfidence, name="task_confidence"),
+        default=TaskConfidence.MEDIUM,
+    )
+    due_date: Mapped[date] = mapped_column(Date)
+    dedupe_key: Mapped[str] = mapped_column(String(64))
+    not_applied_reason: Mapped[str | None] = mapped_column(String(500))
+    completion_note: Mapped[str | None] = mapped_column(String(1000))
+    photo_url: Mapped[str | None] = mapped_column(String(2048))
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    farm: Mapped[Farm] = relationship(back_populates="tasks")
+    crop_period: Mapped[CropPeriod | None] = relationship()
+    created_by: Mapped[User | None] = relationship()
+    completion_activity: Mapped["Activity | None"] = relationship(
+        back_populates="task", uselist=False
+    )
+
+    @property
+    def expert_review_recommended(self) -> bool:
+        return self.confidence == TaskConfidence.LOW
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+    __table_args__ = (
+        Index("ix_activities_farm_occurred", "farm_id", "occurred_at"),
+        Index("ix_activities_farm_archived", "farm_id", "archived_at"),
+        Index("uq_activities_task_id", "task_id", unique=True),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    farm_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("farms.id", ondelete="CASCADE"), index=True
+    )
+    crop_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("crop_periods.id", ondelete="SET NULL"), index=True
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), index=True
+    )
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    activity_type: Mapped[ActivityType] = mapped_column(
+        Enum(ActivityType, name="activity_type")
+    )
+    status: Mapped[ActivityStatus] = mapped_column(
+        Enum(ActivityStatus, name="activity_status"),
+        default=ActivityStatus.CONFIRMED,
+    )
+    source: Mapped[ActivitySource] = mapped_column(
+        Enum(ActivitySource, name="activity_source"),
+        default=ActivitySource.MANUAL,
+    )
+    description: Mapped[str] = mapped_column(Text)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    duration_minutes: Mapped[int | None] = mapped_column(Integer)
+    amount: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(40))
+    photo_url: Mapped[str | None] = mapped_column(String(2048))
+    voice_url: Mapped[str | None] = mapped_column(String(2048))
+    voice_transcript: Mapped[str | None] = mapped_column(Text)
+    performed_by: Mapped[str | None] = mapped_column(String(120))
+    cost: Mapped[float | None] = mapped_column(Float)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    farm: Mapped[Farm] = relationship(back_populates="activities")
+    crop_period: Mapped[CropPeriod | None] = relationship()
+    task: Mapped[Task | None] = relationship(back_populates="completion_activity")
+    created_by: Mapped[User | None] = relationship()
+    revisions: Mapped[list["ActivityRevision"]] = relationship(
+        back_populates="activity",
+        cascade="all, delete-orphan",
+        order_by="ActivityRevision.changed_at.desc()",
+    )
+
+
+class ActivityRevision(Base):
+    __tablename__ = "activity_revisions"
+    __table_args__ = (
+        Index("ix_activity_revisions_activity_changed", "activity_id", "changed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    activity_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("activities.id", ondelete="CASCADE"), index=True
+    )
+    changed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    previous_values: Mapped[dict] = mapped_column(JSON)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    activity: Mapped[Activity] = relationship(back_populates="revisions")
+    changed_by: Mapped[User | None] = relationship()

@@ -142,15 +142,76 @@ Risk önerileri bilgilendirme amaçlıdır ve saha kontrolünün yerini almaz.
 
 ### 4.1 Get Daily Tasks
 `GET /farms/{farm_id}/tasks?date=YYYY-MM-DD`
-- **Response:** Priority 3 task list on the relevant date (or today).
+- **Auth:** Tarla sahibi
+- Gün için en fazla üç öncelikli işi `items` içinde döndürür.
+- Kritik hava görevleri üç iş sınırına dahil edilmez ve
+  `critical_weather_alerts` içinde ayrıca döndürülür.
+- Açık durumdaki geçmiş tarihli işler `overdue` içinde gösterilir.
+- Günlük kural ve hava görevleri aynı tarla/tarih için tekrar üretilmez.
 
-### 4.2 Complete Task
+### 4.2 Create Expert Task
+`POST /farms/{farm_id}/tasks`
+```json
+{
+  "title": "Yaprakları kontrol edin",
+  "description": "Alt yapraklarda lekelenme olup olmadığını kontrol edin.",
+  "reason": "Uzman saha takibi için önerdi.",
+  "priority": "HIGH",
+  "confidence": "HIGH",
+  "due_date": "2026-07-20",
+  "crop_period_id": "uuid"
+}
+```
+- **Auth:** Yalnızca `AGRONOMIST`
+- Aynı tarla, tarih ve içerikteki ikinci görev `409` döndürür.
+- `crop_period_id` verilmezse tarlanın aktif üretim dönemi kullanılır.
+
+### 4.3 Get and Update Task
+- `GET /tasks/{task_id}`
+- `PATCH /tasks/{task_id}/status`
+
+Çiftçi `VIEWED`, `PLANNED`, `COMPLETED` veya `NOT_APPLIED` durumuna
+geçebilir. `NOT_APPLIED` için `not_applied_reason` zorunludur. Uzman yalnızca
+kendi rolüne uygun olarak görevi `CANCELLED` durumuna getirebilir.
+
+### 4.4 Complete Task
 `POST /tasks/{task_id}/complete`
-- **Response:** Task is marked as completed and recorded as an activity.
+- İsteğe bağlı `note` ve `photo_url` kabul eder.
+- Görev tamamlanır ve tarla günlüğünde tek kayıt olacak şekilde saklanır.
+- Aynı tamamlama isteğinin tekrarı yeni faaliyet üretmez.
 
-## 5. Cases (Cases)
+## 5. Activities and Farm Journal
 
-### 5.1 Report Case (Problem)
+### 5.1 Create and List Activities
+- `POST /farms/{farm_id}/activities`
+- `GET /farms/{farm_id}/activities?include_drafts=true&include_archived=false`
+
+Desteklenen faaliyetler: `IRRIGATION`, `FERTILIZATION`, `SPRAYING`,
+`PRUNING`, `FIELD_CHECK`, `HARVEST`, `OTHER`.
+
+Manuel kayıtlar doğrudan `CONFIRMED` olur. `input_method=VOICE` ile gönderilen
+kayıt, ses adresi veya döküm içermeli ve kullanıcı onaylayana kadar `DRAFT`
+olarak kalmalıdır.
+
+### 5.2 Confirm and Maintain Activities
+- `POST /activities/{activity_id}/confirm`
+- `PATCH /activities/{activity_id}`
+- `GET /activities/{activity_id}/revisions`
+- `DELETE /activities/{activity_id}`
+- `POST /activities/{activity_id}/restore`
+
+Güncellemeden önce değişen alanların eski değerleri revizyon geçmişine yazılır.
+Silme işlemi kalıcı silme yerine arşivlemedir.
+
+### 5.3 Farm Journal
+`GET /farms/{farm_id}/journal?limit=50&offset=0`
+
+Doğrulanmış faaliyetleri ve sonlandırılmış görevleri tek bir ters kronolojik
+akışta döndürür. Sesli taslaklar kullanıcı onayına kadar günlüğe girmez.
+
+## 6. Cases (Cases)
+
+### 6.1 Report Case (Problem)
 `POST /cases`
 ```json
 // Request
@@ -162,7 +223,7 @@ Risk önerileri bilgilendirme amaçlıdır ve saha kontrolünün yerini almaz.
 }
 ```
 
-## 6. Error Responses
+## 7. Error Responses
 ```json
 {
   "error": {
