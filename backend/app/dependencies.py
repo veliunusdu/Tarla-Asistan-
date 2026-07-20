@@ -10,12 +10,17 @@ from app.database import get_db
 from app.models import User, UserRole
 from app.otp import OtpStore
 from app.security import decode_access_token
+from app.weather import WeatherProvider
 
 bearer = HTTPBearer(auto_error=False)
 
 
 def get_otp_store(request: Request) -> OtpStore:
     return request.app.state.otp_store
+
+
+def get_weather_provider(request: Request) -> WeatherProvider:
+    return request.app.state.weather_provider
 
 
 def get_current_user(

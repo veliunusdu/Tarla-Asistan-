@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-07-20 - Sprint 2 (Veli)
+- Added owner-scoped farm create, list, detail, update and soft-archive APIs.
+- Added duplicate farm-name warnings and input validation.
+- Added crop/production-period history with a single-active-period safeguard.
+- Added replaceable Open-Meteo adapter, stored fallback snapshots and stale data
+  indicators.
+- Added frost, strong-wind and heavy-rain rules with cautious action text.
+- Added migration `20260720_0003` and backend test coverage.
+
 All notable changes to the Tarla Asistanı project will be documented in this file in chronological order. The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]

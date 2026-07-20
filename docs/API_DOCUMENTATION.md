@@ -80,9 +80,10 @@
 ## 3. Farm Management (Farms)
 
 ### 3.1 List Farms
-`GET /farms`
+`GET /farms?include_archived=false&limit=50&offset=0`
 - **Auth:** `Bearer Token`
-- **Response:** List of farms belonging to the user.
+- **Response:** Kullanıcıya ait tarlaları `items`, `total`, `limit` ve `offset`
+  alanlarıyla döndürür.
 
 Ownership is checked server-side. A farm that does not belong to the active user
 is returned as `404` so its existence is not disclosed.
@@ -90,14 +91,52 @@ is returned as `404` so its existence is not disclosed.
 ### 3.2 Add Farm
 `POST /farms`
 ```json
-// Request
 {
-  "name": "North Wheat Field",
-  "latitude": 39.92077,
-  "longitude": 32.85411,
-  "crop_type": "WHEAT"
+  "name": "Kuzey Tarlası",
+  "latitude": 38.7312,
+  "longitude": 35.4787,
+  "size_in_hectares": 12.5,
+  "irrigation_method": "DRIP",
+  "soil_type": "Killi tın",
+  "note": "Kuzey girişini kullan.",
+  "crop_type": "WHEAT",
+  "variety": "Bezostaja",
+  "planted_at": "2026-03-10"
 }
 ```
+- Konum, ürün ve geçmişte veya bugünde olan ekim tarihi zorunludur.
+- Aynı ada sahip aktif tarla engellenmez; `warnings` alanında kullanıcıya
+  kontrol uyarısı verilir.
+
+### 3.3 Get and Update Farm
+- `GET /farms/{farm_id}`
+- `PATCH /farms/{farm_id}`
+
+Her iki uç da yalnızca aktif kullanıcının kendi tarlasına erişmesine izin verir.
+
+### 3.4 Archive Farm
+`DELETE /farms/{farm_id}`
+
+Kaydı silmez; `archived_at` alanını doldurur ve `204` döndürür. Arşivlenmiş
+tarlalar varsayılan listede ve tekil görüntülemede yer almaz.
+
+### 3.5 Production Periods
+- `GET /farms/{farm_id}/production-periods`
+- `POST /farms/{farm_id}/production-periods`
+- `POST /farms/{farm_id}/production-periods/{period_id}/close`
+
+Desteklenen ürünler: `WHEAT`, `BARLEY`, `CORN`, `SUNFLOWER`, `TOMATO`.
+Bir tarlada aynı anda yalnızca bir aktif dönem olabilir. Yeni dönem sırasında
+aktif ürün varsa API `409` döndürür; kullanıcı açıkça `close_existing=true`
+gönderirse önceki dönem kapanır ve geçmişte korunur.
+
+### 3.6 Farm Weather and Risks
+`GET /farms/{farm_id}/weather`
+
+Saatlik sıcaklık, yağış olasılığı, yağış miktarı ve rüzgâr hızını; son güncelleme,
+sağlayıcı ve risk listesiyle birlikte döndürür. Sağlayıcı kesintisinde son
+başarılı kayıt varsa `is_stale=true` olarak gösterilir, yoksa `503` döner.
+Risk önerileri bilgilendirme amaçlıdır ve saha kontrolünün yerini almaz.
 
 ## 4. Tasks (Tasks)
 

@@ -8,7 +8,8 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.database import SessionLocal
 from app.otp import RedisOtpStore
-from app.routers import auth, farms, users
+from app.routers import auth, farms, production_periods, users, weather
+from app.weather import create_weather_provider
 
 settings = get_settings()
 
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.redis = redis_client
     app.state.otp_store = RedisOtpStore(redis_client)
+    app.state.weather_provider = create_weather_provider(settings)
     yield
     redis_client.close()
 
@@ -57,3 +59,5 @@ def health() -> dict[str, str]:
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(users.router, prefix=settings.api_v1_prefix)
 app.include_router(farms.router, prefix=settings.api_v1_prefix)
+app.include_router(production_periods.router, prefix=settings.api_v1_prefix)
+app.include_router(weather.router, prefix=settings.api_v1_prefix)
