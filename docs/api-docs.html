@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tarla Asistani API Dokumani</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8f5;
+      --panel: #ffffff;
+      --text: #182018;
+      --muted: #647066;
+      --line: #dfe6dc;
+      --brand: #236b3b;
+      --brand-soft: #e7f2ea;
+      --code-bg: #111815;
+      --code-text: #e8f1e8;
+      --method-get: #0f766e;
+      --method-post: #2563eb;
+      --method-patch: #b45309;
+      --method-delete: #b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+
+    header {
+      background: #16351f;
+      color: white;
+      padding: 32px 28px;
+      border-bottom: 4px solid #75a878;
+    }
+
+    header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: 0;
+    }
+
+    header p {
+      margin: 0;
+      color: #dcebdd;
+      max-width: 900px;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 24px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    nav {
+      position: sticky;
+      top: 16px;
+      align-self: start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    nav a {
+      display: block;
+      color: var(--text);
+      text-decoration: none;
+      padding: 7px 8px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    nav a:hover { background: var(--brand-soft); color: var(--brand); }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 26px;
+      color: #16351f;
+    }
+
+    h3 {
+      margin: 24px 0 10px;
+      font-size: 19px;
+    }
+
+    h4 {
+      margin: 18px 0 8px;
+      font-size: 16px;
+      color: #2f4a35;
+    }
+
+    p, ul { margin-top: 0; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .meta div, .endpoint {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      padding: 12px;
+    }
+
+    .endpoint { margin: 12px 0; }
+
+    .route {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    .method {
+      color: white;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .get { background: var(--method-get); }
+    .post { background: var(--method-post); }
+    .patch { background: var(--method-patch); }
+    .delete { background: var(--method-delete); }
+
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre {
+      margin: 10px 0 18px;
+      padding: 14px;
+      border-radius: 8px;
+      overflow-x: auto;
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .schema-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+    }
+
+    .schema {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfb;
+    }
+
+    .schema h3 { margin-top: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th { background: var(--brand-soft); }
+
+    .note {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; padding: 16px; }
+      nav { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Tarla Asistani API Dokumani</h1>
+    <p>Endpointler, request body, response body ve model semalari. Base URL yerelde <code>http://localhost:8100</code>, API prefix <code>/api/v1</code>.</p>
+  </header>
+
+  <main>
+    <nav aria-label="Dokuman navigasyonu">
+      <a href="#genel">Genel</a>
+      <a href="#auth">Kimlik Dogrulama</a>
+      <a href="#users">Kullanici</a>
+      <a href="#farms">Tarlalar</a>
+      <a href="#periods">Uretim Donemleri</a>
+      <a href="#weather">Hava Durumu</a>
+      <a href="#tasks">Gunluk Gorevler</a>
+      <a href="#activities">Faaliyetler</a>
+      <a href="#journal">Tarla Gunlugu</a>
+      <a href="#schemas">Semalar</a>
+      <a href="#enums">Enum Degerleri</a>
+    </nav>
+
+    <div>
+      <section id="genel">
+        <h2>Genel</h2>
+        <div class="meta">
+          <div><strong>Local Base URL</strong><br><code>http://localhost:8100</code></div>
+          <div><strong>API Prefix</strong><br><code>/api/v1</code></div>
+          <div><strong>Content-Type</strong><br><code>application/json</code></div>
+          <div><strong>Auth Header</strong><br><code>Authorization: Bearer &lt;access_token&gt;</code></div>
+          <div><strong>Swagger</strong><br><code>http://localhost:8100/docs</code></div>
+          <div><strong>Health</strong><br><code>GET /health</code></div>
+        </div>
+      </section>
+
+      <section id="auth">
+        <h2>Kimlik Dogrulama</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/auth/request-otp</code></div>
+          <p>Telefon numarasina tek kullanimlik kod uretir.</p>
+          <h4>Request</h4>
+<pre>{
+  "phone_number": "+905551234567"
+}</pre>
+          <h4>Response 200</h4>
+<pre>{
+  "message": "Dogrulama kodu gonderildi.",
+  "expires_in": 300,
+  "debug_otp": "123456"
+}</pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/auth/verify-otp</code></div>
+          <p>OTP kodunu dogrular ve JWT oturumu olusturur.</p>
+          <h4>Request</h4>
+<pre>{
+  "phone_number": "+905551234567",
+  "otp_code": "123456"
+}</pre>
+          <h4>Response 200</h4>
+<pre>{
+  "access_token": "jwt-access-token",
+  "refresh_token": "opaque-refresh-token",
+  "token_type": "bearer",
+  "expires_in": 900,
+  "user": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "phone_number": "+905551234567",
+    "full_name": null,
+    "province": null,
+    "district": null,
+    "role": "FARMER",
+    "terms_accepted": false,
+    "notifications_enabled": true,
+    "profile_complete": false
+  }
+}</pre>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/auth/refresh</code></div>
+          <h4>Request</h4>
+<pre>{
+  "refresh_token": "opaque-refresh-token"
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>TokenResponse</code> ile aynidir.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/auth/logout</code></div>
+          <h4>Request</h4>
+<pre>{
+  "refresh_token": "opaque-refresh-token"
+}</pre>
+          <h4>Response 204</h4>
+          <p class="note">Body donmez.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/auth/me</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>UserResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="users">
+        <h2>Kullanici</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PUT</span><code>/api/v1/users/me</code></div>
+          <p>Profil bilgilerini tamamlar veya gunceller.</p>
+          <h4>Request</h4>
+<pre>{
+  "full_name": "Veli Unusdu",
+  "province": "Konya",
+  "district": "Selcuklu",
+  "terms_accepted": true,
+  "notifications_enabled": true
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>UserResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="farms">
+        <h2>Tarlalar</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/farms</code></div>
+          <h4>Request</h4>
+<pre>{
+  "name": "Kuzey Tarlasi",
+  "latitude": 38.7312,
+  "longitude": 35.4787,
+  "size_in_hectares": 12.5,
+  "irrigation_method": "DRIP",
+  "soil_type": "Killi tin",
+  "note": "Kuzey girisini kullan.",
+  "crop_type": "WHEAT",
+  "variety": "Bezostaja",
+  "planted_at": "2026-03-10"
+}</pre>
+          <h4>Response 201</h4>
+          <p class="note">Response body <code>FarmMutationResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms?include_archived=false&amp;limit=50&amp;offset=0</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>FarmListResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>FarmResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PATCH</span><code>/api/v1/farms/{farm_id}</code></div>
+          <h4>Request</h4>
+<pre>{
+  "name": "Kuzey Tarlasi",
+  "latitude": 38.7312,
+  "longitude": 35.4787,
+  "size_in_hectares": 13,
+  "irrigation_method": "SPRINKLER",
+  "soil_type": "Killi",
+  "note": "Guncellendi"
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>FarmMutationResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method delete">DELETE</span><code>/api/v1/farms/{farm_id}</code></div>
+          <h4>Response 204</h4>
+          <p class="note">Kalici silmez; tarla arsivlenir.</p>
+        </div>
+      </section>
+
+      <section id="periods">
+        <h2>Uretim Donemleri</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/production-periods</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>CropPeriodListResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/farms/{farm_id}/production-periods</code></div>
+          <h4>Request</h4>
+<pre>{
+  "crop_type": "TOMATO",
+  "variety": "Salkim",
+  "planted_at": "2026-04-10",
+  "close_existing": false
+}</pre>
+          <h4>Response 201</h4>
+          <p class="note">Response body <code>CropPeriodResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/farms/{farm_id}/production-periods/{period_id}/close</code></div>
+          <h4>Request</h4>
+<pre>{
+  "harvested_at": "2026-08-04"
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>CropPeriodResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="weather">
+        <h2>Hava Durumu</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/weather</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>FarmWeatherResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="tasks">
+        <h2>Gunluk Gorevler</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/farms/{farm_id}/tasks</code></div>
+          <p>Uzman rolu ile gorev olusturur.</p>
+          <h4>Request</h4>
+<pre>{
+  "title": "Yapraklari kontrol edin",
+  "description": "Alt yapraklarda lekelenme olup olmadigini kontrol edin.",
+  "reason": "Uzman saha takibi icin onerdi.",
+  "priority": "HIGH",
+  "confidence": "HIGH",
+  "due_date": "2026-08-04",
+  "crop_period_id": "00000000-0000-0000-0000-000000000000"
+}</pre>
+          <h4>Response 201</h4>
+          <p class="note">Response body <code>TaskResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/tasks?date=2026-08-04</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>DailyTaskListResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/tasks/{task_id}</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>TaskResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PATCH</span><code>/api/v1/tasks/{task_id}/status</code></div>
+          <h4>Request</h4>
+<pre>{
+  "status": "PLANNED",
+  "not_applied_reason": null,
+  "note": "Ogle sonrasi yapilacak.",
+  "photo_url": null
+}</pre>
+          <p class="note"><code>NOT_APPLIED</code> icin <code>not_applied_reason</code> zorunludur.</p>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>TaskResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/tasks/{task_id}/complete</code></div>
+          <h4>Request</h4>
+<pre>{
+  "note": "Sulama tamamlandi.",
+  "photo_url": "https://example.com/photo.jpg"
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>TaskResponse</code>. Tarla gunlugune tek faaliyet kaydi olusturur.</p>
+        </div>
+      </section>
+
+      <section id="activities">
+        <h2>Faaliyetler</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/farms/{farm_id}/activities</code></div>
+          <h4>Request</h4>
+<pre>{
+  "activity_type": "IRRIGATION",
+  "description": "Damlama sulama yapildi.",
+  "occurred_at": "2026-08-04T09:30:00Z",
+  "crop_period_id": "00000000-0000-0000-0000-000000000000",
+  "input_method": "MANUAL",
+  "duration_minutes": 45,
+  "amount": 12,
+  "unit": "ton",
+  "photo_url": "https://example.com/photo.jpg",
+  "voice_url": null,
+  "voice_transcript": null,
+  "performed_by": "Veli Unusdu",
+  "cost": 350
+}</pre>
+          <h4>Response 201</h4>
+          <p class="note">Response body <code>ActivityResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/activities?include_drafts=true&amp;include_archived=false&amp;limit=50&amp;offset=0</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>ActivityListResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PATCH</span><code>/api/v1/activities/{activity_id}</code></div>
+          <h4>Request</h4>
+<pre>{
+  "activity_type": "IRRIGATION",
+  "description": "Damlama sulama guncellendi.",
+  "occurred_at": "2026-08-04T09:30:00Z",
+  "crop_period_id": "00000000-0000-0000-0000-000000000000",
+  "duration_minutes": 50,
+  "amount": 13,
+  "unit": "ton",
+  "photo_url": null,
+  "voice_url": null,
+  "voice_transcript": null,
+  "performed_by": "Veli Unusdu",
+  "cost": 375
+}</pre>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>ActivityResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/activities/{activity_id}/confirm</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Sesli taslagi onaylar. Response body <code>ActivityResponse</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/activities/{activity_id}/revisions</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>ActivityRevisionResponse[]</code>.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method delete">DELETE</span><code>/api/v1/activities/{activity_id}</code></div>
+          <h4>Response 204</h4>
+          <p class="note">Kalici silmez; faaliyet arsivlenir.</p>
+        </div>
+
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/activities/{activity_id}/restore</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>ActivityResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="journal">
+        <h2>Tarla Gunlugu</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/journal?limit=50&amp;offset=0</code></div>
+          <h4>Response 200</h4>
+          <p class="note">Response body <code>FarmJournalResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="schemas">
+        <h2>Semalar</h2>
+        <div class="schema-grid">
+          <article class="schema">
+            <h3>UserResponse</h3>
+<pre>{
+  "id": "uuid",
+  "phone_number": "+905551234567",
+  "full_name": "Veli Unusdu",
+  "province": "Konya",
+  "district": "Selcuklu",
+  "role": "FARMER",
+  "terms_accepted": true,
+  "notifications_enabled": true,
+  "profile_complete": true
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>FarmResponse</h3>
+<pre>{
+  "id": "uuid",
+  "owner_id": "uuid",
+  "name": "Kuzey Tarlasi",
+  "latitude": 38.7312,
+  "longitude": 35.4787,
+  "size_in_hectares": 12.5,
+  "irrigation_method": "DRIP",
+  "soil_type": "Killi tin",
+  "note": "Kuzey girisini kullan.",
+  "archived_at": null,
+  "created_at": "2026-08-04T10:00:00Z",
+  "updated_at": "2026-08-04T10:00:00Z",
+  "current_crop": {
+    "id": "uuid",
+    "farm_id": "uuid",
+    "crop_type": "WHEAT",
+    "variety": "Bezostaja",
+    "planted_at": "2026-03-10",
+    "harvested_at": null,
+    "status": "ACTIVE",
+    "created_at": "2026-08-04T10:00:00Z",
+    "updated_at": "2026-08-04T10:00:00Z"
+  }
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>FarmMutationResponse</h3>
+<pre>{
+  "farm": "FarmResponse",
+  "warnings": [
+    "Ayni ada sahip aktif bir tarlani zaten var. Konumlari kontrol edin."
+  ]
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>FarmListResponse</h3>
+<pre>{
+  "items": ["FarmResponse"],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>CropPeriodResponse</h3>
+<pre>{
+  "id": "uuid",
+  "farm_id": "uuid",
+  "crop_type": "TOMATO",
+  "variety": "Salkim",
+  "planted_at": "2026-04-10",
+  "harvested_at": null,
+  "status": "ACTIVE",
+  "created_at": "2026-08-04T10:00:00Z",
+  "updated_at": "2026-08-04T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>FarmWeatherResponse</h3>
+<pre>{
+  "farm_id": "uuid",
+  "provider": "open-meteo",
+  "fetched_at": "2026-08-04T10:00:00Z",
+  "is_stale": false,
+  "stale_reason": null,
+  "points": [
+    {
+      "observed_at": "2026-08-04T12:00:00Z",
+      "temperature_c": 31.2,
+      "precipitation_probability": 20,
+      "precipitation_mm": 0,
+      "wind_speed_kmh": 14
+    }
+  ],
+  "risks": [
+    {
+      "risk_type": "HEAT",
+      "severity": "HIGH",
+      "starts_at": "2026-08-04T12:00:00Z",
+      "ends_at": "2026-08-04T16:00:00Z",
+      "message": "Sicaklik riski var.",
+      "suggested_action": "Sulama ve saha kontrolu planlayin."
+    }
+  ]
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>TaskResponse</h3>
+<pre>{
+  "id": "uuid",
+  "farm_id": "uuid",
+  "crop_period_id": "uuid",
+  "created_by_id": "uuid",
+  "title": "Sulama kontrolu",
+  "description": "Damlama hattini kontrol et.",
+  "reason": "Sicaklik artisi bekleniyor.",
+  "priority": "HIGH",
+  "status": "NEW",
+  "source": "EXPERT",
+  "confidence": "HIGH",
+  "due_date": "2026-08-04",
+  "not_applied_reason": null,
+  "completion_note": null,
+  "photo_url": null,
+  "viewed_at": null,
+  "completed_at": null,
+  "created_at": "2026-08-04T10:00:00Z",
+  "updated_at": "2026-08-04T10:00:00Z",
+  "expert_review_recommended": false
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>DailyTaskListResponse</h3>
+<pre>{
+  "date": "2026-08-04",
+  "items": ["TaskResponse"],
+  "critical_weather_alerts": ["TaskResponse"],
+  "overdue": ["TaskResponse"],
+  "visible_limit": 3
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>ActivityResponse</h3>
+<pre>{
+  "id": "uuid",
+  "farm_id": "uuid",
+  "crop_period_id": "uuid",
+  "task_id": null,
+  "created_by_id": "uuid",
+  "activity_type": "IRRIGATION",
+  "status": "CONFIRMED",
+  "source": "MANUAL",
+  "description": "Damlama sulama yapildi.",
+  "occurred_at": "2026-08-04T09:30:00Z",
+  "duration_minutes": 45,
+  "amount": 12,
+  "unit": "ton",
+  "photo_url": null,
+  "voice_url": null,
+  "voice_transcript": null,
+  "performed_by": "Veli Unusdu",
+  "cost": 350,
+  "confirmed_at": "2026-08-04T09:30:00Z",
+  "archived_at": null,
+  "created_at": "2026-08-04T10:00:00Z",
+  "updated_at": "2026-08-04T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>ActivityRevisionResponse</h3>
+<pre>{
+  "id": "uuid",
+  "activity_id": "uuid",
+  "changed_by_id": "uuid",
+  "previous_values": {
+    "description": "Eski aciklama"
+  },
+  "changed_at": "2026-08-04T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>FarmJournalResponse</h3>
+<pre>{
+  "items": [
+    {
+      "entry_type": "ACTIVITY",
+      "id": "uuid",
+      "occurred_at": "2026-08-04T09:30:00Z",
+      "title": "IRRIGATION",
+      "description": "Damlama sulama yapildi.",
+      "metadata": {
+        "source": "MANUAL",
+        "photo_url": null,
+        "voice_url": null
+      }
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}</pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="enums">
+        <h2>Enum Degerleri</h2>
+        <table>
+          <thead><tr><th>Alan</th><th>Degerler</th></tr></thead>
+          <tbody>
+            <tr><td>UserRole</td><td><code>FARMER</code>, <code>AGRONOMIST</code></td></tr>
+            <tr><td>IrrigationMethod</td><td><code>DRIP</code>, <code>SPRINKLER</code>, <code>FLOOD</code>, <code>RAINFED</code>, <code>OTHER</code></td></tr>
+            <tr><td>CropType</td><td><code>WHEAT</code>, <code>BARLEY</code>, <code>CORN</code>, <code>SUNFLOWER</code>, <code>TOMATO</code></td></tr>
+            <tr><td>CropPeriodStatus</td><td><code>ACTIVE</code>, <code>ARCHIVED</code></td></tr>
+            <tr><td>TaskPriority</td><td><code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, <code>CRITICAL</code></td></tr>
+            <tr><td>TaskStatus</td><td><code>NEW</code>, <code>VIEWED</code>, <code>PLANNED</code>, <code>COMPLETED</code>, <code>NOT_APPLIED</code>, <code>OVERDUE</code>, <code>CANCELLED</code></td></tr>
+            <tr><td>TaskSource</td><td><code>SYSTEM</code>, <code>CROP_CALENDAR</code>, <code>WEATHER</code>, <code>EXPERT</code></td></tr>
+            <tr><td>TaskConfidence</td><td><code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code></td></tr>
+            <tr><td>ActivityType</td><td><code>IRRIGATION</code>, <code>FERTILIZATION</code>, <code>SPRAYING</code>, <code>PRUNING</code>, <code>FIELD_CHECK</code>, <code>HARVEST</code>, <code>OTHER</code></td></tr>
+            <tr><td>ActivityStatus</td><td><code>DRAFT</code>, <code>CONFIRMED</code></td></tr>
+            <tr><td>ActivitySource</td><td><code>MANUAL</code>, <code>VOICE</code>, <code>TASK</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
