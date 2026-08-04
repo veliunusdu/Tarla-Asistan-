@@ -9,9 +9,14 @@ from app.models import (
     ActivitySource,
     ActivityStatus,
     ActivityType,
+    CaseCategory,
+    CaseMessageType,
+    CasePriority,
+    CaseStatus,
     CropPeriodStatus,
     CropType,
     IrrigationMethod,
+    MediaKind,
     TaskConfidence,
     TaskPriority,
     TaskSource,
@@ -357,6 +362,10 @@ class TaskCompleteRequest(BaseModel):
 
 
 class ActivityCreate(BaseModel):
+    client_operation_id: uuid.UUID | None = Field(
+        default=None,
+        description="Çevrimdışı tekrar gönderimlerini güvenle tekilleştiren istemci işlem kimliği.",
+    )
     activity_type: ActivityType
     description: str = Field(min_length=2, max_length=4000)
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -529,6 +538,123 @@ class JournalEntryResponse(BaseModel):
 
 class FarmJournalResponse(BaseModel):
     items: list[JournalEntryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class MediaAssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    kind: MediaKind
+    original_name: str
+    content_type: str
+    size_bytes: int
+    checksum_sha256: str
+    url: str
+    created_at: datetime
+
+
+class CaseCreate(BaseModel):
+    client_operation_id: uuid.UUID | None = None
+    farm_id: uuid.UUID
+    category: CaseCategory
+    title: str = Field(min_length=2, max_length=160)
+    description: str = Field(min_length=2, max_length=6000)
+    media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+
+    @field_validator("title", "description")
+    @classmethod
+    def strip_case_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("media_ids")
+    @classmethod
+    def unique_case_media(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Aynı medya birden fazla eklenemez.")
+        return value
+
+
+class CaseStatusUpdate(BaseModel):
+    status: CaseStatus
+    priority: CasePriority | None = None
+    assign_to_me: bool = False
+
+
+class CaseMessageCreate(BaseModel):
+    client_operation_id: uuid.UUID | None = None
+    message_type: CaseMessageType = CaseMessageType.COMMENT
+    body: str = Field(min_length=2, max_length=6000)
+    media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+
+    @field_validator("body")
+    @classmethod
+    def strip_message_body(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("media_ids")
+    @classmethod
+    def unique_message_media(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Aynı medya birden fazla eklenemez.")
+        return value
+
+
+class ExpertResponseCreate(BaseModel):
+    client_operation_id: uuid.UUID | None = None
+    body: str = Field(min_length=2, max_length=6000)
+    media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    close_case: bool = False
+
+    @field_validator("body")
+    @classmethod
+    def strip_expert_response(cls, value: str) -> str:
+        return value.strip()
+
+
+class CaseMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    sender_id: uuid.UUID
+    sender_name: str
+    sender_role: UserRole
+    message_type: CaseMessageType
+    body: str
+    media: list[MediaAssetResponse]
+    created_at: datetime
+
+
+class CaseSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    farm_id: uuid.UUID
+    farm_name: str
+    farmer_name: str
+    created_by_id: uuid.UUID
+    assigned_expert_id: uuid.UUID | None
+    category: CaseCategory
+    priority: CasePriority
+    status: CaseStatus
+    title: str
+    description: str
+    media: list[MediaAssetResponse]
+    closed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CaseDetailResponse(CaseSummaryResponse):
+    messages: list[CaseMessageResponse]
+
+
+class CaseListResponse(BaseModel):
+    items: list[CaseSummaryResponse]
     total: int
     limit: int
     offset: int

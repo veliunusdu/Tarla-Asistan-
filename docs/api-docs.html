@@ -219,6 +219,8 @@
       <a href="#tasks">Gunluk Gorevler</a>
       <a href="#activities">Faaliyetler</a>
       <a href="#journal">Tarla Gunlugu</a>
+      <a href="#media">Medya</a>
+      <a href="#cases">Vakalar</a>
       <a href="#schemas">Semalar</a>
       <a href="#enums">Enum Degerleri</a>
     </nav>
@@ -486,6 +488,7 @@
           <div class="route"><span class="method post">POST</span><code>/api/v1/farms/{farm_id}/activities</code></div>
           <h4>Request</h4>
 <pre>{
+  "client_operation_id": "11111111-1111-1111-1111-111111111111",
   "activity_type": "IRRIGATION",
   "description": "Damlama sulama yapildi.",
   "occurred_at": "2026-08-04T09:30:00Z",
@@ -562,6 +565,89 @@
           <div class="route"><span class="method get">GET</span><code>/api/v1/farms/{farm_id}/journal?limit=50&amp;offset=0</code></div>
           <h4>Response 200</h4>
           <p class="note">Response body <code>FarmJournalResponse</code>.</p>
+        </div>
+      </section>
+
+      <section id="media">
+        <h2>Guvenli Medya</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/media</code></div>
+          <p><code>multipart/form-data</code> icinde <code>file</code> alaniyla JPG, PNG, WEBP veya ses dosyasi yukler. Varsayilan sinir 15 MB.</p>
+          <h4>Response 201</h4>
+<pre>{
+  "id": "uuid",
+  "owner_id": "uuid",
+  "kind": "IMAGE",
+  "original_name": "yaprak.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 145220,
+  "checksum_sha256": "sha256",
+  "url": "/api/v1/media/{media_id}/content",
+  "created_at": "2026-08-04T19:00:00Z"
+}</pre>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/media/{media_id}/content</code></div>
+          <p>Medya sahibine ve bagli vakaya erisebilen uzmana dosyayi guvenli olarak dondurur.</p>
+        </div>
+      </section>
+
+      <section id="cases">
+        <h2>Sorun Bildirme ve Vakalar</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/cases</code></div>
+          <h4>Request</h4>
+<pre>{
+  "client_operation_id": "11111111-1111-1111-1111-111111111111",
+  "farm_id": "uuid",
+  "category": "DISEASE",
+  "title": "Yapraklarda sararma",
+  "description": "Alt yapraklarda sari lekeler var.",
+  "media_ids": ["uuid"]
+}</pre>
+          <h4>Response 201</h4>
+          <p class="note">Response body <code>CaseDetailResponse</code>. Ayni <code>client_operation_id</code> tekrar gonderilirse yeni kayit olusmaz.</p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/cases?status=OPEN&amp;priority=HIGH&amp;limit=50&amp;offset=0</code></div>
+          <p>Uzmanda tum vakalari; ciftcide yalnizca kendi tarlalarindaki vakalari listeler.</p>
+          <h4>Response 200</h4><p class="note"><code>CaseListResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/cases/{case_id}</code></div>
+          <h4>Response 200</h4><p class="note"><code>CaseDetailResponse</code>; tarla, ciftci, medya ve mesajlari icerir.</p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PATCH</span><code>/api/v1/cases/{case_id}/status</code></div>
+          <h4>Request</h4>
+<pre>{
+  "status": "IN_REVIEW",
+  "priority": "CRITICAL",
+  "assign_to_me": true
+}</pre>
+          <h4>Response 200</h4><p class="note"><code>CaseDetailResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/cases/{case_id}/messages</code></div>
+          <h4>Request</h4>
+<pre>{
+  "client_operation_id": "22222222-2222-2222-2222-222222222222",
+  "message_type": "ADDITIONAL_INFO_REQUEST",
+  "body": "Yapragin alt yuzunun fotografini ekler misiniz?",
+  "media_ids": []
+}</pre>
+          <h4>Response 201</h4><p class="note"><code>CaseMessageResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/cases/{case_id}/expert-response</code></div>
+          <h4>Request</h4>
+<pre>{
+  "client_operation_id": "33333333-3333-3333-3333-333333333333",
+  "body": "Saha kontrolu oneriyorum.",
+  "media_ids": [],
+  "close_case": true
+}</pre>
+          <h4>Response 201</h4><p class="note"><code>close_case=true</code> vakayi kapatir.</p>
         </div>
       </section>
 
@@ -777,6 +863,58 @@
   "offset": 0
 }</pre>
           </article>
+
+          <article class="schema">
+            <h3>MediaAssetResponse</h3>
+<pre>{
+  "id": "uuid",
+  "owner_id": "uuid",
+  "kind": "IMAGE",
+  "original_name": "yaprak.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": 145220,
+  "checksum_sha256": "sha256",
+  "url": "/api/v1/media/{media_id}/content",
+  "created_at": "2026-08-04T19:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>CaseMessageResponse</h3>
+<pre>{
+  "id": "uuid",
+  "case_id": "uuid",
+  "sender_id": "uuid",
+  "sender_name": "Uzman Adi",
+  "sender_role": "AGRONOMIST",
+  "message_type": "EXPERT_RESPONSE",
+  "body": "Saha kontrolu oneriyorum.",
+  "media": ["MediaAssetResponse"],
+  "created_at": "2026-08-04T19:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>CaseDetailResponse</h3>
+<pre>{
+  "id": "uuid",
+  "farm_id": "uuid",
+  "farm_name": "Kuzey Tarlasi",
+  "farmer_name": "Ciftci Adi",
+  "created_by_id": "uuid",
+  "assigned_expert_id": "uuid",
+  "category": "DISEASE",
+  "priority": "CRITICAL",
+  "status": "IN_REVIEW",
+  "title": "Yapraklarda sararma",
+  "description": "Alt yapraklarda sari lekeler var.",
+  "media": ["MediaAssetResponse"],
+  "messages": ["CaseMessageResponse"],
+  "closed_at": null,
+  "created_at": "2026-08-04T19:00:00Z",
+  "updated_at": "2026-08-04T19:00:00Z"
+}</pre>
+          </article>
         </div>
       </section>
 
@@ -796,6 +934,11 @@
             <tr><td>ActivityType</td><td><code>IRRIGATION</code>, <code>FERTILIZATION</code>, <code>SPRAYING</code>, <code>PRUNING</code>, <code>FIELD_CHECK</code>, <code>HARVEST</code>, <code>OTHER</code></td></tr>
             <tr><td>ActivityStatus</td><td><code>DRAFT</code>, <code>CONFIRMED</code></td></tr>
             <tr><td>ActivitySource</td><td><code>MANUAL</code>, <code>VOICE</code>, <code>TASK</code></td></tr>
+            <tr><td>MediaKind</td><td><code>IMAGE</code>, <code>AUDIO</code></td></tr>
+            <tr><td>CaseCategory</td><td><code>DISEASE</code>, <code>PEST</code>, <code>IRRIGATION</code>, <code>NUTRITION</code>, <code>WEATHER</code>, <code>OTHER</code></td></tr>
+            <tr><td>CasePriority</td><td><code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, <code>CRITICAL</code></td></tr>
+            <tr><td>CaseStatus</td><td><code>OPEN</code>, <code>IN_REVIEW</code>, <code>WAITING_FARMER</code>, <code>ANSWERED</code>, <code>CLOSED</code></td></tr>
+            <tr><td>CaseMessageType</td><td><code>COMMENT</code>, <code>ADDITIONAL_INFO_REQUEST</code>, <code>EXPERT_RESPONSE</code></td></tr>
           </tbody>
         </table>
       </section>

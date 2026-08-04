@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -100,6 +101,41 @@ class ActivitySource(str, enum.Enum):
     MANUAL = "MANUAL"
     VOICE = "VOICE"
     TASK = "TASK"
+
+
+class MediaKind(str, enum.Enum):
+    IMAGE = "IMAGE"
+    AUDIO = "AUDIO"
+
+
+class CaseCategory(str, enum.Enum):
+    DISEASE = "DISEASE"
+    PEST = "PEST"
+    IRRIGATION = "IRRIGATION"
+    NUTRITION = "NUTRITION"
+    WEATHER = "WEATHER"
+    OTHER = "OTHER"
+
+
+class CasePriority(str, enum.Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class CaseStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    IN_REVIEW = "IN_REVIEW"
+    WAITING_FARMER = "WAITING_FARMER"
+    ANSWERED = "ANSWERED"
+    CLOSED = "CLOSED"
+
+
+class CaseMessageType(str, enum.Enum):
+    COMMENT = "COMMENT"
+    ADDITIONAL_INFO_REQUEST = "ADDITIONAL_INFO_REQUEST"
+    EXPERT_RESPONSE = "EXPERT_RESPONSE"
 
 
 class User(Base):
@@ -444,3 +480,175 @@ class ActivityRevision(Base):
 
     activity: Mapped[Activity] = relationship(back_populates="revisions")
     changed_by: Mapped[User | None] = relationship()
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+    __table_args__ = (Index("ix_media_assets_owner_created", "owner_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[MediaKind] = mapped_column(Enum(MediaKind, name="media_kind"))
+    original_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    storage_key: Mapped[str] = mapped_column(String(255), unique=True)
+    checksum_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    owner: Mapped[User] = relationship()
+
+    @property
+    def url(self) -> str:
+        return f"/api/v1/media/{self.id}/content"
+
+
+class SupportCase(Base):
+    __tablename__ = "support_cases"
+    __table_args__ = (
+        Index("ix_support_cases_status_priority", "status", "priority"),
+        Index("ix_support_cases_farm_created", "farm_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    farm_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("farms.id", ondelete="CASCADE"), index=True
+    )
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    assigned_expert_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    category: Mapped[CaseCategory] = mapped_column(
+        Enum(CaseCategory, name="support_case_category")
+    )
+    priority: Mapped[CasePriority] = mapped_column(
+        Enum(CasePriority, name="support_case_priority"),
+        default=CasePriority.MEDIUM,
+    )
+    status: Mapped[CaseStatus] = mapped_column(
+        Enum(CaseStatus, name="support_case_status"),
+        default=CaseStatus.OPEN,
+    )
+    title: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    farm: Mapped[Farm] = relationship()
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
+    assigned_expert: Mapped[User | None] = relationship(
+        foreign_keys=[assigned_expert_id]
+    )
+    messages: Mapped[list["CaseMessage"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        order_by="CaseMessage.created_at.asc()",
+    )
+    media_links: Mapped[list["CaseMedia"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan"
+    )
+
+    @property
+    def farm_name(self) -> str:
+        return self.farm.name
+
+    @property
+    def farmer_name(self) -> str:
+        return self.farm.owner.full_name or self.farm.owner.phone_number
+
+    @property
+    def media(self) -> list[MediaAsset]:
+        return [link.media for link in self.media_links]
+
+
+class CaseMessage(Base):
+    __tablename__ = "case_messages"
+    __table_args__ = (Index("ix_case_messages_case_created", "case_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("support_cases.id", ondelete="CASCADE"), index=True
+    )
+    sender_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    message_type: Mapped[CaseMessageType] = mapped_column(
+        Enum(CaseMessageType, name="case_message_type"),
+        default=CaseMessageType.COMMENT,
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    case: Mapped[SupportCase] = relationship(back_populates="messages")
+    sender: Mapped[User] = relationship()
+    media_links: Mapped[list["CaseMessageMedia"]] = relationship(
+        back_populates="message", cascade="all, delete-orphan"
+    )
+
+    @property
+    def sender_name(self) -> str:
+        return self.sender.full_name or self.sender.phone_number
+
+    @property
+    def sender_role(self) -> UserRole:
+        return self.sender.role
+
+    @property
+    def media(self) -> list[MediaAsset]:
+        return [link.media for link in self.media_links]
+
+
+class CaseMedia(Base):
+    __tablename__ = "case_media"
+
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("support_cases.id", ondelete="CASCADE"), primary_key=True
+    )
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    case: Mapped[SupportCase] = relationship(back_populates="media_links")
+    media: Mapped[MediaAsset] = relationship()
+
+
+class CaseMessageMedia(Base):
+    __tablename__ = "case_message_media"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("case_messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    message: Mapped[CaseMessage] = relationship(back_populates="media_links")
+    media: Mapped[MediaAsset] = relationship()
+
+
+class ClientOperation(Base):
+    __tablename__ = "client_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id", "client_operation_id", name="uq_client_operations_actor_key"
+        ),
+        Index("ix_client_operations_actor_created", "actor_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    actor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    client_operation_id: Mapped[uuid.UUID] = mapped_column()
+    scope: Mapped[str] = mapped_column(String(80))
+    payload_hash: Mapped[str] = mapped_column(String(64))
+    resource_type: Mapped[str] = mapped_column(String(50))
+    resource_id: Mapped[uuid.UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

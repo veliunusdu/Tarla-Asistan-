@@ -209,19 +209,80 @@ Silme işlemi kalıcı silme yerine arşivlemedir.
 Doğrulanmış faaliyetleri ve sonlandırılmış görevleri tek bir ters kronolojik
 akışta döndürür. Sesli taslaklar kullanıcı onayına kadar günlüğe girmez.
 
-## 6. Cases (Cases)
+## 6. Media and Cases
 
-### 6.1 Report Case (Problem)
+### 6.1 Upload Media
+`POST /media`
+
+- **Content-Type:** `multipart/form-data`
+- `file` alanında JPG, PNG, WEBP veya desteklenen ses dosyası gönderilir.
+- Varsayılan üst sınır 15 MB'dır.
+- Dönen `/api/v1/media/{media_id}/content` adresi yalnızca yetkili kullanıcıların
+  Bearer token ile erişebildiği güvenli bir adrestir.
+
+### 6.2 Create Case
 `POST /cases`
 ```json
-// Request
 {
-  "farm_id": "uuid",
+  "client_operation_id": "11111111-1111-1111-1111-111111111111",
+  "farm_id": "00000000-0000-0000-0000-000000000000",
   "category": "DISEASE",
-  "description": "There is yellowing on the leaves.",
-  "media_urls": ["https://s3.aws.com/.../photo.jpg"]
+  "title": "Yapraklarda sararma",
+  "description": "Alt yapraklarda hızla yayılan sarı lekeler var.",
+  "media_ids": ["00000000-0000-0000-0000-000000000001"]
 }
 ```
+
+`client_operation_id`, çevrimdışı kuyruğun aynı isteği yeniden göndermesi
+durumunda ikinci bir kayıt oluşmasını engeller. Aynı kimlik farklı içerikle
+kullanılırsa `409` döner. Bu destek faaliyet oluşturma ve vaka mesajlarında da
+geçerlidir.
+
+### 6.3 List and Detail
+
+- `GET /cases?status=OPEN&priority=HIGH&farm_id={farm_id}&limit=50&offset=0`
+- `GET /cases/{case_id}`
+
+Çiftçi yalnızca kendi tarlalarındaki vakaları; uzman ise öncelik, durum, çiftçi
+ve tarla bağlamıyla tüm vakaları görür.
+
+### 6.4 Status and Priority
+`PATCH /cases/{case_id}/status`
+```json
+{
+  "status": "IN_REVIEW",
+  "priority": "CRITICAL",
+  "assign_to_me": true
+}
+```
+
+### 6.5 Messages and Additional Information
+`POST /cases/{case_id}/messages`
+```json
+{
+  "client_operation_id": "22222222-2222-2222-2222-222222222222",
+  "message_type": "ADDITIONAL_INFO_REQUEST",
+  "body": "Yaprağın alt yüzünün fotoğrafını ekler misiniz?",
+  "media_ids": []
+}
+```
+
+Mesaj türleri: `COMMENT`, `ADDITIONAL_INFO_REQUEST`, `EXPERT_RESPONSE`.
+Ek bilgi isteği vakayı `WAITING_FARMER` durumuna getirir; çiftçinin cevabı
+vakayı yeniden `IN_REVIEW` yapar.
+
+### 6.6 Expert Response and Close
+`POST /cases/{case_id}/expert-response`
+```json
+{
+  "client_operation_id": "33333333-3333-3333-3333-333333333333",
+  "body": "Saha kontrolü öneriyorum; yaprakları bu süre içinde kuru tutun.",
+  "media_ids": [],
+  "close_case": true
+}
+```
+
+`close_case=false` vakayı `ANSWERED`, `true` ise `CLOSED` durumuna getirir.
 
 ## 7. Error Responses
 ```json

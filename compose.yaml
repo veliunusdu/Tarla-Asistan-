@@ -38,6 +38,10 @@ services:
       OTP_EXPOSE_IN_RESPONSE: ${OTP_EXPOSE_IN_RESPONSE:-true}
       AGRONOMIST_PHONE_NUMBERS: ${AGRONOMIST_PHONE_NUMBERS:-+905551112233}
       CORS_ORIGINS: http://localhost:3000,http://localhost:${WEB_PORT:-3000}
+      MEDIA_STORAGE_PATH: /app/data/media
+      MEDIA_MAX_UPLOAD_MB: ${MEDIA_MAX_UPLOAD_MB:-15}
+    volumes:
+      - media_data:/app/data/media
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -67,3 +71,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  media_data:

@@ -1,4 +1,5 @@
 import os
+import tempfile
 from contextlib import asynccontextmanager
 
 os.environ["DATABASE_URL"] = "sqlite+pysqlite:///:memory:"
@@ -6,6 +7,7 @@ os.environ["JWT_SECRET"] = "test-jwt-secret-that-is-long-enough-123"
 os.environ["OTP_HASH_SECRET"] = "test-otp-secret-that-is-long-enough-123"
 os.environ["OTP_EXPOSE_IN_RESPONSE"] = "true"
 os.environ["AGRONOMIST_PHONE_NUMBERS"] = "+905551112233"
+os.environ["MEDIA_STORAGE_PATH"] = tempfile.mkdtemp(prefix="tarla-media-tests-")
 
 import pytest
 from fastapi.testclient import TestClient

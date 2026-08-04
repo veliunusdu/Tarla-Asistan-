@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.database import SessionLocal
 from app.otp import RedisOtpStore
-from app.routers import activities, auth, farms, production_periods, tasks, users, weather
+from app.routers import activities, auth, cases, farms, media, production_periods, tasks, users, weather
 from app.weather import create_weather_provider
 
 settings = get_settings()
@@ -63,3 +63,5 @@ app.include_router(production_periods.router, prefix=settings.api_v1_prefix)
 app.include_router(weather.router, prefix=settings.api_v1_prefix)
 app.include_router(tasks.router, prefix=settings.api_v1_prefix)
 app.include_router(activities.router, prefix=settings.api_v1_prefix)
+app.include_router(media.router, prefix=settings.api_v1_prefix)
+app.include_router(cases.router, prefix=settings.api_v1_prefix)
