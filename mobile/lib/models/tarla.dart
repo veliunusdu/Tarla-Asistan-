@@ -4,8 +4,8 @@ class Tarla {
   final double latitude; // Konum verisi için temel
   final double longitude;
   final double size; // Büyüklük
-  final String cropType; // Ürün türü[cite: 1]
-  final DateTime plantingDate; // Ekim tarihi[cite: 1]
+  final String cropType;
+  final DateTime plantingDate;
 
   Tarla({
     required this.id,
@@ -17,7 +17,6 @@ class Tarla {
     required this.plantingDate,
   });
 
-  // Veritabanından veya API'den gelen veriyi modele dönüştürmek için[cite: 1]
   factory Tarla.fromJson(Map<String, dynamic> json) {
     return Tarla(
       id: json['id'],
@@ -30,7 +29,23 @@ class Tarla {
     );
   }
 
-  // Modeli veritabanına veya API'ye kaydetmek için JSON'a dönüştürme[cite: 1]
+  factory Tarla.fromApi(Map<String, dynamic> json) {
+    final currentCrop = json['current_crop'] is Map
+        ? json['current_crop'] as Map
+        : const <String, dynamic>{};
+    return Tarla(
+      id: json['id'].toString(),
+      name: json['name']?.toString() ?? 'Tarla',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      size: (json['size_in_hectares'] as num?)?.toDouble() ?? 0,
+      cropType: currentCrop['crop_type']?.toString() ?? 'Ürün belirtilmedi',
+      plantingDate:
+          DateTime.tryParse(currentCrop['planted_at']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

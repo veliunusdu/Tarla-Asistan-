@@ -41,3 +41,16 @@ and execute the API integration tests against it.
   push delivery, feedback volume and rating each week via the metrics endpoint.
 - Pilot exit: resolve critical incidents, document unresolved feedback, export the
   weekly metrics, revoke test device tokens and decide go/no-go with product owner.
+
+## Android pilot checklist
+
+- Register `com.tarlaasistani.pilot` in Firebase and provide the compile-time FCM
+  values only through the protected build environment.
+- Build the signed AAB with `scripts/build-pilot.ps1`; upload it to the Play
+  internal-testing track and restrict access to the approved cohort.
+- Verify Android 13+ permission denial, token refresh, foreground/background/
+  terminated notification taps and task/case/weather destinations on physical devices.
+- Test activity creation in airplane mode, reconnection, repeated timeout and slow
+  cellular conditions. Confirm the server contains one record for one client UUID.
+- Run TalkBack, 200% text, 320px-wide layout, sunlight contrast and 48x48 touch-target
+  checks before widening the cohort.

@@ -51,9 +51,24 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
 
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Flutter stable
+        run: |
+          git clone https://github.com/flutter/flutter.git --depth 1 --branch stable "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+      - run: flutter pub get
+        working-directory: mobile
+      - run: flutter test
+        working-directory: mobile
+      - run: flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
+        working-directory: mobile
+
   containers:
     runs-on: ubuntu-latest
-    needs: [backend, web]
+    needs: [backend, web, mobile]
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
