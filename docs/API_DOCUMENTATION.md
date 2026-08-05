@@ -284,7 +284,118 @@ vakayı yeniden `IN_REVIEW` yapar.
 
 `close_case=false` vakayı `ANSWERED`, `true` ise `CLOSED` durumuna getirir.
 
-## 7. Error Responses
+## 7. Notifications
+
+Uzman görevi, kritik hava görevi ve uzman cevabı olayları uygulama içi bildirim
+oluşturur. Etkin cihaz varsa push gönderilir; cihaz daha sonra kaydolursa bekleyen
+bildirim gönderilir. Her olay `dedupe_key` ile yalnızca bir kez kaydedilir.
+
+### 7.1 Register Device
+`POST /notifications/devices`
+```json
+{
+  "token": "device-provider-token-at-least-16-characters",
+  "platform": "ANDROID"
+}
+```
+
+Response `201`:
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "platform": "ANDROID",
+  "active": true,
+  "last_seen_at": "2026-08-05T10:00:00Z",
+  "created_at": "2026-08-05T10:00:00Z"
+}
+```
+
+### 7.2 Notification Inbox
+
+- `GET /notifications?unread_only=false&limit=50&offset=0`
+- `POST /notifications/{notification_id}/read`
+- `DELETE /notifications/devices/{device_id}`
+
+Liste response örneği:
+```json
+{
+  "items": [{
+    "id": "uuid",
+    "user_id": "uuid",
+    "notification_type": "TASK_ASSIGNED",
+    "title": "Yeni uzman göreviniz var",
+    "body": "Yaprakları kontrol edin",
+    "deep_link": "tarla-asistani://farms/uuid/tasks/uuid",
+    "data": {"farm_id": "uuid", "task_id": "uuid"},
+    "status": "SENT",
+    "attempt_count": 1,
+    "last_error": null,
+    "sent_at": "2026-08-05T10:00:00Z",
+    "read_at": null,
+    "created_at": "2026-08-05T10:00:00Z"
+  }],
+  "total": 1,
+  "unread": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+## 8. Pilot Feedback and Metrics
+
+### 8.1 Create Feedback
+`POST /pilot/feedback`
+```json
+{
+  "feedback_type": "WEEKLY_CHECKIN",
+  "rating": 4,
+  "comment": "Görevler anlaşılır ve zamanında geldi.",
+  "related_task_id": null,
+  "related_case_id": null
+}
+```
+
+`FALSE_ALERT` için hava kaynağından üretilmiş `related_task_id`; `WEEKLY_CHECKIN`
+için 1–5 arası `rating` zorunludur.
+
+### 8.2 Review Feedback (Agronomist)
+
+- `GET /pilot/feedback?status=OPEN&limit=50&offset=0`
+- `PATCH /pilot/feedback/{feedback_id}` body: `{"status":"REVIEWED"}`
+
+### 8.3 Pilot Metrics (Agronomist)
+`GET /pilot/metrics?window_days=7`
+```json
+{
+  "window_days": 7,
+  "active_farmers": 38,
+  "tasks_created": 120,
+  "tasks_completed": 91,
+  "task_completion_rate": 75.83,
+  "critical_weather_alerts": 12,
+  "false_alerts": 1,
+  "false_alert_rate": 8.33,
+  "cases_created": 16,
+  "cases_answered": 14,
+  "average_expert_response_minutes": 42.5,
+  "notifications_created": 148,
+  "notifications_sent": 143,
+  "notification_delivery_rate": 96.62,
+  "feedback_count": 31,
+  "average_feedback_rating": 4.2
+}
+```
+
+## 9. Operations
+
+- `GET /health/live`: process liveness
+- `GET /health/ready`: database and Redis readiness
+- `GET /metrics`: Prometheus text metrics (OpenAPI schema dışında)
+- Her response `X-Request-ID` döndürür; beklenmeyen hatalarda aynı kimlik hata
+  response'una eklenir.
+
+## 10. Error Responses
 ```json
 {
   "error": {

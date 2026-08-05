@@ -221,6 +221,8 @@
       <a href="#journal">Tarla Gunlugu</a>
       <a href="#media">Medya</a>
       <a href="#cases">Vakalar</a>
+      <a href="#notifications">Bildirimler</a>
+      <a href="#pilot">Pilot</a>
       <a href="#schemas">Semalar</a>
       <a href="#enums">Enum Degerleri</a>
     </nav>
@@ -651,6 +653,63 @@
         </div>
       </section>
 
+      <section id="notifications">
+        <h2>Bildirimler</h2>
+        <p>Uzman gorevi, kritik hava uyarisi ve uzman cevabi uygulama ici bildirim olarak saklanir. Etkin cihaz varsa push gonderilir; her olay yalnizca bir kez uretilir.</p>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/notifications/devices</code></div>
+          <h4>Request</h4>
+<pre>{
+  "token": "device-provider-token-at-least-16-characters",
+  "platform": "ANDROID"
+}</pre>
+          <h4>Response 201</h4><p class="note"><code>DeviceTokenResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/notifications?unread_only=false&amp;limit=50&amp;offset=0</code></div>
+          <h4>Response 200</h4><p class="note"><code>NotificationListResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/notifications/{notification_id}/read</code></div>
+          <h4>Response 200</h4><p class="note"><code>NotificationResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method delete">DELETE</span><code>/api/v1/notifications/devices/{device_id}</code></div>
+          <h4>Response 204</h4><p class="note">Cihaz tokenini pasiflestirir.</p>
+        </div>
+      </section>
+
+      <section id="pilot">
+        <h2>Pilot Geri Bildirim ve Metrikleri</h2>
+        <div class="endpoint">
+          <div class="route"><span class="method post">POST</span><code>/api/v1/pilot/feedback</code></div>
+          <h4>Request</h4>
+<pre>{
+  "feedback_type": "WEEKLY_CHECKIN",
+  "rating": 4,
+  "comment": "Gorevler anlasilir ve zamaninda geldi.",
+  "related_task_id": null,
+  "related_case_id": null
+}</pre>
+          <h4>Response 201</h4><p class="note"><code>PilotFeedbackResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/pilot/feedback?status=OPEN&amp;limit=50&amp;offset=0</code></div>
+          <p>Yalnizca uzman rolu tum pilot geri bildirimlerini listeler.</p>
+          <h4>Response 200</h4><p class="note"><code>PilotFeedbackListResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method patch">PATCH</span><code>/api/v1/pilot/feedback/{feedback_id}</code></div>
+          <h4>Request</h4><pre>{ "status": "REVIEWED" }</pre>
+          <h4>Response 200</h4><p class="note"><code>PilotFeedbackResponse</code></p>
+        </div>
+        <div class="endpoint">
+          <div class="route"><span class="method get">GET</span><code>/api/v1/pilot/metrics?window_days=7</code></div>
+          <p>Aktif ciftci, gorev tamamlama, yanlis uyari, uzman cevap suresi, bildirim teslimati ve geri bildirim metriklerini dondurur.</p>
+          <h4>Response 200</h4><p class="note"><code>PilotMetricsResponse</code></p>
+        </div>
+      </section>
+
       <section id="schemas">
         <h2>Semalar</h2>
         <div class="schema-grid">
@@ -915,6 +974,89 @@
   "updated_at": "2026-08-04T19:00:00Z"
 }</pre>
           </article>
+
+          <article class="schema">
+            <h3>DeviceTokenResponse</h3>
+<pre>{
+  "id": "uuid",
+  "user_id": "uuid",
+  "platform": "ANDROID",
+  "active": true,
+  "last_seen_at": "2026-08-05T10:00:00Z",
+  "created_at": "2026-08-05T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>NotificationResponse</h3>
+<pre>{
+  "id": "uuid",
+  "user_id": "uuid",
+  "notification_type": "TASK_ASSIGNED",
+  "title": "Yeni uzman goreviniz var",
+  "body": "Yapraklari kontrol edin",
+  "deep_link": "tarla-asistani://farms/uuid/tasks/uuid",
+  "data": {"farm_id": "uuid", "task_id": "uuid"},
+  "status": "SENT",
+  "attempt_count": 1,
+  "last_error": null,
+  "sent_at": "2026-08-05T10:00:00Z",
+  "read_at": null,
+  "created_at": "2026-08-05T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>NotificationListResponse</h3>
+<pre>{
+  "items": ["NotificationResponse"],
+  "total": 1,
+  "unread": 1,
+  "limit": 50,
+  "offset": 0
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>PilotFeedbackResponse</h3>
+<pre>{
+  "id": "uuid",
+  "created_by_id": "uuid",
+  "created_by_name": "Ciftci Adi",
+  "feedback_type": "WEEKLY_CHECKIN",
+  "status": "OPEN",
+  "rating": 4,
+  "comment": "Gorevler anlasilir.",
+  "related_task_id": null,
+  "related_case_id": null,
+  "reviewed_by_id": null,
+  "reviewed_at": null,
+  "created_at": "2026-08-05T10:00:00Z",
+  "updated_at": "2026-08-05T10:00:00Z"
+}</pre>
+          </article>
+
+          <article class="schema">
+            <h3>PilotMetricsResponse</h3>
+<pre>{
+  "window_days": 7,
+  "active_farmers": 38,
+  "tasks_created": 120,
+  "tasks_completed": 91,
+  "task_completion_rate": 75.83,
+  "critical_weather_alerts": 12,
+  "false_alerts": 1,
+  "false_alert_rate": 8.33,
+  "cases_created": 16,
+  "cases_answered": 14,
+  "average_expert_response_minutes": 42.5,
+  "notifications_created": 148,
+  "notifications_sent": 143,
+  "notification_delivery_rate": 96.62,
+  "feedback_count": 31,
+  "average_feedback_rating": 4.2
+}</pre>
+          </article>
         </div>
       </section>
 
@@ -939,6 +1081,11 @@
             <tr><td>CasePriority</td><td><code>LOW</code>, <code>MEDIUM</code>, <code>HIGH</code>, <code>CRITICAL</code></td></tr>
             <tr><td>CaseStatus</td><td><code>OPEN</code>, <code>IN_REVIEW</code>, <code>WAITING_FARMER</code>, <code>ANSWERED</code>, <code>CLOSED</code></td></tr>
             <tr><td>CaseMessageType</td><td><code>COMMENT</code>, <code>ADDITIONAL_INFO_REQUEST</code>, <code>EXPERT_RESPONSE</code></td></tr>
+            <tr><td>DevicePlatform</td><td><code>ANDROID</code>, <code>IOS</code>, <code>WEB</code></td></tr>
+            <tr><td>NotificationType</td><td><code>TASK_ASSIGNED</code>, <code>CRITICAL_WEATHER</code>, <code>EXPERT_RESPONSE</code></td></tr>
+            <tr><td>NotificationStatus</td><td><code>PENDING</code>, <code>SENT</code>, <code>FAILED</code></td></tr>
+            <tr><td>FeedbackType</td><td><code>WEEKLY_CHECKIN</code>, <code>FALSE_ALERT</code>, <code>BUG</code>, <code>SUGGESTION</code></td></tr>
+            <tr><td>FeedbackStatus</td><td><code>OPEN</code>, <code>REVIEWED</code>, <code>RESOLVED</code></td></tr>
           </tbody>
         </table>
       </section>

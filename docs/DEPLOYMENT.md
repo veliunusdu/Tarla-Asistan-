@@ -31,3 +31,9 @@ Defines the secure, consistent, and continuous delivery (Continuous Integration 
 
 ## 4. Environment Variables
 - All passwords, API keys (SMS service, Weather service), and database connection strings will be kept in `.env` files and CI/CD Secrets managers, and will never be written into the source code (GitHub etc.).
+
+## 5. Staging Runbook
+
+The executable staging overlay, JSON logging, health/readiness checks, Prometheus
+metrics, backup verification and pilot support flow are documented in
+[`PILOT_OPERATIONS.md`](./PILOT_OPERATIONS.md).

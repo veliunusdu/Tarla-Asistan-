@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import User, UserRole
 from app.otp import OtpStore
+from app.push import PushProvider
 from app.security import decode_access_token
 from app.weather import WeatherProvider
 
@@ -21,6 +22,10 @@ def get_otp_store(request: Request) -> OtpStore:
 
 def get_weather_provider(request: Request) -> WeatherProvider:
     return request.app.state.weather_provider
+
+
+def get_push_provider(request: Request) -> PushProvider:
+    return request.app.state.push_provider
 
 
 def get_current_user(

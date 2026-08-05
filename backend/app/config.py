@@ -11,13 +11,19 @@ class Settings(BaseSettings):
     app_name: str = "Tarla Asistanı API"
     environment: str = "local"
     api_v1_prefix: str = "/api/v1"
-    database_url: str = "postgresql+psycopg://tarla:tarla-local@localhost:5432/tarla_asistani"
+    database_url: str = (
+        "postgresql+psycopg://tarla:tarla-local@localhost:5432/tarla_asistani"
+    )
     redis_url: str = "redis://localhost:6379/0"
-    jwt_secret: str = Field(default="local-only-jwt-secret-change-before-deploy", min_length=32)
+    jwt_secret: str = Field(
+        default="local-only-jwt-secret-change-before-deploy", min_length=32
+    )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
-    otp_hash_secret: str = Field(default="local-only-otp-secret-change-before-deploy", min_length=32)
+    otp_hash_secret: str = Field(
+        default="local-only-otp-secret-change-before-deploy", min_length=32
+    )
     otp_ttl_seconds: int = 180
     otp_max_attempts: int = 5
     otp_request_cooldown_seconds: int = 60
@@ -34,6 +40,12 @@ class Settings(BaseSettings):
     weather_stale_after_hours: int = Field(default=3, ge=1, le=24)
     media_storage_path: str = "data/media"
     media_max_upload_mb: int = Field(default=15, ge=1, le=100)
+    push_provider: str = "noop"
+    push_gateway_url: str | None = None
+    push_gateway_token: str | None = None
+    push_timeout_seconds: float = Field(default=8, gt=0, le=30)
+    log_level: str = "INFO"
+    metrics_enabled: bool = True
 
     @field_validator("cors_origins", "agronomist_phone_numbers", mode="before")
     @classmethod

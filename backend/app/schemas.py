@@ -15,8 +15,13 @@ from app.models import (
     CaseStatus,
     CropPeriodStatus,
     CropType,
+    DevicePlatform,
+    FeedbackStatus,
+    FeedbackType,
     IrrigationMethod,
     MediaKind,
+    NotificationStatus,
+    NotificationType,
     TaskConfidence,
     TaskPriority,
     TaskSource,
@@ -175,7 +180,10 @@ class FarmUpdate(BaseModel):
     @model_validator(mode="after")
     def require_values_for_location_and_name(self) -> "FarmUpdate":
         for field_name in ("name", "latitude", "longitude"):
-            if field_name in self.model_fields_set and getattr(self, field_name) is None:
+            if (
+                field_name in self.model_fields_set
+                and getattr(self, field_name) is None
+            ):
                 raise ValueError(f"{field_name} null olamaz.")
         return self
 
@@ -417,7 +425,9 @@ class ActivityCreate(BaseModel):
     @model_validator(mode="after")
     def validate_activity_source(self) -> "ActivityCreate":
         if self.input_method == ActivitySource.TASK:
-            raise ValueError("TASK kaynaklı faaliyet yalnızca görev tamamlama ile oluşur.")
+            raise ValueError(
+                "TASK kaynaklı faaliyet yalnızca görev tamamlama ile oluşur."
+            )
         if (
             self.input_method == ActivitySource.VOICE
             and not self.voice_url
@@ -473,8 +483,7 @@ class ActivityUpdate(BaseModel):
             raise ValueError("En az bir alan güncellenmelidir.")
         required_fields = ("activity_type", "description", "occurred_at")
         if any(
-            field_name in self.model_fields_set
-            and getattr(self, field_name) is None
+            field_name in self.model_fields_set and getattr(self, field_name) is None
             for field_name in required_fields
         ):
             raise ValueError(
@@ -658,3 +667,122 @@ class CaseListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DeviceTokenRegister(BaseModel):
+    token: str = Field(min_length=16, max_length=512)
+    platform: DevicePlatform
+
+    @field_validator("token")
+    @classmethod
+    def strip_device_token(cls, value: str) -> str:
+        return value.strip()
+
+
+class DeviceTokenResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    platform: DevicePlatform
+    active: bool
+    last_seen_at: datetime
+    created_at: datetime
+
+
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    notification_type: NotificationType
+    title: str
+    body: str
+    deep_link: str
+    data: dict
+    status: NotificationStatus
+    attempt_count: int
+    last_error: str | None
+    sent_at: datetime | None
+    read_at: datetime | None
+    created_at: datetime
+
+
+class NotificationListResponse(BaseModel):
+    items: list[NotificationResponse]
+    total: int
+    unread: int
+    limit: int
+    offset: int
+
+
+class PilotFeedbackCreate(BaseModel):
+    feedback_type: FeedbackType
+    rating: int | None = Field(default=None, ge=1, le=5)
+    comment: str = Field(min_length=2, max_length=6000)
+    related_task_id: uuid.UUID | None = None
+    related_case_id: uuid.UUID | None = None
+
+    @field_validator("comment")
+    @classmethod
+    def strip_feedback_comment(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_feedback_context(self) -> "PilotFeedbackCreate":
+        if self.feedback_type == FeedbackType.WEEKLY_CHECKIN and self.rating is None:
+            raise ValueError("Haftalık geri bildirim için puan zorunludur.")
+        if (
+            self.feedback_type == FeedbackType.FALSE_ALERT
+            and self.related_task_id is None
+        ):
+            raise ValueError("Yanlış uyarı kaydı için görev kimliği zorunludur.")
+        return self
+
+
+class PilotFeedbackUpdate(BaseModel):
+    status: FeedbackStatus
+
+
+class PilotFeedbackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    created_by_id: uuid.UUID
+    created_by_name: str
+    feedback_type: FeedbackType
+    status: FeedbackStatus
+    rating: int | None
+    comment: str
+    related_task_id: uuid.UUID | None
+    related_case_id: uuid.UUID | None
+    reviewed_by_id: uuid.UUID | None
+    reviewed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PilotFeedbackListResponse(BaseModel):
+    items: list[PilotFeedbackResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class PilotMetricsResponse(BaseModel):
+    window_days: int
+    active_farmers: int
+    tasks_created: int
+    tasks_completed: int
+    task_completion_rate: float
+    critical_weather_alerts: int
+    false_alerts: int
+    false_alert_rate: float
+    cases_created: int
+    cases_answered: int
+    average_expert_response_minutes: float | None
+    notifications_created: int
+    notifications_sent: int
+    notification_delivery_rate: float
+    feedback_count: int
+    average_feedback_rating: float | None

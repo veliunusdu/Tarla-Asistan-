@@ -54,6 +54,29 @@ class MemoryOtpStore:
         self.attempts.pop(phone_number, None)
 
 
+class MemoryPushProvider:
+    def __init__(self):
+        self.sent: list[dict[str, object]] = []
+
+    def send(
+        self,
+        *,
+        device_token: str,
+        title: str,
+        body: str,
+        data: dict[str, str],
+    ) -> str:
+        self.sent.append(
+            {
+                "device_token": device_token,
+                "title": title,
+                "body": body,
+                "data": data,
+            }
+        )
+        return f"test-message-{len(self.sent)}"
+
+
 @pytest.fixture
 def db_session():
     engine = create_engine(
@@ -68,7 +91,12 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session: Session):
+def push_provider():
+    return MemoryPushProvider()
+
+
+@pytest.fixture
+def client(db_session: Session, push_provider: MemoryPushProvider):
     otp_store = MemoryOtpStore()
 
     def override_db():
@@ -76,6 +104,7 @@ def client(db_session: Session):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_otp_store] = lambda: otp_store
+    app.state.push_provider = push_provider
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

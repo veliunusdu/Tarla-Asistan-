@@ -120,23 +120,50 @@ Faaliyet düzenlemelerinde değişen alanların önceki değerlerini korur.
 - `previous_values` (JSON)
 - `changed_at` (Timestamp)
 
-### 2.10 Cases (cases)
-Problems reported by the farmer with photos/voice.
-- `id` (UUID, PK)
-- `farm_id` (UUID, FK -> farms.id)
-- `agronomist_id` (UUID, FK -> users.id, Nullable)
-- `category` (Enum: DISEASE, PEST, SOIL, OTHER)
-- `status` (Enum: OPEN, IN_PROGRESS, WAITING_INFO, RESOLVED, CLOSED)
-- `created_at` (Timestamp)
+### 2.10 Media Assets (media_assets)
+Stores metadata for private image and audio objects.
+- `id` (UUID, PK), `owner_id` (UUID, FK -> users.id)
+- `kind` (Enum: IMAGE, AUDIO), `original_name`, `content_type`
+- `size_bytes`, `storage_key` (Unique), `checksum_sha256`, `created_at`
 
-### 2.11 Messages (messages)
-Agronomist-farmer correspondence within the case.
-- `id` (UUID, PK)
-- `case_id` (UUID, FK -> cases.id)
-- `sender_id` (UUID, FK -> users.id)
-- `content` (Text)
-- `media_url` (String, Nullable)
-- `created_at` (Timestamp)
+### 2.11 Support Cases (support_cases)
+Problems reported by a farmer and reviewed by an agronomist.
+- `id` (UUID, PK), `farm_id` (UUID, FK -> farms.id)
+- `created_by_id`, `assigned_expert_id` (UUID, FK -> users.id)
+- `category` (Enum: DISEASE, PEST, IRRIGATION, NUTRITION, WEATHER, OTHER)
+- `priority` (Enum: LOW, MEDIUM, HIGH, CRITICAL)
+- `status` (Enum: OPEN, IN_REVIEW, WAITING_FARMER, ANSWERED, CLOSED)
+- `title`, `description`, `closed_at`, `created_at`, `updated_at`
+
+### 2.12 Case Messages and Media Links
+`case_messages` contains `case_id`, `sender_id`, `message_type`, `body` and
+`created_at`. `case_media` and `case_message_media` are many-to-many link tables
+to private `media_assets`.
+
+### 2.13 Client Operations (client_operations)
+Stores the actor, client operation UUID, scope, payload hash and resulting resource.
+`(actor_id, client_operation_id)` is unique, preventing duplicate offline writes.
+
+### 2.14 Device Tokens (device_tokens)
+- `id` (UUID, PK), `user_id` (UUID, FK -> users.id), `token` (Unique)
+- `platform` (Enum: ANDROID, IOS, WEB), `active`, `last_seen_at`
+- `created_at`, `updated_at`
+
+### 2.15 Notifications (notifications)
+- `id` (UUID, PK), `user_id` (UUID, FK -> users.id)
+- `notification_type` (TASK_ASSIGNED, CRITICAL_WEATHER, EXPERT_RESPONSE)
+- `title`, `body`, `deep_link`, `data` (JSON), `dedupe_key` (Unique)
+- `status` (PENDING, SENT, FAILED), provider message ID and attempt/error fields
+- `sent_at`, `read_at`, `created_at`, `updated_at`
+
+The unique dedupe key makes task, weather and expert-response notifications
+idempotent independently from the external push provider.
+
+### 2.16 Pilot Feedback (pilot_feedback)
+- `id` (UUID, PK), `created_by_id` and optional `reviewed_by_id`
+- `feedback_type` (WEEKLY_CHECKIN, FALSE_ALERT, BUG, SUGGESTION)
+- `status` (OPEN, REVIEWED, RESOLVED), optional 1–5 `rating`, `comment`
+- optional `related_task_id`, `related_case_id`, `reviewed_at`, timestamps
 
 ## 3. Relationship Schema (ERD - Summary)
 - 1 User -> 0..1 Profile
@@ -148,6 +175,8 @@ Agronomist-farmer correspondence within the case.
 - 1 Farm -> N Activities
 - 1 Task -> 0..1 Completion Activity
 - 1 Activity -> N Revisions
-- 1 Farm -> N Cases
-- 1 Case -> N Messages
-- 1 User (AGRONOMIST) -> N Cases (Assigned cases)
+- 1 Farm -> N Support Cases
+- 1 Support Case -> N Case Messages and N Media Assets
+- 1 User (AGRONOMIST) -> N Support Cases (Assigned cases)
+- 1 User -> N Device Tokens and N Notifications
+- 1 User -> N Pilot Feedback items

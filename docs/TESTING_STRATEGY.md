@@ -23,3 +23,12 @@ Testing strategy to be applied to ensure the application works without errors in
 1. **Local:** The testing environment on the developers' own machines.
 2. **Staging (Test):** The server environment where QA tests and customer tests are performed before going live, containing data similar to real but fake data.
 3. **Production (Live):** The final environment used by real farmers. No code that has not been tested in the Staging environment is transferred to the Production environment.
+
+## 6. Sprint 5 Automated Gates
+
+GitHub Actions runs backend lint plus API tests, web type checks/build and Docker
+image builds. The backend suite covers OTP/session authorization, role and ownership
+boundaries, duplicate offline operations, task/weather/expert-response notifications,
+pending device delivery, feedback validation and pilot metrics. Staging smoke tests
+must also verify readiness, a complete farmer-to-expert flow and retry behavior on a
+real low-bandwidth connection before pilot admission.

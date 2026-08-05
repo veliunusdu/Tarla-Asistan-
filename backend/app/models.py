@@ -138,6 +138,37 @@ class CaseMessageType(str, enum.Enum):
     EXPERT_RESPONSE = "EXPERT_RESPONSE"
 
 
+class DevicePlatform(str, enum.Enum):
+    ANDROID = "ANDROID"
+    IOS = "IOS"
+    WEB = "WEB"
+
+
+class NotificationType(str, enum.Enum):
+    TASK_ASSIGNED = "TASK_ASSIGNED"
+    CRITICAL_WEATHER = "CRITICAL_WEATHER"
+    EXPERT_RESPONSE = "EXPERT_RESPONSE"
+
+
+class NotificationStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
+class FeedbackType(str, enum.Enum):
+    WEEKLY_CHECKIN = "WEEKLY_CHECKIN"
+    FALSE_ALERT = "FALSE_ALERT"
+    BUG = "BUG"
+    SUGGESTION = "SUGGESTION"
+
+
+class FeedbackStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    REVIEWED = "REVIEWED"
+    RESOLVED = "RESOLVED"
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (Index("ix_users_phone_number", "phone_number"),)
@@ -147,7 +178,9 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role"), default=UserRole.FARMER, index=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -206,7 +239,9 @@ class Profile(Base):
     district: Mapped[str] = mapped_column(String(80))
     terms_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -226,7 +261,9 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
     user: Mapped[User] = relationship(back_populates="refresh_tokens")
 
@@ -252,7 +289,9 @@ class Farm(Base):
     soil_type: Mapped[str | None] = mapped_column(String(80))
     note: Mapped[str | None] = mapped_column(String(1000))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -303,9 +342,7 @@ class CropPeriod(Base):
     farm_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("farms.id", ondelete="CASCADE"), index=True
     )
-    crop_type: Mapped[CropType] = mapped_column(
-        Enum(CropType, name="crop_type")
-    )
+    crop_type: Mapped[CropType] = mapped_column(Enum(CropType, name="crop_type"))
     variety: Mapped[str | None] = mapped_column(String(120))
     planted_at: Mapped[date] = mapped_column(Date)
     harvested_at: Mapped[date | None] = mapped_column(Date)
@@ -313,7 +350,9 @@ class CropPeriod(Base):
         Enum(CropPeriodStatus, name="crop_period_status"),
         default=CropPeriodStatus.ACTIVE,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -333,7 +372,9 @@ class WeatherSnapshot(Base):
     )
     provider: Mapped[str] = mapped_column(String(50))
     payload: Mapped[dict] = mapped_column(JSON)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
     farm: Mapped[Farm] = relationship(back_populates="weather_snapshots")
 
@@ -371,9 +412,7 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus, name="task_status"), default=TaskStatus.NEW
     )
-    source: Mapped[TaskSource] = mapped_column(
-        Enum(TaskSource, name="task_source")
-    )
+    source: Mapped[TaskSource] = mapped_column(Enum(TaskSource, name="task_source"))
     confidence: Mapped[TaskConfidence] = mapped_column(
         Enum(TaskConfidence, name="task_confidence"),
         default=TaskConfidence.MEDIUM,
@@ -385,7 +424,9 @@ class Task(Base):
     photo_url: Mapped[str | None] = mapped_column(String(2048))
     viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -446,7 +487,9 @@ class Activity(Base):
     cost: Mapped[float | None] = mapped_column(Float)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -476,7 +519,9 @@ class ActivityRevision(Base):
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     previous_values: Mapped[dict] = mapped_column(JSON)
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
     activity: Mapped[Activity] = relationship(back_populates="revisions")
     changed_by: Mapped[User | None] = relationship()
@@ -496,7 +541,9 @@ class MediaAsset(Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     storage_key: Mapped[str] = mapped_column(String(255), unique=True)
     checksum_sha256: Mapped[str] = mapped_column(String(64))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
     owner: Mapped[User] = relationship()
 
@@ -536,7 +583,9 @@ class SupportCase(Base):
     title: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(Text)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -584,7 +633,9 @@ class CaseMessage(Base):
         default=CaseMessageType.COMMENT,
     )
     body: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
 
     case: Mapped[SupportCase] = relationship(back_populates="messages")
     sender: Mapped[User] = relationship()
@@ -651,4 +702,117 @@ class ClientOperation(Base):
     payload_hash: Mapped[str] = mapped_column(String(64))
     resource_type: Mapped[str] = mapped_column(String(50))
     resource_id: Mapped[uuid.UUID] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+    __table_args__ = (Index("ix_device_tokens_user_active", "user_id", "active"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(String(512), unique=True)
+    platform: Mapped[DevicePlatform] = mapped_column(
+        Enum(DevicePlatform, name="device_platform")
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    user: Mapped[User] = relationship()
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        Index("ix_notifications_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    notification_type: Mapped[NotificationType] = mapped_column(
+        Enum(NotificationType, name="notification_type")
+    )
+    title: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(String(1000))
+    deep_link: Mapped[str] = mapped_column(String(500))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    dedupe_key: Mapped[str] = mapped_column(String(160), unique=True)
+    status: Mapped[NotificationStatus] = mapped_column(
+        Enum(NotificationStatus, name="notification_status"),
+        default=NotificationStatus.PENDING,
+    )
+    provider_message_id: Mapped[str | None] = mapped_column(String(255))
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    user: Mapped[User] = relationship()
+
+
+class PilotFeedback(Base):
+    __tablename__ = "pilot_feedback"
+    __table_args__ = (
+        Index("ix_pilot_feedback_type_created", "feedback_type", "created_at"),
+        Index("ix_pilot_feedback_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    feedback_type: Mapped[FeedbackType] = mapped_column(
+        Enum(FeedbackType, name="feedback_type")
+    )
+    status: Mapped[FeedbackStatus] = mapped_column(
+        Enum(FeedbackStatus, name="feedback_status"),
+        default=FeedbackStatus.OPEN,
+    )
+    rating: Mapped[int | None] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(Text)
+    related_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), index=True
+    )
+    related_case_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("support_cases.id", ondelete="SET NULL"), index=True
+    )
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    created_by: Mapped[User] = relationship(foreign_keys=[created_by_id])
+    reviewed_by: Mapped[User | None] = relationship(foreign_keys=[reviewed_by_id])
+    related_task: Mapped[Task | None] = relationship()
+    related_case: Mapped[SupportCase | None] = relationship()
+
+    @property
+    def created_by_name(self) -> str:
+        return self.created_by.full_name or self.created_by.phone_number

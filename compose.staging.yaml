@@ -1,0 +1,24 @@
+name: tarla-asistani-staging
+
+services:
+  db:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  backend:
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: staging
+      OTP_EXPOSE_IN_RESPONSE: "false"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      OTP_HASH_SECRET: ${OTP_HASH_SECRET:?OTP_HASH_SECRET is required}
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-noop}
+      PUSH_GATEWAY_URL: ${PUSH_GATEWAY_URL:-}
+      PUSH_GATEWAY_TOKEN: ${PUSH_GATEWAY_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+
+  web:
+    restart: unless-stopped

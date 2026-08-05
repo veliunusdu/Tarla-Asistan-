@@ -5,7 +5,7 @@ from sqlalchemy import case as sql_case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_roles
+from app.dependencies import get_current_user, get_push_provider, require_roles
 from app.idempotency import record_operation, replayed_resource_id
 from app.models import (
     CaseMedia,
@@ -16,11 +16,14 @@ from app.models import (
     CaseStatus,
     Farm,
     MediaAsset,
+    NotificationType,
     SupportCase,
     User,
     UserRole,
     utcnow,
 )
+from app.notifications import safe_notify_user
+from app.push import PushProvider
 from app.routers.farms import get_owned_farm
 from app.schemas import (
     CaseCreate,
@@ -36,9 +39,22 @@ from app.schemas import (
 router = APIRouter(prefix="/cases", tags=["Sorun Bildirme ve Vakalar"])
 
 EXPERT_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
-    CaseStatus.OPEN: {CaseStatus.IN_REVIEW, CaseStatus.WAITING_FARMER, CaseStatus.ANSWERED, CaseStatus.CLOSED},
-    CaseStatus.IN_REVIEW: {CaseStatus.WAITING_FARMER, CaseStatus.ANSWERED, CaseStatus.CLOSED},
-    CaseStatus.WAITING_FARMER: {CaseStatus.IN_REVIEW, CaseStatus.ANSWERED, CaseStatus.CLOSED},
+    CaseStatus.OPEN: {
+        CaseStatus.IN_REVIEW,
+        CaseStatus.WAITING_FARMER,
+        CaseStatus.ANSWERED,
+        CaseStatus.CLOSED,
+    },
+    CaseStatus.IN_REVIEW: {
+        CaseStatus.WAITING_FARMER,
+        CaseStatus.ANSWERED,
+        CaseStatus.CLOSED,
+    },
+    CaseStatus.WAITING_FARMER: {
+        CaseStatus.IN_REVIEW,
+        CaseStatus.ANSWERED,
+        CaseStatus.CLOSED,
+    },
     CaseStatus.ANSWERED: {CaseStatus.IN_REVIEW, CaseStatus.CLOSED},
     CaseStatus.CLOSED: {CaseStatus.IN_REVIEW},
 }
@@ -115,25 +131,31 @@ def list_cases(
     if farm_id is not None:
         filters.append(SupportCase.farm_id == farm_id)
     query = _case_query().join(Farm, Farm.id == SupportCase.farm_id).where(*filters)
-    items = db.scalars(
-        query
-        .order_by(
-            sql_case(
-                (SupportCase.priority == CasePriority.CRITICAL, 0),
-                (SupportCase.priority == CasePriority.HIGH, 1),
-                (SupportCase.priority == CasePriority.MEDIUM, 2),
-                else_=3,
-            ),
-            SupportCase.updated_at.desc(),
+    items = (
+        db.scalars(
+            query.order_by(
+                sql_case(
+                    (SupportCase.priority == CasePriority.CRITICAL, 0),
+                    (SupportCase.priority == CasePriority.HIGH, 1),
+                    (SupportCase.priority == CasePriority.MEDIUM, 2),
+                    else_=3,
+                ),
+                SupportCase.updated_at.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
         )
-        .limit(limit)
-        .offset(offset)
-    ).unique().all()
-    total = db.scalar(
-        select(func.count(SupportCase.id))
-        .join(Farm, Farm.id == SupportCase.farm_id)
-        .where(*filters)
-    ) or 0
+        .unique()
+        .all()
+    )
+    total = (
+        db.scalar(
+            select(func.count(SupportCase.id))
+            .join(Farm, Farm.id == SupportCase.farm_id)
+            .where(*filters)
+        )
+        or 0
+    )
     return CaseListResponse(
         items=[CaseSummaryResponse.model_validate(item) for item in items],
         total=total,
@@ -167,7 +189,10 @@ def update_case_status(
     db: Session = Depends(get_db),
 ) -> SupportCase:
     case = _get_accessible_case(db, user, case_id)
-    if payload.status != case.status and payload.status not in EXPERT_TRANSITIONS[case.status]:
+    if (
+        payload.status != case.status
+        and payload.status not in EXPERT_TRANSITIONS[case.status]
+    ):
         raise HTTPException(status_code=409, detail="Geçersiz vaka durum geçişi.")
     case.status = payload.status
     if payload.priority is not None:
@@ -190,6 +215,7 @@ def create_case_message(
     payload: CaseMessageCreate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    provider: PushProvider = Depends(get_push_provider),
 ) -> CaseMessage:
     case = _get_accessible_case(db, user, case_id)
     _validate_message_type(user, payload.message_type)
@@ -227,6 +253,18 @@ def create_case_message(
         resource_id=message.id,
     )
     db.commit()
+    if payload.message_type == CaseMessageType.EXPERT_RESPONSE:
+        safe_notify_user(
+            db,
+            provider,
+            user_id=case.farm.owner_id,
+            notification_type=NotificationType.EXPERT_RESPONSE,
+            title="Uzmanınız vakanızı yanıtladı",
+            body=payload.body[:300],
+            deep_link=f"tarla-asistani://cases/{case.id}",
+            data={"case_id": str(case.id), "message_id": str(message.id)},
+            dedupe_key=f"expert-response:{message.id}",
+        )
     return db.scalar(_message_query().where(CaseMessage.id == message.id))
 
 
@@ -241,6 +279,7 @@ def create_expert_response(
     payload: ExpertResponseCreate,
     user: User = Depends(require_roles(UserRole.AGRONOMIST)),
     db: Session = Depends(get_db),
+    provider: PushProvider = Depends(get_push_provider),
 ) -> SupportCase:
     case = _get_accessible_case(db, user, case_id)
     replayed_id = replayed_resource_id(
@@ -277,17 +316,32 @@ def create_expert_response(
         resource_id=message.id,
     )
     db.commit()
+    safe_notify_user(
+        db,
+        provider,
+        user_id=case.farm.owner_id,
+        notification_type=NotificationType.EXPERT_RESPONSE,
+        title="Uzmanınız vakanızı yanıtladı",
+        body=payload.body[:300],
+        deep_link=f"tarla-asistani://cases/{case.id}",
+        data={"case_id": str(case.id), "message_id": str(message.id)},
+        dedupe_key=f"expert-response:{message.id}",
+    )
     return _get_accessible_case(db, user, case.id)
 
 
 def _case_query():
-    return select(SupportCase).execution_options(populate_existing=True).options(
-        selectinload(SupportCase.farm).selectinload(Farm.owner),
-        selectinload(SupportCase.media_links).selectinload(CaseMedia.media),
-        selectinload(SupportCase.messages).selectinload(CaseMessage.sender),
-        selectinload(SupportCase.messages)
-        .selectinload(CaseMessage.media_links)
-        .selectinload(CaseMessageMedia.media),
+    return (
+        select(SupportCase)
+        .execution_options(populate_existing=True)
+        .options(
+            selectinload(SupportCase.farm).selectinload(Farm.owner),
+            selectinload(SupportCase.media_links).selectinload(CaseMedia.media),
+            selectinload(SupportCase.messages).selectinload(CaseMessage.sender),
+            selectinload(SupportCase.messages)
+            .selectinload(CaseMessage.media_links)
+            .selectinload(CaseMessageMedia.media),
+        )
     )
 
 
@@ -303,8 +357,10 @@ def _get_accessible_case(
     user: User,
     case_id: uuid.UUID,
 ) -> SupportCase:
-    query = _case_query().join(Farm, Farm.id == SupportCase.farm_id).where(
-        SupportCase.id == case_id
+    query = (
+        _case_query()
+        .join(Farm, Farm.id == SupportCase.farm_id)
+        .where(SupportCase.id == case_id)
     )
     if user.role == UserRole.FARMER:
         query = query.where(Farm.owner_id == user.id)
@@ -338,7 +394,9 @@ def _owned_media(
 
 def _validate_message_type(user: User, message_type: CaseMessageType) -> None:
     if user.role == UserRole.FARMER and message_type != CaseMessageType.COMMENT:
-        raise HTTPException(status_code=403, detail="Bu mesaj türü yalnızca uzmana açıktır.")
+        raise HTTPException(
+            status_code=403, detail="Bu mesaj türü yalnızca uzmana açıktır."
+        )
 
 
 def _apply_message_status(
