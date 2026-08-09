@@ -15,6 +15,18 @@ docker compose up --build
 - Swagger: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
+Statik ve paylaşılabilir API çıktıları:
+
+- `docs/api-docs.html`: aranabilir, tek dosyalık görsel doküman
+- `docs/API_DOCUMENTATION.md`: tüm endpoint ve model ayrıntıları
+- `docs/openapi.json`: istemci üretimi ve API araçları için OpenAPI 3 tanımı
+
+Backend değişikliklerinden sonra kök dizinde dokümanları yenilemek için:
+
+```sh
+backend/.venv/Scripts/python scripts/generate_api_docs.py
+```
+
 Container başlarken `alembic upgrade head` otomatik çalışır. Temiz migration testi:
 
 ```sh

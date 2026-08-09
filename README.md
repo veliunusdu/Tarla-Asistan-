@@ -10,7 +10,7 @@ Tarla Asistanı (Farm Assistant) is an AI-powered digital farm management system
 
 ### 📱 Farmer Mobile Application (Field-Oriented)
 *   **Actionable Daily Tasks:** Displays the 3 most critical tasks for the day, keeping the interface simple and free of information clutter.
-*   **Offline-First Support:** Allows data entry in rural areas without internet. Changes are synchronized automatically once a connection is established, utilizing an `Idempotency-Key` to prevent duplicate records.
+*   **Offline-First Support:** Allows data entry in rural areas without internet. Changes are synchronized automatically once a connection is established, utilizing a `client_operation_id` to prevent duplicate records.
 *   **Voice Activity Logs:** Allows logging of activities (irrigation, fertilization, spraying, etc.) using voice notes, which are converted to structured logs automatically.
 *   **Rapid Problem Reporting:** Farmers can take photos of crop diseases or growth anomalies and record voice messages to report issues directly to agronomists.
 
@@ -106,6 +106,8 @@ For in-depth explanations of modules, schemas, and UX guidelines, explore the fi
 - ⚙️ [Technical Architecture](./docs/TECHNICAL_DOCUMENTATION.md)
 - 🗄️ [Database Entity Diagrams](./docs/DATABASE.md)
 - 🔌 [REST API Endpoints](./docs/API_DOCUMENTATION.md)
+- 🌐 [Shareable API Documentation (HTML)](./docs/api-docs.html)
+- 🤖 [OpenAPI 3 Specification (JSON)](./docs/openapi.json)
 - 🛡️ [Security Guidelines](./docs/SECURITY.md)
 
 ---
