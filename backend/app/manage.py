@@ -9,6 +9,11 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.account_deletion import (
+    eligible_account_deletion_jobs,
+    process_account_deletion_by_id,
+)
+from app.config import get_settings
 from app.database import SessionLocal
 from app.models import AccountStatus, FirebaseLinkApproval, User, UserRole
 
@@ -110,6 +115,9 @@ def _build_parser() -> argparse.ArgumentParser:
     approval.add_argument("--firebase-uid", required=True)
     approval.add_argument("--operator", required=True)
     approval.add_argument("--dry-run", action="store_true")
+    deletion_retry = commands.add_parser("retry-account-deletions")
+    deletion_retry.add_argument("--job-id")
+    deletion_retry.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -121,30 +129,56 @@ def main(
 ) -> int:
     try:
         args = _build_parser().parse_args(argv)
-        try:
-            user_id = UUID(args.user_id)
-        except (TypeError, ValueError) as exc:
-            raise ManagementCommandError("Kullanıcı kimliği geçerli değil.") from exc
-
         create_session = session_factory or SessionLocal
         current_time = (now_factory or (lambda: datetime.now(timezone.utc)))()
+        if args.command == "approve-firebase-link":
+            try:
+                user_id = UUID(args.user_id)
+            except (TypeError, ValueError) as exc:
+                raise ManagementCommandError(
+                    "Kullanıcı kimliği geçerli değil."
+                ) from exc
+            with create_session() as db:
+                approval = approve_firebase_link(
+                    db,
+                    user_id=user_id,
+                    firebase_uid=args.firebase_uid,
+                    operator=args.operator,
+                    now=current_time,
+                    dry_run=args.dry_run,
+                )
+            if args.dry_run:
+                print(f"Dry-run başarılı: user_id={user_id}")
+            else:
+                assert approval is not None
+                print(
+                    "Onay oluşturuldu: "
+                    f"user_id={user_id} expires_at={approval.expires_at.isoformat()}"
+                )
+            return 0
+
+        requested_job_id = None
+        if args.job_id is not None:
+            try:
+                requested_job_id = UUID(args.job_id)
+            except (TypeError, ValueError) as exc:
+                raise ManagementCommandError(
+                    "Silme işi kimliği geçerli değil."
+                ) from exc
         with create_session() as db:
-            approval = approve_firebase_link(
+            jobs = eligible_account_deletion_jobs(
                 db,
-                user_id=user_id,
-                firebase_uid=args.firebase_uid,
-                operator=args.operator,
-                now=current_time,
-                dry_run=args.dry_run,
+                get_settings(),
+                current_time,
+                automatic=requested_job_id is None,
+                job_id=requested_job_id,
             )
-        if args.dry_run:
-            print(f"Dry-run başarılı: user_id={user_id}")
-        else:
-            assert approval is not None
-            print(
-                "Onay oluşturuldu: "
-                f"user_id={user_id} expires_at={approval.expires_at.isoformat()}"
-            )
+        for job in jobs:
+            if not args.dry_run:
+                process_account_deletion_by_id(
+                    job.id, force=requested_job_id is not None
+                )
+            print(f"job_id={job.id} status={job.status.value}")
         return 0
     except ManagementCommandError as exc:
         print(f"Hata: {exc}", file=sys.stderr)

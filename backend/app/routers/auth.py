@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies import get_current_user, get_otp_store
+from app.firebase_mapping import require_active
 from app.models import RefreshToken, User, UserRole
 from app.otp import (
     OtpExpired,
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def issue_session(user: User, db: Session, settings: Settings) -> TokenResponse:
+    require_active(user)
     access_token = create_access_token(str(user.id), user.role.value, settings)
     raw_refresh_token, refresh_token = create_refresh_token(user.id, settings)
     db.add(refresh_token)
@@ -144,6 +146,7 @@ def refresh_session(
     user = db.get(User, stored_token.user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    require_active(user)
 
     stored_token.revoked_at = datetime.now(timezone.utc)
     raw_refresh_token, replacement = create_refresh_token(

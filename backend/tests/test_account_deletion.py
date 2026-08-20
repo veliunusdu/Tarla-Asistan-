@@ -1,13 +1,19 @@
 import os
+import asyncio
+from contextlib import nullcontext
 from pathlib import Path
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from firebase_admin import auth, exceptions as firebase_exceptions
 from google.api_core import exceptions as google_exceptions
 from pydantic import ValidationError
+from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
@@ -15,15 +21,87 @@ from app.firebase_account import (
     AccountDeletionProviderError,
     FirebaseAdminAccountGateway,
 )
+from app.firebase_auth import FirebaseIdentity
 from app.models import (
     AccountDeletionJob,
     AccountDeletionStatus,
     AccountStatus,
+    DevicePlatform,
+    DeviceToken,
     FirebaseLinkApproval,
+    MediaAsset,
+    MediaKind,
+    Profile,
     User,
     UserRole,
     utcnow,
 )
+from app.media_storage import MediaStorageError, MediaStorageMissing
+from app.security import create_refresh_token
+
+
+def login_owner(client, phone_number="+905551234567"):
+    requested = client.post(
+        "/api/v1/auth/request-otp", json={"phone_number": phone_number}
+    )
+    verified = client.post(
+        "/api/v1/auth/verify-otp",
+        json={
+            "phone_number": phone_number,
+            "otp_code": requested.json()["debug_otp"],
+        },
+    )
+    assert verified.status_code == 200
+    return verified.json()
+
+
+PROCESS_NOW = datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc)
+
+
+class FakeAccountGateway:
+    def __init__(self, *, fail_on=None, committed_steps=None):
+        self.fail_on = fail_on
+        self.verify_commits = committed_steps is not None
+        self.committed_steps = committed_steps if committed_steps is not None else []
+        self.calls = []
+
+    def _call(self, name, error_code):
+        self.calls.append(name)
+        if self.verify_commits and name == "firestore":
+            assert "firebase_tokens" in self.committed_steps
+        elif self.verify_commits and name == "firebase_auth":
+            assert "media" in self.committed_steps
+        if self.fail_on == name:
+            raise AccountDeletionProviderError(error_code)
+
+    def revoke_tokens(self, uid):
+        self._call("firebase_tokens", "FIREBASE_AUTH_UNAVAILABLE")
+
+    def anonymize_firestore(self, uid, anonymous_subject):
+        self._call("firestore", "FIRESTORE_UNAVAILABLE")
+
+    def delete_auth_user(self, uid):
+        self._call("firebase_auth", "FIREBASE_AUTH_UNAVAILABLE")
+
+
+class FakeDeletionStorage:
+    def __init__(self, *, fail=False, missing=False, committed_steps=None):
+        self.fail = fail
+        self.missing = missing
+        self.verify_commits = committed_steps is not None
+        self.committed_steps = committed_steps if committed_steps is not None else []
+        self.deleted = []
+
+    def delete(self, key):
+        if self.verify_commits:
+            assert "firestore" in self.committed_steps
+        self.deleted.append(key)
+        if self.fail:
+            raise MediaStorageError(
+                "storage provider detail and user identifier must not persist"
+            )
+        if self.missing:
+            raise MediaStorageMissing("missing")
 
 
 class FakeAdminApp:
@@ -462,3 +540,721 @@ def test_postgresql_migration_uses_partial_unconsumed_approval_indexes():
         "uq_firebase_link_approvals_one_unconsumed_per_uid "
         "ON firebase_link_approvals (firebase_uid) WHERE consumed_at IS NULL"
     ) in sql
+
+
+def test_deletion_request_locks_account_and_is_idempotent(
+    client, db_session, monkeypatch
+):
+    auth_payload = login_owner(client)
+    headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
+    monkeypatch.setattr(
+        "app.routers.users.process_account_deletion_by_id",
+        lambda _job_id: None,
+        raising=False,
+    )
+
+    first = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers=headers,
+        json={"confirmation": "HESABIMI SIL"},
+    )
+    second = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers=headers,
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    assert first.status_code == second.status_code == 202
+    assert first.json() == second.json()
+    job = db_session.get(AccountDeletionJob, UUID(first.json()["request_id"]))
+    assert job is not None
+    assert job.user.account_status is AccountStatus.DELETION_PENDING
+    assert all(token.revoked_at is not None for token in job.user.refresh_tokens)
+
+
+@pytest.mark.parametrize(
+    "confirmation",
+    ["", "HESABIMI SİL", " HESABIMI SIL", "HESABIMI SIL ", "hesabimi sil"],
+)
+def test_deletion_request_requires_exact_confirmation(
+    client, monkeypatch, confirmation
+):
+    auth_payload = login_owner(client)
+    monkeypatch.setattr(
+        "app.routers.users.process_account_deletion_by_id",
+        lambda _job_id: None,
+        raising=False,
+    )
+
+    response = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers={"Authorization": f"Bearer {auth_payload['access_token']}"},
+        json={"confirmation": confirmation},
+    )
+
+    assert response.status_code == 422
+
+
+def test_deletion_request_requires_authentication(client):
+    response = client.post(
+        "/api/v1/users/me/deletion-request",
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_pending_account_is_forbidden_on_normal_endpoint_but_can_repeat_deletion(
+    client, monkeypatch
+):
+    auth_payload = login_owner(client)
+    headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
+    monkeypatch.setattr(
+        "app.routers.users.process_account_deletion_by_id",
+        lambda _job_id: None,
+        raising=False,
+    )
+    requested = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers=headers,
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    normal_access = client.get("/api/v1/auth/me", headers=headers)
+    repeated = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers=headers,
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    assert requested.status_code == 202
+    assert normal_access.status_code == 403
+    assert repeated.status_code == 202
+    assert repeated.json() == requested.json()
+
+
+def test_deletion_lock_revokes_legacy_refresh_session(client, monkeypatch):
+    auth_payload = login_owner(client)
+    monkeypatch.setattr(
+        "app.routers.users.process_account_deletion_by_id",
+        lambda _job_id: None,
+        raising=False,
+    )
+    requested = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers={"Authorization": f"Bearer {auth_payload['access_token']}"},
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": auth_payload["refresh_token"]},
+    )
+
+    assert requested.status_code == 202
+    assert refreshed.status_code == 401
+
+
+def test_deletion_route_runs_background_processing_after_commit(
+    client, db_session, monkeypatch
+):
+    auth_payload = login_owner(client)
+    processed = []
+
+    def assert_committed_then_process(job_id):
+        job = db_session.get(AccountDeletionJob, job_id)
+        assert job is not None
+        assert job.status is AccountDeletionStatus.PENDING
+        assert job.user.account_status is AccountStatus.DELETION_PENDING
+        assert all(token.revoked_at is not None for token in job.user.refresh_tokens)
+        processed.append(job_id)
+
+    monkeypatch.setattr(
+        "app.routers.users.process_account_deletion_by_id",
+        assert_committed_then_process,
+    )
+
+    response = client.post(
+        "/api/v1/users/me/deletion-request",
+        headers={"Authorization": f"Bearer {auth_payload['access_token']}"},
+        json={"confirmation": "HESABIMI SIL"},
+    )
+
+    assert response.status_code == 202
+    assert processed == [UUID(response.json()["request_id"])]
+
+
+def add_deletion_subject(db_session):
+    user = User(
+        phone_number="+905551234570",
+        firebase_uid="firebase-user-secret",
+        role=UserRole.FARMER,
+    )
+    user.profile = Profile(
+        full_name="Deletion Subject",
+        province="Konya",
+        district="Selçuklu",
+        terms_accepted=True,
+        notifications_enabled=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    raw_token, refresh_token = create_refresh_token(user.id, Settings())
+    db_session.add_all(
+        [
+            refresh_token,
+            DeviceToken(
+                user_id=user.id,
+                token="device-token-secret",
+                platform=DevicePlatform.ANDROID,
+            ),
+            MediaAsset(
+                owner_id=user.id,
+                kind=MediaKind.IMAGE,
+                original_name="sensitive-name.jpg",
+                content_type="image/jpeg",
+                size_bytes=10,
+                storage_key="owned-media-key",
+                checksum_sha256="a" * 64,
+            ),
+        ]
+    )
+    db_session.commit()
+    return user, raw_token
+
+
+def test_request_account_deletion_persists_one_lock_and_job(db_session):
+    from app.account_deletion import request_account_deletion
+
+    user, _raw_token = add_deletion_subject(db_session)
+
+    first = request_account_deletion(db_session, user, PROCESS_NOW)
+    first_subject = user.anonymized_subject_id
+    second = request_account_deletion(
+        db_session, user, PROCESS_NOW + timedelta(minutes=1)
+    )
+
+    assert first.id == second.id
+    assert first.firebase_uid_snapshot == "firebase-user-secret"
+    assert first.status is AccountDeletionStatus.PENDING
+    assert user.account_status is AccountStatus.DELETION_PENDING
+    assert first_subject is not None
+    assert user.anonymized_subject_id == first_subject
+    assert all(
+        token.revoked_at.replace(tzinfo=token.revoked_at.tzinfo or timezone.utc)
+        == PROCESS_NOW
+        for token in user.refresh_tokens
+    )
+
+
+def _track_committed_steps(db_session, job):
+    committed_steps = []
+
+    def capture_completed_steps(_session):
+        if job.firebase_tokens_revoked_at is not None:
+            committed_steps.append("firebase_tokens")
+        if job.firestore_anonymized_at is not None:
+            committed_steps.append("firestore")
+        if job.media_deleted_at is not None:
+            committed_steps.append("media")
+        if job.firebase_auth_deleted_at is not None:
+            committed_steps.append("firebase_auth")
+
+    event.listen(db_session, "after_commit", capture_completed_steps)
+    return committed_steps, capture_completed_steps
+
+
+def test_account_deletion_processes_ordered_steps_and_anonymizes_postgres(db_session):
+    from app.account_deletion import (
+        process_account_deletion,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    committed_steps, listener = _track_committed_steps(db_session, job)
+    gateway = FakeAccountGateway(committed_steps=committed_steps)
+    storage = FakeDeletionStorage(committed_steps=committed_steps)
+    try:
+        result = process_account_deletion(
+            db_session,
+            job.id,
+            gateway,
+            storage,
+            Settings(),
+            PROCESS_NOW,
+        )
+    finally:
+        event.remove(db_session, "after_commit", listener)
+
+    assert gateway.calls == ["firebase_tokens", "firestore", "firebase_auth"]
+    assert storage.deleted == ["owned-media-key"]
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert result.attempt_count == 1
+    assert result.completed_at == PROCESS_NOW
+    assert user.phone_number.startswith("deleted-")
+    assert user.firebase_uid is None
+    assert user.profile.full_name is None
+    assert user.profile.province is None
+    assert user.profile.district is None
+    assert user.profile.notifications_enabled is False
+    device_tokens = db_session.query(DeviceToken).filter_by(user_id=user.id).all()
+    assert all(token.active is False for token in device_tokens)
+    assert user.account_status is AccountStatus.ANONYMIZED
+    assert result.postgres_anonymized_at == PROCESS_NOW
+
+
+@pytest.mark.parametrize(
+    ("failure_step", "error_code", "completed_before_failure"),
+    [
+        ("firebase_tokens", "FIREBASE_AUTH_UNAVAILABLE", []),
+        ("firestore", "FIRESTORE_UNAVAILABLE", ["firebase_tokens"]),
+        (
+            "media",
+            "MEDIA_STORAGE_UNAVAILABLE",
+            ["firebase_tokens", "firestore"],
+        ),
+        (
+            "firebase_auth",
+            "FIREBASE_AUTH_UNAVAILABLE",
+            ["firebase_tokens", "firestore", "media"],
+        ),
+    ],
+)
+def test_account_deletion_failure_is_retryable_and_skips_committed_steps(
+    db_session, failure_step, error_code, completed_before_failure
+):
+    from app.account_deletion import (
+        process_account_deletion,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    committed_steps, listener = _track_committed_steps(db_session, job)
+    failing_gateway = FakeAccountGateway(
+        fail_on=failure_step, committed_steps=committed_steps
+    )
+    failing_storage = FakeDeletionStorage(
+        fail=failure_step == "media", committed_steps=committed_steps
+    )
+    try:
+        failed = process_account_deletion(
+            db_session,
+            job.id,
+            failing_gateway,
+            failing_storage,
+            Settings(),
+            PROCESS_NOW,
+        )
+
+        assert failed.status is AccountDeletionStatus.RETRY_REQUIRED
+        assert failed.attempt_count == 1
+        assert failed.last_error_code == error_code
+        assert failed.next_retry_at == PROCESS_NOW + timedelta(minutes=15)
+        assert user.account_status is AccountStatus.DELETION_PENDING
+        assert "secret" not in failed.last_error_code.lower()
+        assert [
+            step
+            for step, timestamp in [
+                ("firebase_tokens", failed.firebase_tokens_revoked_at),
+                ("firestore", failed.firestore_anonymized_at),
+                ("media", failed.media_deleted_at),
+            ]
+            if timestamp is not None
+        ] == completed_before_failure
+
+        retry_gateway = FakeAccountGateway(committed_steps=committed_steps)
+        retry_storage = FakeDeletionStorage(committed_steps=committed_steps)
+        retried = process_account_deletion(
+            db_session,
+            job.id,
+            retry_gateway,
+            retry_storage,
+            Settings(),
+            PROCESS_NOW + timedelta(minutes=15),
+        )
+    finally:
+        event.remove(db_session, "after_commit", listener)
+
+    expected_gateway_calls = {
+        "firebase_tokens": ["firebase_tokens", "firestore", "firebase_auth"],
+        "firestore": ["firestore", "firebase_auth"],
+        "media": ["firebase_auth"],
+        "firebase_auth": ["firebase_auth"],
+    }
+    assert retry_gateway.calls == expected_gateway_calls[failure_step]
+    assert retry_storage.deleted == (
+        [] if failure_step == "firebase_auth" else ["owned-media-key"]
+    )
+    assert retried.status is AccountDeletionStatus.COMPLETED
+    assert retried.attempt_count == 2
+
+
+def test_missing_media_is_idempotent_success_and_metadata_remains(db_session):
+    from app.account_deletion import (
+        process_account_deletion,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    gateway = FakeAccountGateway()
+    storage = FakeDeletionStorage(missing=True)
+
+    result = process_account_deletion(
+        db_session, job.id, gateway, storage, Settings(), PROCESS_NOW
+    )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert db_session.query(MediaAsset).filter_by(owner_id=user.id).count() == 1
+
+
+def test_completed_deletion_job_is_a_noop_on_rerun(db_session):
+    from app.account_deletion import (
+        process_account_deletion,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    completed = process_account_deletion(
+        db_session,
+        job.id,
+        FakeAccountGateway(),
+        FakeDeletionStorage(),
+        Settings(),
+        PROCESS_NOW,
+    )
+    gateway = FakeAccountGateway()
+    storage = FakeDeletionStorage()
+
+    rerun = process_account_deletion(
+        db_session,
+        job.id,
+        gateway,
+        storage,
+        Settings(),
+        PROCESS_NOW + timedelta(days=1),
+    )
+
+    assert rerun.status is AccountDeletionStatus.COMPLETED
+    assert rerun.attempt_count == completed.attempt_count == 1
+    assert gateway.calls == []
+    assert storage.deleted == []
+
+
+@pytest.mark.parametrize(
+    "dependency_name",
+    ["get_current_user", "get_account_deletion_request_user"],
+)
+def test_anonymized_firebase_identity_is_forbidden_in_every_auth_dependency(
+    db_session, monkeypatch, dependency_name
+):
+    from app import dependencies
+    from app.account_deletion import (
+        process_account_deletion,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    original_phone = user.phone_number
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    process_account_deletion(
+        db_session,
+        job.id,
+        FakeAccountGateway(),
+        FakeDeletionStorage(),
+        Settings(),
+        PROCESS_NOW,
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "verify_firebase_id_token",
+        lambda _token: FirebaseIdentity("firebase-user-secret", original_phone),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        getattr(dependencies, dependency_name)(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials="token"),
+            db_session,
+            Settings(firebase_auth_enabled=True),
+        )
+
+    assert error.value.status_code == 403
+    assert db_session.query(User).count() == 1
+
+
+def add_retry_job(
+    db_session,
+    *,
+    status=AccountDeletionStatus.PENDING,
+    attempt_count=0,
+    next_retry_at=None,
+):
+    user = User(
+        phone_number=f"test-retry-{uuid4().hex}",
+        account_status=(
+            AccountStatus.ANONYMIZED
+            if status is AccountDeletionStatus.COMPLETED
+            else AccountStatus.DELETION_PENDING
+        ),
+        anonymized_subject_id=f"anon-{uuid4().hex}",
+    )
+    db_session.add(user)
+    db_session.flush()
+    job = AccountDeletionJob(
+        user_id=user.id,
+        status=status,
+        attempt_count=attempt_count,
+        next_retry_at=next_retry_at,
+        completed_at=PROCESS_NOW if status is AccountDeletionStatus.COMPLETED else None,
+    )
+    db_session.add(job)
+    db_session.commit()
+    return job
+
+
+def test_automatic_retry_selection_is_due_pending_and_attempt_bounded(db_session):
+    from app.account_deletion import eligible_account_deletion_jobs
+
+    pending = add_retry_job(db_session)
+    due = add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.RETRY_REQUIRED,
+        attempt_count=4,
+        next_retry_at=PROCESS_NOW,
+    )
+    add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.RETRY_REQUIRED,
+        attempt_count=4,
+        next_retry_at=PROCESS_NOW + timedelta(seconds=1),
+    )
+    add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.RETRY_REQUIRED,
+        attempt_count=5,
+        next_retry_at=PROCESS_NOW,
+    )
+    add_retry_job(db_session, status=AccountDeletionStatus.COMPLETED)
+
+    jobs = eligible_account_deletion_jobs(
+        db_session, Settings(), PROCESS_NOW, automatic=True
+    )
+
+    assert {job.id for job in jobs} == {pending.id, due.id}
+
+
+def test_explicit_retry_selection_can_override_schedule_and_attempt_limit(db_session):
+    from app.account_deletion import eligible_account_deletion_jobs
+
+    exhausted = add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.RETRY_REQUIRED,
+        attempt_count=5,
+        next_retry_at=PROCESS_NOW + timedelta(days=1),
+    )
+
+    jobs = eligible_account_deletion_jobs(
+        db_session,
+        Settings(),
+        PROCESS_NOW,
+        automatic=False,
+        job_id=exhausted.id,
+    )
+
+    assert [job.id for job in jobs] == [exhausted.id]
+
+
+def test_retry_runner_continues_after_unexpected_error_without_logging_detail(
+    db_session, caplog
+):
+    from app.account_deletion import run_account_deletion_retries
+
+    first = add_retry_job(db_session)
+    second = add_retry_job(db_session)
+    processed = []
+
+    def processor(job_id):
+        processed.append(job_id)
+        if job_id == first.id:
+            raise RuntimeError("provider detail and user PII")
+
+    run_account_deletion_retries(
+        db_session,
+        settings=Settings(),
+        now=PROCESS_NOW,
+        processor=processor,
+        automatic=True,
+    )
+
+    assert set(processed) == {first.id, second.id}
+    assert "ACCOUNT_DELETION_UNEXPECTED" in caplog.text
+    assert str(first.id) in caplog.text
+    assert "provider detail" not in caplog.text
+    assert "user PII" not in caplog.text
+
+
+def test_process_by_id_records_safe_gateway_initialization_failure(db_session):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+
+    def unavailable_gateway(_settings):
+        raise AccountDeletionProviderError("FIREBASE_AUTH_UNAVAILABLE")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=unavailable_gateway,
+        storage_factory=lambda _settings: FakeDeletionStorage(),
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result is job
+    assert result.status is AccountDeletionStatus.RETRY_REQUIRED
+    assert result.attempt_count == 1
+    assert result.last_error_code == "FIREBASE_AUTH_UNAVAILABLE"
+
+
+def test_process_by_id_records_fixed_storage_configuration_failure(db_session):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+
+    def unavailable_storage(_settings):
+        raise ValueError("storage provider, user UID, and secret details")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=lambda _settings: FakeAccountGateway(),
+        storage_factory=unavailable_storage,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.RETRY_REQUIRED
+    assert result.attempt_count == 1
+    assert result.last_error_code == "MEDIA_STORAGE_UNAVAILABLE"
+    assert "secret" not in result.last_error_code.lower()
+
+
+def test_process_by_id_skips_firebase_initialization_for_legacy_account(db_session):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    user = User(phone_number="+905551234571", role=UserRole.FARMER)
+    db_session.add(user)
+    db_session.commit()
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+
+    def forbidden_gateway_initialization(_settings):
+        raise AssertionError("Firebase gateway must not be created without a UID")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=forbidden_gateway_initialization,
+        storage_factory=lambda _settings: FakeDeletionStorage(),
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert user.account_status is AccountStatus.ANONYMIZED
+
+
+@pytest.mark.parametrize(
+    ("attempt_count", "next_retry_at"),
+    [
+        (5, PROCESS_NOW),
+        (4, PROCESS_NOW + timedelta(seconds=1)),
+    ],
+    ids=["attempt-limit", "not-due"],
+)
+def test_process_by_id_automatic_retry_does_not_bypass_retry_bounds(
+    db_session, attempt_count, next_retry_at
+):
+    from app.account_deletion import process_account_deletion_by_id
+
+    job = add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.RETRY_REQUIRED,
+        attempt_count=attempt_count,
+        next_retry_at=next_retry_at,
+    )
+
+    def forbidden_factory(_settings):
+        raise AssertionError("ineligible automatic retry advanced")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=forbidden_factory,
+        storage_factory=forbidden_factory,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.RETRY_REQUIRED
+    assert result.attempt_count == attempt_count
+    assert result.next_retry_at == next_retry_at
+
+
+def test_application_lifespan_invokes_startup_deletion_retry(monkeypatch):
+    from app.main import app, lifespan
+
+    calls = []
+    missing = object()
+    state_names = (
+        "redis",
+        "otp_store",
+        "weather_provider",
+        "push_provider",
+        "ai_chat_provider",
+        "media_storage",
+    )
+    previous_state = {
+        name: getattr(app.state, name, missing) for name in state_names
+    }
+
+    class FakeRedis:
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.main.Redis.from_url", lambda *args, **kwargs: FakeRedis())
+    monkeypatch.setattr("app.main.create_weather_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_push_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_ai_chat_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_media_storage", lambda _settings: object())
+    monkeypatch.setattr(
+        "app.main.run_startup_account_deletion_retries",
+        lambda: calls.append("startup-retry"),
+        raising=False,
+    )
+
+    async def enter_lifespan():
+        async with lifespan(app):
+            assert calls == ["startup-retry"]
+
+    try:
+        asyncio.run(enter_lifespan())
+    finally:
+        for name, previous in previous_state.items():
+            if previous is missing:
+                delattr(app.state, name)
+            else:
+                setattr(app.state, name, previous)

@@ -10,6 +10,7 @@ from redis import Redis
 from sqlalchemy import text
 
 from app.config import get_settings
+from app.account_deletion import run_startup_account_deletion_retries
 from app.ai_chat import create_ai_chat_provider
 from app.media_storage import create_media_storage
 from app.database import SessionLocal
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
     app.state.push_provider = create_push_provider(settings)
     app.state.ai_chat_provider = create_ai_chat_provider(settings)
     app.state.media_storage = create_media_storage(settings)
+    run_startup_account_deletion_retries()
     yield
     redis_client.close()
 

@@ -11,6 +11,8 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.manage import ManagementCommandError, approve_firebase_link, main
 from app.models import (
+    AccountDeletionJob,
+    AccountDeletionStatus,
     AccountStatus,
     FirebaseLinkApproval,
     User,
@@ -461,3 +463,83 @@ def test_approval_cli_error_output_excludes_sensitive_identifiers(
     assert exit_code == 2
     assert "expert-identity-secret" not in output.out + output.err
     assert farmer.phone_number not in output.out + output.err
+
+
+def add_deletion_retry_job(
+    db_session,
+    *,
+    status=AccountDeletionStatus.RETRY_REQUIRED,
+    attempt_count=0,
+    next_retry_at=TEST_NOW,
+):
+    user = User(
+        phone_number=f"test-deletion-retry-{uuid4().hex}",
+        account_status=AccountStatus.DELETION_PENDING,
+        anonymized_subject_id=f"anon-{uuid4().hex}",
+    )
+    db_session.add(user)
+    db_session.flush()
+    job = AccountDeletionJob(
+        user_id=user.id,
+        status=status,
+        attempt_count=attempt_count,
+        next_retry_at=next_retry_at,
+    )
+    db_session.add(job)
+    db_session.commit()
+    return job
+
+
+def test_retry_account_deletions_dry_run_lists_eligible_jobs_without_processing(
+    db_session, capsys, monkeypatch
+):
+    eligible = add_deletion_retry_job(db_session)
+    future = add_deletion_retry_job(
+        db_session, next_retry_at=TEST_NOW + timedelta(minutes=1)
+    )
+    processed = []
+
+    def process(job_id, *, force=False):
+        processed.append((job_id, force))
+
+    monkeypatch.setattr("app.manage.process_account_deletion_by_id", process)
+
+    exit_code = main(
+        ["retry-account-deletions", "--dry-run"],
+        session_factory=lambda: nullcontext(db_session),
+        now_factory=lambda: TEST_NOW,
+    )
+
+    output = capsys.readouterr()
+    assert exit_code == 0
+    assert str(eligible.id) in output.out
+    assert eligible.status.value in output.out
+    assert str(future.id) not in output.out
+    assert processed == []
+
+
+def test_retry_account_deletions_explicit_job_overrides_automatic_attempt_limit(
+    db_session, capsys, monkeypatch
+):
+    exhausted = add_deletion_retry_job(
+        db_session,
+        attempt_count=5,
+        next_retry_at=TEST_NOW + timedelta(days=1),
+    )
+    processed = []
+
+    def process(job_id, *, force=False):
+        processed.append((job_id, force))
+
+    monkeypatch.setattr("app.manage.process_account_deletion_by_id", process)
+
+    exit_code = main(
+        ["retry-account-deletions", "--job-id", str(exhausted.id)],
+        session_factory=lambda: nullcontext(db_session),
+        now_factory=lambda: TEST_NOW,
+    )
+
+    output = capsys.readouterr()
+    assert exit_code == 0
+    assert processed == [(exhausted.id, True)]
+    assert str(exhausted.id) in output.out

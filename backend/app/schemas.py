@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 import phonenumbers
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -90,6 +90,22 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str = Field(min_length=32)
+
+
+class AccountDeletionRequest(BaseModel):
+    confirmation: str
+
+    @field_validator("confirmation")
+    @classmethod
+    def exact_confirmation(cls, value: str) -> str:
+        if value != "HESABIMI SIL":
+            raise ValueError("Hesap silme onay metni eşleşmiyor.")
+        return value
+
+
+class AccountDeletionResponse(BaseModel):
+    request_id: uuid.UUID
+    status: Literal["PENDING", "PROCESSING", "RETRY_REQUIRED", "COMPLETED"]
 
 
 class ProfileUpdate(BaseModel):

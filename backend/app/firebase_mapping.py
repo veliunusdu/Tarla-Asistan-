@@ -6,7 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.firebase_auth import FirebaseIdentity
-from app.models import AccountStatus, FirebaseLinkApproval, User, UserRole
+from app.models import (
+    AccountDeletionJob,
+    AccountStatus,
+    FirebaseLinkApproval,
+    User,
+    UserRole,
+)
 
 
 def _unauthorized() -> HTTPException:
@@ -177,6 +183,13 @@ def _consume_approval_and_link(db: Session, *, user: User, uid: str) -> User:
 
 
 def resolve_firebase_user(db: Session, identity: FirebaseIdentity) -> User:
+    deletion_job = db.scalar(
+        select(AccountDeletionJob).where(
+            AccountDeletionJob.firebase_uid_snapshot == identity.uid
+        )
+    )
+    if deletion_job is not None:
+        return require_active(deletion_job.user)
     existing_uid = db.scalar(select(User).where(User.firebase_uid == identity.uid))
     if existing_uid is not None:
         return require_active(existing_uid)

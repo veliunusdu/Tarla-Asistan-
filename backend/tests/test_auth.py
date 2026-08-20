@@ -1,5 +1,9 @@
 from fastapi.testclient import TestClient
 
+from app.config import Settings
+from app.models import AccountStatus, User
+from app.security import create_refresh_token
+
 
 def login(client: TestClient, phone: str = "+905551234567") -> dict:
     requested = client.post("/api/v1/auth/request-otp", json={"phone_number": phone})
@@ -134,3 +138,40 @@ def test_profile_requires_terms_and_all_mandatory_fields(client: TestClient):
     )
     assert updated.status_code == 200
     assert updated.json()["profile_complete"] is True
+
+
+def test_pending_account_cannot_start_a_new_otp_session(client, db_session):
+    phone = "+905551234568"
+    user = User(phone_number=phone, account_status=AccountStatus.DELETION_PENDING)
+    db_session.add(user)
+    db_session.commit()
+    requested = client.post("/api/v1/auth/request-otp", json={"phone_number": phone})
+
+    verified = client.post(
+        "/api/v1/auth/verify-otp",
+        json={"phone_number": phone, "otp_code": requested.json()["debug_otp"]},
+    )
+
+    assert verified.status_code == 403
+
+
+def test_pending_account_cannot_rotate_an_unrevoked_refresh_token(
+    client, db_session
+):
+    user = User(
+        phone_number="+905551234569",
+        account_status=AccountStatus.DELETION_PENDING,
+    )
+    db_session.add(user)
+    db_session.commit()
+    raw_token, stored_token = create_refresh_token(user.id, Settings())
+    db_session.add(stored_token)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": raw_token}
+    )
+
+    db_session.refresh(stored_token)
+    assert response.status_code == 403
+    assert stored_token.revoked_at is None
