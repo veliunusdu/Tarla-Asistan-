@@ -70,6 +70,7 @@ class UserResponse(BaseModel):
 
     id: uuid.UUID
     phone_number: str
+    firebase_uid: str | None
     full_name: str | None
     province: str | None
     district: str | None

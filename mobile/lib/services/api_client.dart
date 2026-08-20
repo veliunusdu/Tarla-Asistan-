@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 
@@ -18,11 +18,20 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  ApiClient({
+    http.Client? httpClient,
+    Future<String?> Function()? idTokenProvider,
+  }) : _http = httpClient ?? http.Client(),
+       _idTokenProvider =
+           idTokenProvider ??
+           (() async {
+             final user = FirebaseAuth.instance.currentUser;
+             return user == null ? null : user.getIdToken();
+           });
 
   final http.Client _http;
+  final Future<String?> Function() _idTokenProvider;
   static const _timeout = Duration(seconds: 12);
-  Future<bool>? _refreshInFlight;
 
   Future<Map<String, dynamic>> getJson(String endpoint) async {
     final response = await _send('GET', endpoint);
@@ -49,10 +58,8 @@ class ApiClient {
     String method,
     String endpoint, {
     Map<String, dynamic>? body,
-    bool allowRefresh = true,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token');
+    final token = await _idTokenProvider();
     if (token == null || token.isEmpty) {
       throw const ApiException(
         'Devam etmek için tekrar giriş yapın.',
@@ -70,11 +77,6 @@ class ApiClient {
       if (body != null) request.body = jsonEncode(body);
       final streamed = await _http.send(request).timeout(_timeout);
       final response = await http.Response.fromStream(streamed);
-      if (response.statusCode == 401 &&
-          allowRefresh &&
-          await _refreshSession()) {
-        return _send(method, endpoint, body: body, allowRefresh: false);
-      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw ApiException(
           _errorMessage(response),
@@ -93,48 +95,6 @@ class ApiClient {
         'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.',
         retryable: true,
       );
-    }
-  }
-
-  Future<bool> _refreshSession() async {
-    final current = _refreshInFlight;
-    if (current != null) return current;
-    final refresh = _performRefresh();
-    _refreshInFlight = refresh;
-    try {
-      return await refresh;
-    } finally {
-      _refreshInFlight = null;
-    }
-  }
-
-  Future<bool> _performRefresh() async {
-    final prefs = await SharedPreferences.getInstance();
-    final refreshToken = prefs.getString('refresh_token');
-    if (refreshToken == null || refreshToken.isEmpty) return false;
-    try {
-      final response = await _http
-          .post(
-            Uri.parse('${AppConfig.apiBaseUrl}/auth/refresh'),
-            headers: const {'Content-Type': 'application/json'},
-            body: jsonEncode({'refresh_token': refreshToken}),
-          )
-          .timeout(_timeout);
-      if (response.statusCode != 200) return false;
-      final value = jsonDecode(response.body);
-      if (value is! Map) return false;
-      final accessToken = value['access_token']?.toString();
-      final replacementRefreshToken = value['refresh_token']?.toString();
-      if (accessToken == null || replacementRefreshToken == null) return false;
-      await prefs.setString('access_token', accessToken);
-      await prefs.setString('refresh_token', replacementRefreshToken);
-      return true;
-    } on TimeoutException {
-      return false;
-    } on http.ClientException {
-      return false;
-    } on FormatException {
-      return false;
     }
   }
 

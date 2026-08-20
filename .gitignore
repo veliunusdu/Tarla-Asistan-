@@ -1,4 +1,6 @@
 .env
+.worktrees/
+backend/secrets/*.json
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
-import '../services/database_helper.dart';
+import '../services/firestore_farm_repository.dart';
 import '../services/sync_service.dart';
 import 'faaliyet_ekleme_ekrani.dart';
 
@@ -11,28 +11,18 @@ class TarlaDetayEkrani extends StatefulWidget {
     super.key,
     required this.tarla,
     required this.syncService,
+    required this.repository,
   });
 
   final Tarla tarla;
   final SyncService syncService;
+  final FirestoreFarmRepository repository;
 
   @override
   State<TarlaDetayEkrani> createState() => _TarlaDetayEkraniState();
 }
 
 class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
-  late Future<List<Faaliyet>> _faaliyetler;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFaaliyetler();
-  }
-
-  void _loadFaaliyetler() {
-    _faaliyetler = DatabaseHelper.instance.getFaaliyetler(widget.tarla.id);
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -47,8 +37,8 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
             ],
           ),
         ),
-        body: FutureBuilder<List<Faaliyet>>(
-          future: _faaliyetler,
+        body: StreamBuilder<List<Faaliyet>>(
+          stream: widget.repository.watchActivities(widget.tarla.id),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -57,7 +47,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Faaliyetler yüklenemedi: ${snapshot.error}'),
+                  child: const Text('Faaliyetler yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.'),
                 ),
               );
             }
@@ -85,18 +75,16 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
         floatingActionButton: FloatingActionButton.extended(
           tooltip: 'Yeni faaliyet ekle',
           onPressed: () async {
-            final result = await Navigator.push<bool>(
+            await Navigator.push<bool>(
               context,
               MaterialPageRoute(
                 builder: (_) => FaaliyetEklemeEkrani(
                   tarlaId: widget.tarla.id,
                   syncService: widget.syncService,
+                  repository: widget.repository,
                 ),
               ),
             );
-            if (result == true && mounted) {
-              setState(_loadFaaliyetler);
-            }
           },
           icon: const Icon(Icons.add),
           label: const Text('Faaliyet ekle'),
@@ -136,11 +124,7 @@ class _ActivityList extends StatelessWidget {
                   : Icons.schedule,
             ),
             title: Text(activity.type),
-            subtitle: activity.dueDate == null
-                ? null
-                : Text(
-                    'Tarih: ${activity.dueDate!.toIso8601String().split('T').first}',
-                  ),
+            subtitle: Text(activity.note),
           ),
         );
       },

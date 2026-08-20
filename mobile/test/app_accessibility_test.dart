@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,8 +19,8 @@ void main() {
         data: MediaQueryData(textScaler: TextScaler.linear(2)),
         child: TarimAsistaniApp(
           isFirstRun: false,
-          isAuthenticated: false,
           firebaseReady: false,
+          authStateChanges: Stream<User?>.empty(),
         ),
       ),
     );
@@ -48,8 +49,8 @@ void main() {
         data: MediaQueryData(textScaler: TextScaler.linear(2)),
         child: TarimAsistaniApp(
           isFirstRun: true,
-          isAuthenticated: false,
           firebaseReady: false,
+          authStateChanges: Stream<User?>.empty(),
         ),
       ),
     );

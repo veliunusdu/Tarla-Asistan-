@@ -112,5 +112,67 @@ For in-depth explanations of modules, schemas, and UX guidelines, explore the fi
 
 ---
 
+## Firebase staging checklist
+
+The Firebase migration uses project `demo2-c4265`, the named **Enterprise**
+Firestore database `tarla-asistani`, and the Android package
+`com.tarlaasistani.pilot`. Firestore starts empty; do not migrate the existing
+PostgreSQL records as part of this rollout.
+
+Before staging, a project administrator must enable **Firebase Authentication →
+Phone**, and register the SHA-1 and SHA-256 fingerprints for both the debug and
+release Android signing keys. Do not commit a keystore, fingerprints that reveal
+private key material, `google-services.json`, or any service-account file.
+
+Set only these non-secret Firebase values for a backend process started from
+`backend/` (the JSON file itself must be supplied separately and kept out of
+Git):
+
+```env
+FIREBASE_AUTH_ENABLED=true
+FIREBASE_PROJECT_ID=demo2-c4265
+FIREBASE_SERVICE_ACCOUNT_PATH=secrets/firebase-service-account.json
+```
+
+For Docker Compose, mount that same file read-only at
+`/run/secrets/firebase-service-account.json` and set
+`FIREBASE_SERVICE_ACCOUNT_PATH` to that container path. The Compose files pass
+`FIREBASE_AUTH_ENABLED` through explicitly; staging must set it to `true`.
+`compose.staging.yaml` is an override and must always be merged after
+`compose.yaml`, never used on its own. After an authorized operator supplies a
+secure, untracked staging environment file, recreate the backend container so
+the changed environment is applied:
+
+```powershell
+docker compose --env-file <secure-staging-env> -f compose.yaml -f compose.staging.yaml up -d --build --force-recreate backend
+```
+
+Run the local Firestore rules suite before an administrator deploys the checked
+in rules and index configuration:
+
+```powershell
+cd firebase-emulator-tests
+npm run test:emulator
+```
+
+After the test is green and the administrator has confirmed the target project
+and named database, the remote rules-and-indexes deployment gate is:
+
+```powershell
+npx -y firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project demo2-c4265
+```
+
+Then verify `GET /health/ready` after the recreated backend is healthy, and sign in on a
+physical Android device. Create one farm and activity, create another activity
+while offline, reconnect, and confirm the offline activity appears once. Use
+the resulting Firebase ID token as `Authorization: Bearer <Firebase ID token>`
+for a protected AI request. `/health/ready` checks PostgreSQL and Redis; it is
+not a Firebase credential probe.
+
+See [the Firebase API integration note](./docs/OPENAPI.md) for the bearer-token
+contract and staging gates.
+
+---
+
 ## 📜 License
 This project is licensed under the MIT License - see the LICENSE file for details.

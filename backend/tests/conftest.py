@@ -8,6 +8,7 @@ os.environ["OTP_HASH_SECRET"] = "test-otp-secret-that-is-long-enough-123"
 os.environ["OTP_EXPOSE_IN_RESPONSE"] = "true"
 os.environ["AGRONOMIST_PHONE_NUMBERS"] = "+905551112233"
 os.environ["MEDIA_STORAGE_PATH"] = tempfile.mkdtemp(prefix="tarla-media-tests-")
+os.environ["MEDIA_STORAGE_PROVIDER"] = "local"
 
 import pytest
 from fastapi.testclient import TestClient

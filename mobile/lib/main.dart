@@ -1,19 +1,25 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'firebase_options.dart';
 import 'models/notification_target.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
 import 'screens/ozet_ekrani.dart';
 import 'services/api_client.dart';
-import 'services/auth_service.dart';
+import 'services/firebase_auth_service.dart';
+import 'services/firestore_farm_repository.dart';
+import 'services/firestore_user_profile_service.dart';
 import 'services/notification_service.dart';
+import 'services/post_login_initializer.dart';
 import 'services/sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   final prefs = await SharedPreferences.getInstance();
   var firebaseReady = false;
   try {
@@ -24,7 +30,6 @@ Future<void> main() async {
   runApp(
     TarimAsistaniApp(
       isFirstRun: prefs.getBool('isFirstRun') ?? true,
-      isAuthenticated: (prefs.getString('access_token') ?? '').isNotEmpty,
       firebaseReady: firebaseReady,
     ),
   );
@@ -34,13 +39,13 @@ class TarimAsistaniApp extends StatefulWidget {
   const TarimAsistaniApp({
     super.key,
     required this.isFirstRun,
-    required this.isAuthenticated,
     required this.firebaseReady,
+    this.authStateChanges,
   });
 
   final bool isFirstRun;
-  final bool isAuthenticated;
   final bool firebaseReady;
+  final Stream<User?>? authStateChanges;
 
   @override
   State<TarimAsistaniApp> createState() => _TarimAsistaniAppState();
@@ -50,19 +55,20 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final ApiClient _apiClient;
-  late final AuthService _authService;
+  late final FirebaseAuthService _authService;
   late final SyncService _syncService;
   late final NotificationService _notificationService;
+  late final PostLoginInitializer _postLoginInitializer;
   late bool _isFirstRun;
-  late bool _isAuthenticated;
+  String? _postLoginUid;
+  Future<void>? _postLoginFuture;
 
   @override
   void initState() {
     super.initState();
     _isFirstRun = widget.isFirstRun;
-    _isAuthenticated = widget.isAuthenticated;
     _apiClient = ApiClient();
-    _authService = AuthService();
+    _authService = FirebaseAuthService();
     _syncService = SyncService(_apiClient);
     _notificationService = NotificationService(
       _apiClient,
@@ -70,25 +76,30 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       _messengerKey,
       widget.firebaseReady,
     );
-    if (_isAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startServices());
+    _postLoginInitializer = PostLoginInitializer(
+      profileProvisioner: FirestoreUserProfileService(),
+      initializeSync: _syncService.initialize,
+      initializeNotifications: _notificationService.initializeAfterLogin,
+    );
+  }
+
+  Stream<User?> get _authStates =>
+      widget.authStateChanges ?? FirebaseAuth.instance.authStateChanges();
+
+  Future<void> _initializationFor(User user) {
+    if (_postLoginUid != user.uid || _postLoginFuture == null) {
+      _postLoginUid = user.uid;
+      _postLoginFuture = _postLoginInitializer.initialize(
+        uid: user.uid,
+        phoneNumber: user.phoneNumber,
+      );
     }
-  }
-
-  Future<void> _startServices() async {
-    await _syncService.initialize();
-    await _notificationService.initializeAfterLogin();
-  }
-
-  Future<void> _onLoggedIn() async {
-    setState(() => _isAuthenticated = true);
-    await _startServices();
+    return _postLoginFuture!;
   }
 
   Future<void> _onLogout() async {
     await _notificationService.deactivateCurrentDevice();
-    await _authService.logout();
-    if (mounted) setState(() => _isAuthenticated = false);
+    await _authService.signOut();
   }
 
   Future<void> _finishOnboarding() async {
@@ -102,7 +113,6 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     _notificationService.dispose();
     _syncService.dispose();
     _apiClient.close();
-    _authService.close();
     super.dispose();
   }
 
@@ -148,12 +158,64 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       },
       home: _isFirstRun
           ? OnboardingEkrani(onFinished: _finishOnboarding)
-          : !_isAuthenticated
-          ? GirisEkrani(authService: _authService, onLoggedIn: _onLoggedIn)
-          : OzetEkrani(
-              syncService: _syncService,
-              apiClient: _apiClient,
-              onLogout: _onLogout,
+          : StreamBuilder<User?>(
+              stream: _authStates,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasData) {
+                  final user = snapshot.data!;
+                  return FutureBuilder<void>(
+                    future: _initializationFor(user),
+                    builder: (context, initialization) {
+                      if (initialization.connectionState !=
+                          ConnectionState.done) {
+                        return const Scaffold(
+                          body: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      if (initialization.hasError) {
+                        return Scaffold(
+                          body: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    'Hesabınız hazırlanamadı. Bağlantınızı kontrol edip tekrar deneyin.',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  FilledButton(
+                                    onPressed: () => setState(() {
+                                      _postLoginUid = null;
+                                      _postLoginFuture = null;
+                                    }),
+                                    child: const Text('Tekrar dene'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return OzetEkrani(
+                        syncService: _syncService,
+                        apiClient: _apiClient,
+                        onLogout: _onLogout,
+                        repository: FirestoreFarmRepository(uid: user.uid),
+                      );
+                    },
+                  );
+                }
+                _postLoginUid = null;
+                _postLoginFuture = null;
+                return GirisEkrani(authService: _authService);
+              },
             ),
     );
   }

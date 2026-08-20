@@ -1,18 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/api_client.dart';
-import '../services/auth_service.dart';
+import '../services/firebase_auth_service.dart';
 
 class GirisEkrani extends StatefulWidget {
-  const GirisEkrani({
-    super.key,
-    required this.authService,
-    required this.onLoggedIn,
-  });
+  const GirisEkrani({super.key, required this.authService});
 
-  final AuthService authService;
-  final Future<void> Function() onLoggedIn;
+  final FirebaseAuthService authService;
 
   @override
   State<GirisEkrani> createState() => _GirisEkraniState();
@@ -42,25 +36,22 @@ class _GirisEkraniState extends State<GirisEkrani> {
     try {
       final phone = _normalizedPhone;
       if (!_otpSent) {
-        final result = await widget.authService.requestOtp(phone);
+        await widget.authService.sendCode(phone);
         if (!mounted) return;
         setState(() {
           _otpSent = true;
-          if (result.debugOtp != null) _otpController.text = result.debugOtp!;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Kod gönderildi. ${result.expiresIn} saniye geçerli.',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Kod gönderildi.')));
       } else {
-        await widget.authService.verifyOtp(phone, _otpController.text.trim());
-        await widget.onLoggedIn();
+        await widget.authService.confirmCode(
+          widget.authService.verificationId ?? '',
+          _otpController.text.trim(),
+        );
       }
-    } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }

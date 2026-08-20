@@ -40,7 +40,20 @@ class Settings(BaseSettings):
     weather_stale_after_hours: int = Field(default=3, ge=1, le=24)
     media_storage_path: str = "data/media"
     media_max_upload_mb: int = Field(default=15, ge=1, le=100)
+    media_storage_provider: str = "local"
+    r2_account_id: str | None = None
+    r2_bucket: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    ai_chat_provider: str = "local"
+    deepseek_api_key: str | None = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_timeout_seconds: float = Field(default=20, gt=0, le=60)
     push_provider: str = "noop"
+    firebase_auth_enabled: bool = False
+    firebase_service_account_path: str | None = None
+    firebase_project_id: str | None = None
     push_gateway_url: str | None = None
     push_gateway_token: str | None = None
     push_timeout_seconds: float = Field(default=8, gt=0, le=30)

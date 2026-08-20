@@ -3,13 +3,15 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.dependencies import get_media_storage
+from app.media_storage import MediaStorage, MediaStorageError, MediaStorageMissing
 from app.models import (
     CaseMedia,
     CaseMessage,
@@ -48,6 +50,7 @@ async def upload_media(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    storage: MediaStorage = Depends(get_media_storage),
 ) -> MediaAsset:
     media_type = CONTENT_TYPES.get(file.content_type or "")
     if media_type is None:
@@ -56,36 +59,31 @@ async def upload_media(
             detail="Yalnızca JPG, PNG, WEBP ve desteklenen ses dosyaları yüklenebilir.",
         )
 
-    storage_root = Path(settings.media_storage_path).resolve()
-    storage_root.mkdir(parents=True, exist_ok=True)
     storage_key = f"{uuid.uuid4().hex}{media_type[1]}"
-    target = (storage_root / storage_key).resolve()
-    if target.parent != storage_root:
-        raise HTTPException(status_code=400, detail="Geçersiz dosya yolu.")
-
     limit = settings.media_max_upload_mb * 1024 * 1024
     total = 0
     digest = hashlib.sha256()
+    chunks: list[bytes] = []
     try:
-        with target.open("wb") as stored:
-            while chunk := await file.read(1024 * 1024):
-                total += len(chunk)
-                if total > limit:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"Dosya en fazla {settings.media_max_upload_mb} MB olabilir.",
-                    )
-                digest.update(chunk)
-                stored.write(chunk)
-    except Exception:
-        target.unlink(missing_ok=True)
-        raise
+        while chunk := await file.read(1024 * 1024):
+            total += len(chunk)
+            if total > limit:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Dosya en fazla {settings.media_max_upload_mb} MB olabilir.",
+                )
+            digest.update(chunk)
+            chunks.append(chunk)
     finally:
         await file.close()
 
     if total == 0:
-        target.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail="Boş dosya yüklenemez.")
+
+    try:
+        storage.save(storage_key, b"".join(chunks), file.content_type or "application/octet-stream")
+    except MediaStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     asset = MediaAsset(
         owner_id=user.id,
@@ -100,7 +98,7 @@ async def upload_media(
     try:
         db.commit()
     except Exception:
-        target.unlink(missing_ok=True)
+        storage.delete(storage_key)
         raise
     db.refresh(asset)
     return asset
@@ -108,24 +106,25 @@ async def upload_media(
 
 @router.get(
     "/{media_id}/content",
-    response_class=FileResponse,
     summary="Yetkili medya içeriğini getir",
 )
 def get_media_content(
     media_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> FileResponse:
+    storage: MediaStorage = Depends(get_media_storage),
+) -> Response:
     asset = db.get(MediaAsset, media_id)
     if asset is None or not _can_access_media(db, user, asset):
         raise HTTPException(status_code=404, detail="Medya bulunamadı.")
-    storage_root = Path(settings.media_storage_path).resolve()
-    target = (storage_root / asset.storage_key).resolve()
-    if target.parent != storage_root or not target.is_file():
-        raise HTTPException(status_code=404, detail="Medya dosyası bulunamadı.")
-    return FileResponse(
-        target,
+    try:
+        content = storage.load(asset.storage_key)
+    except MediaStorageMissing as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MediaStorageError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=content,
         media_type=asset.content_type,
         headers={"Cache-Control": "private, max-age=3600"},
     )

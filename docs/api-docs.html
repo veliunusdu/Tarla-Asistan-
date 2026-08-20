@@ -20,13 +20,13 @@
 <header>
   <h1>Tarla Asistanı API Dokümantasyonu</h1>
   <p>Projenin tüm public API uçları, istek ve yanıt gövdeleri, parametreleri, roller ve model şemaları. Doküman backend kodundaki gerçek OpenAPI tanımından üretilmiştir.</p>
-  <div class="stats"><span>47 işlem</span><span>38 yol</span><span>73 şema</span><span>API v0.1.0</span></div>
+  <div class="stats"><span>48 işlem</span><span>39 yol</span><span>74 şema</span><span>API v0.1.0</span></div>
 </header>
 <main>
   <aside>
     <input id="search" type="search" placeholder="Endpoint veya şema ara…" aria-label="Dokümanda ara">
-    <a href="#genel">Genel bakış</a><a href="#hatalar">Hata cevapları</a><a href="#operasyonel">Operasyonel uçlar</a><a href="#grup-sistem">Sistem <span>3</span></a><a href="#grup-kimlik-dogrulama">Kimlik doğrulama <span>5</span></a><a href="#grup-kullanicilar">Kullanıcılar <span>1</span></a><a href="#grup-tarlalar">Tarlalar <span>5</span></a><a href="#grup-uretim-donemleri">Üretim Dönemleri <span>3</span></a><a href="#grup-hava-durumu">Hava Durumu <span>1</span></a><a href="#grup-gunluk-gorevler">Günlük Görevler <span>5</span></a><a href="#grup-faaliyetler-ve-tarla-gunlugu">Faaliyetler ve Tarla Günlüğü <span>8</span></a><a href="#grup-medya">Medya <span>2</span></a><a href="#grup-sorun-bildirme-ve-vakalar">Sorun Bildirme ve Vakalar <span>6</span></a><a href="#grup-bildirimler">Bildirimler <span>4</span></a><a href="#grup-pilot-olcumu-ve-geri-bildirim">Pilot Ölçümü ve Geri Bildirim <span>4</span></a>
-    <a href="#semalar">Model şemaları <span>73</span></a>
+    <a href="#genel">Genel bakış</a><a href="#hatalar">Hata cevapları</a><a href="#operasyonel">Operasyonel uçlar</a><a href="#grup-sistem">Sistem <span>3</span></a><a href="#grup-kimlik-dogrulama">Kimlik doğrulama <span>5</span></a><a href="#grup-kullanicilar">Kullanıcılar <span>1</span></a><a href="#grup-tarlalar">Tarlalar <span>5</span></a><a href="#grup-uretim-donemleri">Üretim Dönemleri <span>3</span></a><a href="#grup-hava-durumu">Hava Durumu <span>1</span></a><a href="#grup-gunluk-gorevler">Günlük Görevler <span>5</span></a><a href="#grup-faaliyetler-ve-tarla-gunlugu">Faaliyetler ve Tarla Günlüğü <span>8</span></a><a href="#grup-medya">Medya <span>2</span></a><a href="#grup-sorun-bildirme-ve-vakalar">Sorun Bildirme ve Vakalar <span>6</span></a><a href="#grup-bildirimler">Bildirimler <span>4</span></a><a href="#grup-pilot-olcumu-ve-geri-bildirim">Pilot Ölçümü ve Geri Bildirim <span>4</span></a><a href="#grup-yapay-zeka">Yapay Zeka <span>1</span></a>
+    <a href="#semalar">Model şemaları <span>74</span></a>
   </aside>
   <div>
     <section id="genel">
@@ -1397,8 +1397,8 @@
     <h4>Parametreler</h4><div class="table-wrap"><table><thead><tr><th>Ad</th><th>Konum</th><th>Tip</th><th>Zorunlu</th><th>Kurallar</th></tr></thead><tbody><tr><td><code>media_id</code></td><td>path</td><td>string (uuid)</td><td>Evet</td><td>—</td></tr></tbody></table></div>
 
     <h4>Yanıtlar</h4>
-    <div class="table-wrap"><table><thead><tr><th>HTTP</th><th>Açıklama</th><th>Gövde</th></tr></thead><tbody><tr><td><code>200</code></td><td>Başarılı yanıt</td><td>Boş gövde</td></tr><tr><td><code>422</code></td><td>Doğrulama hatası</td><td>application/json · HTTPValidationError</td></tr></tbody></table></div>
-
+    <div class="table-wrap"><table><thead><tr><th>HTTP</th><th>Açıklama</th><th>Gövde</th></tr></thead><tbody><tr><td><code>200</code></td><td>Başarılı yanıt</td><td>application/json · object</td></tr><tr><td><code>422</code></td><td>Doğrulama hatası</td><td>application/json · HTTPValidationError</td></tr></tbody></table></div>
+    <h4>Örnek başarılı yanıt (200)</h4><div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>{}</pre></div>
     <h4>cURL</h4>
     <div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>curl -X GET &#x27;http://localhost:8100/api/v1/media/{media_id}/content&#x27; \
   -H &#x27;Authorization: Bearer &lt;access_token&gt;&#x27;</pre></div>
@@ -2091,6 +2091,41 @@
     <div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>curl -X GET &#x27;http://localhost:8100/api/v1/pilot/metrics&#x27; \
   -H &#x27;Authorization: Bearer &lt;access_token&gt;&#x27;</pre></div>
   </details>
+</article></section><section id="grup-yapay-zeka"><div class="section-title"><h2>Yapay Zeka</h2><span>1 işlem</span></div>
+<article class="endpoint-card" id="endpoint-chat-api-v1-ai-chat-post" data-search="yapay zeka post /api/v1/ai/chat tarla bağlamında ai sohbeti başlat veya sürdür bearer token">
+  <div class="endpoint-head">
+    <span class="method post">POST</span>
+    <code class="path">/api/v1/ai/chat</code>
+    <span class="access">Bearer token</span>
+  </div>
+  <h3>Tarla bağlamında AI sohbeti başlat veya sürdür</h3>
+  <p class="operation-id">Operation ID: <code>chat_api_v1_ai_chat_post</code></p>
+  <details>
+    <summary>Request, response ve örnekleri göster</summary>
+
+    <h4>Request body</h4><p><code>application/json</code> · <a href="#schema-">object</a></p><div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>{
+  &quot;message&quot;: &quot;string&quot;,
+  &quot;field_id&quot;: &quot;string&quot;,
+  &quot;conversation_id&quot;: &quot;string&quot;,
+  &quot;history&quot;: &quot;string&quot;
+}</pre></div>
+    <h4>Yanıtlar</h4>
+    <div class="table-wrap"><table><thead><tr><th>HTTP</th><th>Açıklama</th><th>Gövde</th></tr></thead><tbody><tr><td><code>200</code></td><td>Başarılı yanıt</td><td>application/json · AIChatResponse</td></tr></tbody></table></div>
+    <h4>Örnek başarılı yanıt (200)</h4><div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>{
+  &quot;reply&quot;: &quot;string&quot;,
+  &quot;conversation_id&quot;: &quot;string&quot;
+}</pre></div>
+    <h4>cURL</h4>
+    <div class="code"><button onclick="copyCode(this)">Kopyala</button><pre>curl -X POST &#x27;http://localhost:8100/api/v1/ai/chat&#x27; \
+  -H &#x27;Authorization: Bearer &lt;access_token&gt;&#x27; \
+  -H &#x27;Content-Type: application/json&#x27; \
+  --data-binary &#x27;{
+  &quot;message&quot;: &quot;string&quot;,
+  &quot;field_id&quot;: &quot;string&quot;,
+  &quot;conversation_id&quot;: &quot;string&quot;,
+  &quot;history&quot;: &quot;string&quot;
+}&#x27;</pre></div>
+  </details>
 </article></section>
     <section id="hatalar"><h2>Ortak Hata Cevapları</h2>
       <div class="table-wrap"><table><thead><tr><th>HTTP</th><th>Anlam</th><th>Tipik neden</th></tr></thead><tbody>
@@ -2098,7 +2133,11 @@
       </tbody></table></div>
     </section>
     <section id="operasyonel"><h2>Operasyonel Uçlar</h2><p><code>GET /health/live</code> süreç durumunu; <code>GET /health/ready</code> veritabanı ve Redis hazırlığını döndürür. <code>GET /metrics</code> etkin olduğunda Prometheus metni üretir ve public OpenAPI şemasında yer almaz.</p></section>
-    <section id="semalar"><div class="section-title"><h2>Model Şemaları</h2><span>73 şema</span></div>
+    <section id="semalar"><div class="section-title"><h2>Model Şemaları</h2><span>74 şema</span></div>
+<details class="schema-card" id="schema-aichatresponse" data-search="aichatresponse reply conversation_id">
+  <summary><code>AIChatResponse</code></summary>
+  <div class="table-wrap"><table><thead><tr><th>Alan</th><th>Tip</th><th>Zorunlu</th><th>Kurallar</th></tr></thead><tbody><tr><td><code>reply</code></td><td>string</td><td>Evet</td><td>—</td></tr><tr><td><code>conversation_id</code></td><td>string</td><td>Evet</td><td>—</td></tr></tbody></table></div>
+</details>
 <details class="schema-card" id="schema-activitycreate" data-search="activitycreate client_operation_id activity_type description occurred_at crop_period_id input_method duration_minutes amount unit photo_url voice_url voice_transcript performed_by cost">
   <summary><code>ActivityCreate</code></summary>
   <div class="table-wrap"><table><thead><tr><th>Alan</th><th>Tip</th><th>Zorunlu</th><th>Kurallar</th></tr></thead><tbody><tr><td><code>client_operation_id</code></td><td>string (uuid) | null</td><td>Hayır</td><td>Çevrimdışı tekrar gönderimlerini güvenle tekilleştiren istemci işlem kimliği.</td></tr><tr><td><code>activity_type</code></td><td>ActivityType</td><td>Evet</td><td>—</td></tr><tr><td><code>description</code></td><td>string</td><td>Evet</td><td>min uzunluk: `2`; maks uzunluk: `4000`</td></tr><tr><td><code>occurred_at</code></td><td>string (date-time)</td><td>Hayır</td><td>—</td></tr><tr><td><code>crop_period_id</code></td><td>string (uuid) | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>input_method</code></td><td>ActivitySource</td><td>Hayır</td><td>varsayılan: `MANUAL`</td></tr><tr><td><code>duration_minutes</code></td><td>integer | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>amount</code></td><td>number | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>unit</code></td><td>string | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>photo_url</code></td><td>string | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>voice_url</code></td><td>string | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>voice_transcript</code></td><td>string | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>performed_by</code></td><td>string | null</td><td>Hayır</td><td>—</td></tr><tr><td><code>cost</code></td><td>number | null</td><td>Hayır</td><td>—</td></tr></tbody></table></div>

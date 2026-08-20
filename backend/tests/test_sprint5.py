@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import Notification, NotificationStatus, WeatherSnapshot
-from app.push import create_push_provider
+from app.push import FirebasePushProvider, PushProviderError, create_push_provider
 from app.weather import WeatherPoint, serialize_weather_points
 from tests.conftest import MemoryPushProvider
 from tests.test_cases import case_payload, headers_for, upload_image
@@ -258,4 +258,63 @@ def test_push_provider_rejects_unknown_or_insecure_gateway():
                 push_gateway_url="http://push.example.test/send",
                 push_gateway_token="secret",
             )
+        )
+
+
+def test_firebase_push_provider_sends_notification_and_data():
+    sent: list[dict[str, object]] = []
+
+    class FakeMessaging:
+        @staticmethod
+        def Message(**kwargs):
+            return kwargs
+
+        @staticmethod
+        def Notification(**kwargs):
+            return kwargs
+
+        @staticmethod
+        def send(message, app):
+            sent.append({"message": message, "app": app})
+            return "projects/tarla/messages/42"
+
+    provider = FirebasePushProvider(app=object(), messaging_module=FakeMessaging)
+
+    message_id = provider.send(
+        device_token="fcm-token",
+        title="Yeni görev",
+        body="Sulama kontrolü",
+        data={"task_id": "task-1"},
+    )
+
+    assert message_id == "projects/tarla/messages/42"
+    assert sent[0]["message"] == {
+        "token": "fcm-token",
+        "notification": {"title": "Yeni görev", "body": "Sulama kontrolü"},
+        "data": {"task_id": "task-1"},
+    }
+
+
+def test_firebase_push_provider_wraps_send_failures():
+    class FailingMessaging:
+        @staticmethod
+        def Message(**kwargs):
+            return kwargs
+
+        @staticmethod
+        def Notification(**kwargs):
+            return kwargs
+
+        @staticmethod
+        def send(message, app):
+            raise RuntimeError("unregistered token")
+
+    provider = FirebasePushProvider(app=object(), messaging_module=FailingMessaging)
+
+    with pytest.raises(PushProviderError, match="FCM"):
+        provider.send(
+            device_token="expired-token",
+            title="Başlık",
+            body="İçerik",
+            data={},
         )

@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import '../services/database_helper.dart';
 import '../services/api_client.dart';
+import '../services/firestore_farm_repository.dart';
 import '../models/tarla.dart';
 import '../services/sync_service.dart';
 import 'tarla_listesi_ekrani.dart';
@@ -12,54 +14,38 @@ class OzetEkrani extends StatefulWidget {
     required this.syncService,
     required this.apiClient,
     required this.onLogout,
+    required this.repository,
   });
 
   final SyncService syncService;
   final ApiClient apiClient;
   final Future<void> Function() onLogout;
+  final FirestoreFarmRepository repository;
 
   @override
   State<OzetEkrani> createState() => _OzetEkraniState();
 }
 
 class _OzetEkraniState extends State<OzetEkrani> {
-  int _tarlaSayisi = 0;
-  double _toplamDonum = 0;
-  bool _loading = true;
-  String? _loadWarning;
+  StreamSubscription<FirestoreWriteFailure>? _writeFailureSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadVeriler();
+    _writeFailureSubscription = widget.repository.writeFailures.listen((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Çevrimdışı kaydedilen işlem reddedildi. Bağlantınızı ve yetkinizi kontrol edip yeniden deneyin.'),
+        ),
+      );
+    });
   }
 
-  Future<void> _loadVeriler() async {
-    String? warning;
-    try {
-      final response = await widget.apiClient.getJson(
-        '/farms?limit=100&offset=0',
-      );
-      final items = response['items'] is List
-          ? response['items'] as List
-          : const [];
-      final farms = items
-          .whereType<Map>()
-          .map((item) => Tarla.fromApi(Map<String, dynamic>.from(item)))
-          .toList();
-      await DatabaseHelper.instance.upsertTarlalar(farms);
-    } on ApiException catch (error) {
-      warning = '${error.message} Cihazdaki son tarla listesi gösteriliyor.';
-    }
-    final sayi = await DatabaseHelper.instance.getTarlaSayisi();
-    final donum = await DatabaseHelper.instance.getToplamDonum();
-    if (!mounted) return;
-    setState(() {
-      _tarlaSayisi = sayi;
-      _toplamDonum = donum;
-      _loading = false;
-      _loadWarning = warning;
-    });
+  @override
+  void dispose() {
+    _writeFailureSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -78,7 +64,6 @@ class _OzetEkraniState extends State<OzetEkrani> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
-            await _loadVeriler();
             await widget.syncService.syncNow();
           },
           child: ListView(
@@ -96,19 +81,6 @@ class _OzetEkraniState extends State<OzetEkrani> {
                 'Kayıtlarınız bağlantı olmasa da cihazda saklanır ve daha sonra gönderilir.',
               ),
               const SizedBox(height: 16),
-              if (_loadWarning != null) ...[
-                Semantics(
-                  liveRegion: true,
-                  child: Card(
-                    color: Theme.of(context).colorScheme.tertiaryContainer,
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(_loadWarning!),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
               ValueListenableBuilder<SyncState>(
                 valueListenable: widget.syncService.state,
                 builder: (context, state, _) => _SyncBanner(
@@ -117,21 +89,26 @@ class _OzetEkraniState extends State<OzetEkrani> {
                 ),
               ),
               const SizedBox(height: 16),
-              if (_loading)
-                const Center(child: CircularProgressIndicator())
-              else
-                LayoutBuilder(
+              StreamBuilder<List<Tarla>>(
+                stream: widget.repository.watchFarms(widget.repository.uid),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                  if (snapshot.hasError) return const Text('Tarla özeti yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.');
+                  final farms = snapshot.data ?? const <Tarla>[];
+                  final count = farms.length;
+                  final total = farms.fold<double>(0, (sum, farm) => sum + farm.size);
+                  return LayoutBuilder(
                   builder: (context, constraints) {
                     final vertical = constraints.maxWidth < 360;
                     final cards = [
                       _StatCard(
                         label: 'Toplam tarla',
-                        value: '$_tarlaSayisi',
+                        value: '$count',
                         icon: Icons.landscape_outlined,
                       ),
                       _StatCard(
                         label: 'Toplam alan',
-                        value: '${_toplamDonum.toStringAsFixed(1)} dönüm',
+                        value: '${total.toStringAsFixed(1)} hektar',
                         icon: Icons.straighten,
                       ),
                     ];
@@ -152,7 +129,9 @@ class _OzetEkraniState extends State<OzetEkrani> {
                       ],
                     );
                   },
-                ),
+                  );
+                },
+              ),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () async {
@@ -160,12 +139,11 @@ class _OzetEkraniState extends State<OzetEkrani> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => TarlaListesiEkrani(
-                        apiClient: widget.apiClient,
                         syncService: widget.syncService,
+                        repository: widget.repository,
                       ),
                     ),
                   );
-                  await _loadVeriler();
                 },
                 icon: const Icon(Icons.grass),
                 label: const Text('Tarlalarımı görüntüle'),

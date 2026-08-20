@@ -3,7 +3,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/faaliyet.dart';
-import '../services/database_helper.dart';
+import '../services/firestore_farm_repository.dart';
 import '../services/sync_service.dart';
 
 class FaaliyetEklemeEkrani extends StatefulWidget {
@@ -11,10 +11,12 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
     super.key,
     required this.tarlaId,
     required this.syncService,
+    required this.repository,
   });
 
   final String tarlaId;
   final SyncService syncService;
+  final FirestoreFarmRepository repository;
 
   @override
   State<FaaliyetEklemeEkrani> createState() => _FaaliyetEklemeEkraniState();
@@ -26,6 +28,8 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   final _speechToText = SpeechToText();
   bool _isListening = false;
   bool _saving = false;
+  bool _usedVoiceInput = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -60,6 +64,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       listenOptions: SpeechListenOptions(localeId: 'tr_TR'),
       onResult: (result) {
         _faaliyetController.text = result.recognizedWords;
+        _usedVoiceInput = true;
         if (mounted && result.finalResult) setState(() => _isListening = false);
       },
     );
@@ -75,10 +80,16 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       note: '',
       timestamp: DateTime.now(),
       isCompleted: true,
+      inputMethod: _usedVoiceInput ? 'VOICE' : 'MANUAL',
     );
-    await DatabaseHelper.instance.insertFaaliyetWithSync(activity);
-    await widget.syncService.syncNow();
-    if (mounted) Navigator.pop(context, true);
+    try {
+      await widget.repository.createActivity(widget.tarlaId, activity);
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Faaliyet kaydedilemedi. Yetkinizi ve bağlantınızı kontrol edin.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -92,7 +103,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
             padding: const EdgeInsets.all(20),
             children: [
               const Text(
-                'Bağlantınız olmasa da kayıt cihazda korunur ve internet geldiğinde otomatik gönderilir.',
+                'Bağlantınız olmasa da kayıt güvenle saklanır ve bağlantı gelince eşitlenir.',
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -118,6 +129,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                     ? null
                     : 'Faaliyet detayını yazın veya sesle ekleyin.',
               ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+              ],
               const SizedBox(height: 20),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,

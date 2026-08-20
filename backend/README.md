@@ -46,6 +46,26 @@ ruff check app tests
 production ortamlarında kapalı tutulmalı, `request-otp` akışı gerçek SMS
 sağlayıcısına bağlanmalıdır.
 
+## Firebase Cloud Messaging (FCM)
+
+Mobil uygulama Firebase tokenını `/api/v1/notifications/devices` adresine
+kaydeder. Gerçek cihaz bildirimi için Firebase Console'dan bir servis hesabı
+JSON dosyası oluşturun ve dosyayı `backend/secrets/firebase-service-account.json`
+olarak koyun. Bu klasördeki JSON dosyaları git tarafından izlenmez.
+
+Ardından `.env` dosyasında aşağıdakileri ayarlayın:
+
+```env
+PUSH_PROVIDER=firebase
+FIREBASE_SERVICE_ACCOUNT_PATH=/run/secrets/firebase-service-account.json
+FIREBASE_PROJECT_ID=Firebase-proje-kimliğiniz
+```
+
+Docker, `backend/secrets` klasörünü container içinde salt-okunur
+`/run/secrets` adresine bağlar. Firebase geçersiz veya süresi dolmuş bir cihaz
+tokenı döndürürse backend ilgili tokenı pasifleştirir; kullanıcı uygulamayı
+yeniden açtığında mobil istemci güncel tokenı tekrar kaydeder.
+
 ## Hava durumu sağlayıcısı
 
 Varsayılan `WEATHER_PROVIDER=open_meteo` adaptörü tarlanın koordinatlarına göre

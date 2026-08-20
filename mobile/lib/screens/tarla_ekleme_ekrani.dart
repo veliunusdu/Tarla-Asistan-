@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/tarla.dart';
-import '../services/api_client.dart';
-import '../services/database_helper.dart';
+import '../services/firestore_farm_repository.dart';
 
 class TarlaEklemeEkrani extends StatefulWidget {
-  const TarlaEklemeEkrani({super.key, required this.apiClient});
+  const TarlaEklemeEkrani({super.key, required this.repository});
 
-  final ApiClient apiClient;
+  final FirestoreFarmRepository repository;
 
   @override
   State<TarlaEklemeEkrani> createState() => _TarlaEklemeEkraniState();
@@ -40,25 +40,24 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
       _error = null;
     });
     try {
-      final response = await widget.apiClient.postJson('/farms', {
-        'name': _nameController.text.trim(),
-        'latitude': _number(_latitudeController.text),
-        'longitude': _number(_longitudeController.text),
-        'size_in_hectares': _number(_sizeController.text),
-        'irrigation_method': 'OTHER',
-        'crop_type': _cropType,
-        'planted_at': DateTime.now().toIso8601String().split('T').first,
-      });
-      final farmJson = response['farm'];
-      if (farmJson is! Map) {
-        throw const ApiException('Tarla kaydedildi ancak cevap okunamadı.');
-      }
-      await DatabaseHelper.instance.insertTarla(
-        Tarla.fromApi(Map<String, dynamic>.from(farmJson)),
+      await widget.repository.createFarm(
+        Tarla(
+          id: const Uuid().v4(),
+          name: _nameController.text.trim(),
+          latitude: _number(_latitudeController.text),
+          longitude: _number(_longitudeController.text),
+          size: _number(_sizeController.text),
+          cropType: _cropType,
+          plantingDate: DateTime.now(),
+        ),
       );
       if (mounted) Navigator.pop(context, true);
-    } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => _error =
+              'Tarla kaydedilemedi. Yetkinizi ve bağlantınızı kontrol edin.',
+        );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -85,7 +84,7 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
             padding: const EdgeInsets.all(16),
             children: [
               const Text(
-                'Tarla eklemek için bağlantı gerekir. Faaliyet kayıtları daha sonra çevrimdışı yapılabilir.',
+                'Tarla kayıtları çevrimdışıyken de güvenle saklanır; bağlantı gelince eşitlenir.',
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -93,9 +92,12 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                 enabled: !_loading,
                 textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(labelText: 'Tarla adı'),
-                validator: (value) => (value ?? '').trim().length >= 2
-                    ? null
-                    : 'En az 2 karakter girin.',
+                validator: (value) {
+                  final length = (value ?? '').trim().length;
+                  if (length < 2) return 'En az 2 karakter girin.';
+                  if (length > 120) return 'En fazla 120 karakter girin.';
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(

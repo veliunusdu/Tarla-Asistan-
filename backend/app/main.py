@@ -10,12 +10,15 @@ from redis import Redis
 from sqlalchemy import text
 
 from app.config import get_settings
+from app.ai_chat import create_ai_chat_provider
+from app.media_storage import create_media_storage
 from app.database import SessionLocal
 from app.otp import RedisOtpStore
 from app.observability import RequestMetrics, configure_logging
 from app.push import create_push_provider
 from app.routers import (
     activities,
+    ai,
     auth,
     cases,
     farms,
@@ -42,6 +45,8 @@ async def lifespan(app: FastAPI):
     app.state.otp_store = RedisOtpStore(redis_client)
     app.state.weather_provider = create_weather_provider(settings)
     app.state.push_provider = create_push_provider(settings)
+    app.state.ai_chat_provider = create_ai_chat_provider(settings)
+    app.state.media_storage = create_media_storage(settings)
     yield
     redis_client.close()
 
@@ -146,3 +151,4 @@ app.include_router(media.router, prefix=settings.api_v1_prefix)
 app.include_router(cases.router, prefix=settings.api_v1_prefix)
 app.include_router(notifications.router, prefix=settings.api_v1_prefix)
 app.include_router(pilot.router, prefix=settings.api_v1_prefix)
+app.include_router(ai.router, prefix=settings.api_v1_prefix)

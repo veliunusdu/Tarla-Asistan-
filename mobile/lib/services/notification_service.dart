@@ -6,7 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config/app_config.dart';
+import '../firebase_options.dart';
 import '../models/notification_target.dart';
 import 'api_client.dart';
 
@@ -14,13 +14,19 @@ enum PushState { unavailable, notRequested, authorized, denied, failed }
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  if (!AppConfig.firebaseConfigured) return;
-  await Firebase.initializeApp(options: AppConfig.firebaseOptions);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 }
 
 Future<bool> initializeFirebaseMessaging() async {
-  if (!AppConfig.firebaseConfigured) return false;
-  await Firebase.initializeApp(options: AppConfig.firebaseOptions);
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   return true;
 }
@@ -43,16 +49,26 @@ class NotificationService {
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   StreamSubscription<String>? _tokenSubscription;
   bool _initialized = false;
+  Future<void>? _initializing;
 
   Future<void> initializeAfterLogin() async {
-    if (_initialized) {
-      await registerCurrentToken();
-      return;
-    }
+    if (_initialized) return;
+    final inFlight = _initializing;
+    if (inFlight != null) return inFlight;
     if (!_firebaseReady) {
       state.value = PushState.unavailable;
       return;
     }
+    final initialization = _initializeAfterLogin();
+    _initializing = initialization;
+    try {
+      await initialization;
+    } finally {
+      _initializing = null;
+    }
+  }
+
+  Future<void> _initializeAfterLogin() async {
     _initialized = true;
     final messaging = FirebaseMessaging.instance;
     final prefs = await SharedPreferences.getInstance();

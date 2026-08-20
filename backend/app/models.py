@@ -175,6 +175,9 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     phone_number: Mapped[str] = mapped_column(String(20), unique=True)
+    firebase_uid: Mapped[str | None] = mapped_column(
+        String(128), unique=True, index=True, nullable=True
+    )
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role"), default=UserRole.FARMER, index=True
     )

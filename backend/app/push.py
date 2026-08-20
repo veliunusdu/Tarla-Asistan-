@@ -1,5 +1,6 @@
 import uuid
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
 
 import httpx
 
@@ -7,7 +8,9 @@ from app.config import Settings
 
 
 class PushProviderError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, invalid_device_token: bool = False):
+        super().__init__(message)
+        self.invalid_device_token = invalid_device_token
 
 
 class PushProvider(Protocol):
@@ -72,8 +75,79 @@ class HttpPushProvider:
         return str(message_id)
 
 
+class FirebasePushProvider:
+    """Firebase Cloud Messaging adapter for Android and iOS device tokens."""
+
+    def __init__(
+        self,
+        *,
+        app: object,
+        messaging_module: Any,
+        invalid_token_error_types: tuple[type[Exception], ...] = (),
+    ):
+        self.app = app
+        self.messaging = messaging_module
+        self.invalid_token_error_types = invalid_token_error_types
+
+    def send(
+        self,
+        *,
+        device_token: str,
+        title: str,
+        body: str,
+        data: dict[str, str],
+    ) -> str:
+        message = self.messaging.Message(
+            token=device_token,
+            notification=self.messaging.Notification(title=title, body=body),
+            data=data,
+        )
+        try:
+            return str(self.messaging.send(message, app=self.app))
+        except Exception as exc:
+            if self.invalid_token_error_types and isinstance(
+                exc, self.invalid_token_error_types
+            ):
+                raise PushProviderError(
+                    "FCM cihaz tokenı artık geçerli değil.", invalid_device_token=True
+                ) from exc
+            raise PushProviderError("FCM bildirimi gönderilemedi.") from exc
+
+
+def create_firebase_push_provider(settings: Settings) -> FirebasePushProvider:
+    if not settings.firebase_service_account_path:
+        raise ValueError(
+            "Firebase push sağlayıcısı için FIREBASE_SERVICE_ACCOUNT_PATH zorunludur."
+        )
+    credential_path = Path(settings.firebase_service_account_path)
+    if not credential_path.is_file():
+        raise ValueError("Firebase servis hesabı dosyası bulunamadı.")
+    try:
+        import firebase_admin
+        from firebase_admin import credentials, messaging
+    except ImportError as exc:
+        raise ValueError("firebase-admin paketi kurulu değil.") from exc
+    options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
+    try:
+        app = firebase_admin.initialize_app(
+            credentials.Certificate(str(credential_path)), options=options, name="tarla-fcm"
+        )
+    except ValueError:
+        app = firebase_admin.get_app("tarla-fcm")
+    return FirebasePushProvider(
+        app=app,
+        messaging_module=messaging,
+        invalid_token_error_types=(
+            messaging.UnregisteredError,
+            messaging.SenderIdMismatchError,
+        ),
+    )
+
+
 def create_push_provider(settings: Settings) -> PushProvider:
     provider_name = settings.push_provider.casefold()
+    if provider_name == "firebase":
+        return create_firebase_push_provider(settings)
     if provider_name == "http":
         if not settings.push_gateway_url or not settings.push_gateway_token:
             raise ValueError(
@@ -89,4 +163,4 @@ def create_push_provider(settings: Settings) -> PushProvider:
         )
     if provider_name == "noop":
         return NoopPushProvider()
-    raise ValueError("PUSH_PROVIDER yalnızca 'noop' veya 'http' olabilir.")
+    raise ValueError("PUSH_PROVIDER yalnızca 'noop', 'http' veya 'firebase' olabilir.")

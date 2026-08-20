@@ -40,7 +40,20 @@ services:
       CORS_ORIGINS: http://localhost:3000,http://localhost:${WEB_PORT:-3000}
       MEDIA_STORAGE_PATH: /app/data/media
       MEDIA_MAX_UPLOAD_MB: ${MEDIA_MAX_UPLOAD_MB:-15}
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      AI_CHAT_PROVIDER: ${AI_CHAT_PROVIDER:-local}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DEEPSEEK_TIMEOUT_SECONDS: ${DEEPSEEK_TIMEOUT_SECONDS:-20}
       PUSH_PROVIDER: ${PUSH_PROVIDER:-noop}
+      FIREBASE_AUTH_ENABLED: ${FIREBASE_AUTH_ENABLED:-false}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/run/secrets/firebase-service-account.json}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       PUSH_GATEWAY_URL: ${PUSH_GATEWAY_URL:-}
       PUSH_GATEWAY_TOKEN: ${PUSH_GATEWAY_TOKEN:-}
       PUSH_TIMEOUT_SECONDS: ${PUSH_TIMEOUT_SECONDS:-8}
@@ -48,6 +61,7 @@ services:
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
     volumes:
       - media_data:/app/data/media
+      - ./backend/secrets:/run/secrets:ro
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

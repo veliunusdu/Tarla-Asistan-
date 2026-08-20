@@ -108,6 +108,8 @@ def dispatch_notification(
             )
         except PushProviderError as exc:
             errors.append(str(exc))
+            if exc.invalid_device_token:
+                device.active = False
     if message_ids:
         notification.status = NotificationStatus.SENT
         notification.provider_message_id = message_ids[0]
