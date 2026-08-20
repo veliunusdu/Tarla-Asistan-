@@ -7,8 +7,10 @@ from datetime import timedelta
 import pytest
 from firebase_admin import auth, exceptions as firebase_exceptions
 from google.api_core import exceptions as google_exceptions
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from app.config import Settings
 from app.firebase_account import (
     AccountDeletionProviderError,
     FirebaseAdminAccountGateway,
@@ -22,6 +24,11 @@ from app.models import (
     UserRole,
     utcnow,
 )
+
+
+class FakeAdminApp:
+    def __init__(self, project_id="demo2-c4265"):
+        self.project_id = project_id
 
 
 class FakeDocumentSnapshot:
@@ -110,9 +117,11 @@ class FakeFirestore:
         self.updated = {}
         self.deleted_documents = []
         self.batch_sizes = []
+        self.client_calls = 0
 
     def client(self, *, app, database_id):
-        assert app is not None
+        assert app.project_id == "demo2-c4265"
+        self.client_calls += 1
         self.database_id = database_id
         return FakeFirestoreClient(self)
 
@@ -144,7 +153,7 @@ class FakeAuth:
 def test_gateway_uses_named_database_and_anonymizes_owned_farms():
     fake = FakeFirestore(farms=[{"id": "farm-1", "ownerId": "uid-1"}])
     gateway = FirebaseAdminAccountGateway(
-        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+        app=FakeAdminApp(), auth_module=FakeAuth(), firestore_factory=fake.client
     )
 
     gateway.anonymize_firestore("uid-1", "anon-123")
@@ -163,7 +172,7 @@ def test_gateway_anonymizes_more_than_500_farms_in_bounded_batches():
         farms=[{"id": f"farm-{index}", "ownerId": "uid-1"} for index in range(501)]
     )
     gateway = FirebaseAdminAccountGateway(
-        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+        app=FakeAdminApp(), auth_module=FakeAuth(), firestore_factory=fake.client
     )
 
     gateway.anonymize_firestore("uid-1", "anon-123")
@@ -176,7 +185,7 @@ def test_gateway_anonymizes_more_than_500_farms_in_bounded_batches():
 def test_gateway_treats_missing_auth_user_as_idempotent_success():
     fake_auth = FakeAuth(missing=True)
     gateway = FirebaseAdminAccountGateway(
-        app=object(),
+        app=FakeAdminApp(),
         auth_module=fake_auth,
         firestore_factory=FakeFirestore().client,
     )
@@ -194,7 +203,7 @@ def test_gateway_maps_firestore_failure_without_provider_detail():
         stream_error=google_exceptions.ServiceUnavailable(provider_text)
     )
     gateway = FirebaseAdminAccountGateway(
-        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+        app=FakeAdminApp(), auth_module=FakeAuth(), firestore_factory=fake.client
     )
 
     with pytest.raises(AccountDeletionProviderError) as exc_info:
@@ -203,6 +212,8 @@ def test_gateway_maps_firestore_failure_without_provider_detail():
     assert exc_info.value.code == "FIRESTORE_UNAVAILABLE"
     assert str(exc_info.value) == "FIRESTORE_UNAVAILABLE"
     assert provider_text not in str(exc_info.value)
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
 
 
 @pytest.mark.parametrize("operation", ["revoke_tokens", "delete_auth_user"])
@@ -212,7 +223,7 @@ def test_gateway_maps_auth_failure_without_provider_detail(operation):
         error=firebase_exceptions.FirebaseError("UNAVAILABLE", provider_text)
     )
     gateway = FirebaseAdminAccountGateway(
-        app=object(),
+        app=FakeAdminApp(),
         auth_module=fake_auth,
         firestore_factory=FakeFirestore().client,
     )
@@ -223,6 +234,96 @@ def test_gateway_maps_auth_failure_without_provider_detail(operation):
     assert exc_info.value.code == "FIREBASE_AUTH_UNAVAILABLE"
     assert str(exc_info.value) == "FIREBASE_AUTH_UNAVAILABLE"
     assert provider_text not in str(exc_info.value)
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
+
+
+@pytest.mark.parametrize("operation", ["revoke_tokens", "delete_auth_user"])
+@pytest.mark.parametrize("raw_uid", ["", "uid/invalid", "u" * 129])
+def test_gateway_maps_auth_value_error_without_uid_in_exception_chain(
+    operation, raw_uid
+):
+    fake_auth = FakeAuth(error=ValueError(f"malformed Firebase UID: {raw_uid}"))
+    gateway = FirebaseAdminAccountGateway(
+        app=FakeAdminApp(),
+        auth_module=fake_auth,
+        firestore_factory=FakeFirestore().client,
+    )
+
+    with pytest.raises(AccountDeletionProviderError) as exc_info:
+        getattr(gateway, operation)(raw_uid)
+
+    assert exc_info.value.code == "FIREBASE_AUTH_UNAVAILABLE"
+    if raw_uid:
+        assert raw_uid not in str(exc_info.value)
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
+
+
+def test_gateway_sanitizes_named_app_initialization_failure(monkeypatch):
+    credential_text = "credential path and provider detail must not escape"
+    monkeypatch.setattr(
+        "app.firebase_account.get_firebase_auth_app",
+        lambda: (_ for _ in ()).throw(RuntimeError(credential_text)),
+    )
+
+    with pytest.raises(AccountDeletionProviderError) as exc_info:
+        FirebaseAdminAccountGateway(
+            auth_module=FakeAuth(), firestore_factory=FakeFirestore().client
+        )
+
+    assert exc_info.value.code == "FIREBASE_AUTH_UNAVAILABLE"
+    assert credential_text not in str(exc_info.value)
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
+
+
+@pytest.mark.parametrize("project_id", [None, "", "another-project"])
+def test_gateway_rejects_missing_or_wrong_admin_project_before_firestore(project_id):
+    fake = FakeFirestore()
+
+    with pytest.raises(AccountDeletionProviderError) as exc_info:
+        FirebaseAdminAccountGateway(
+            app=FakeAdminApp(project_id),
+            auth_module=FakeAuth(),
+            firestore_factory=fake.client,
+        )
+
+    assert exc_info.value.code == "FIREBASE_CONFIGURATION_INVALID"
+    assert str(exc_info.value) == "FIREBASE_CONFIGURATION_INVALID"
+    assert exc_info.value.__context__ is None
+    assert exc_info.value.__cause__ is None
+    assert fake.client_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("firebase_project_id", None),
+        ("firebase_project_id", ""),
+        ("firebase_project_id", "another-project"),
+        ("firestore_database_id", ""),
+        ("firestore_database_id", "another-database"),
+    ],
+)
+def test_account_deletion_settings_reject_alternate_firebase_targets(field, value):
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(**{field: value})
+
+    error_text = str(exc_info.value)
+    if value:
+        assert value not in error_text
+    elif value is None:
+        assert "input_value=None" not in error_text
+    else:
+        assert "input_value=''" not in error_text
+
+
+def test_account_deletion_settings_default_to_exact_firebase_targets():
+    settings = Settings()
+
+    assert settings.firebase_project_id == "demo2-c4265"
+    assert settings.firestore_database_id == "tarla-asistani"
 
 
 def test_secure_account_models_have_safe_defaults(db_session):
