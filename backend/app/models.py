@@ -286,11 +286,18 @@ class FirebaseLinkApproval(Base):
             postgresql_where=text("consumed_at IS NULL"),
             sqlite_where=text("consumed_at IS NULL"),
         ),
+        Index(
+            "uq_firebase_link_approvals_one_unconsumed_per_uid",
+            "firebase_uid",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL"),
+            sqlite_where=text("consumed_at IS NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
-    firebase_uid: Mapped[str] = mapped_column(String(128), unique=True)
+    firebase_uid: Mapped[str] = mapped_column(String(128))
     approved_by: Mapped[str] = mapped_column(String(120))
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

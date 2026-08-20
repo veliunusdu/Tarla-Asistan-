@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -52,56 +52,45 @@ def approve_firebase_link(
     if linked_user is not None:
         raise ManagementCommandError("Firebase kimliği zaten bağlı.")
 
-    identity_approval = db.scalar(
-        select(FirebaseLinkApproval).where(
-            FirebaseLinkApproval.firebase_uid == firebase_uid
-        )
-    )
-    if identity_approval is not None and identity_approval.user_id != user_id:
-        raise ManagementCommandError("Firebase kimliği için başka bir onay var.")
-
     active_approval = db.scalar(
         select(FirebaseLinkApproval).where(
-            FirebaseLinkApproval.user_id == user_id,
             FirebaseLinkApproval.consumed_at.is_(None),
             FirebaseLinkApproval.expires_at > now,
+            or_(
+                FirebaseLinkApproval.user_id == user_id,
+                FirebaseLinkApproval.firebase_uid == firebase_uid,
+            ),
         )
     )
     if active_approval is not None:
-        raise ManagementCommandError("Hedef kullanıcı için aktif bir onay var.")
+        raise ManagementCommandError(
+            "Hedef kullanıcı veya Firebase kimliği için aktif bir onay var."
+        )
     if dry_run:
         return None
 
     expired_approvals = (
         update(FirebaseLinkApproval)
         .where(
-            FirebaseLinkApproval.user_id == user_id,
             FirebaseLinkApproval.consumed_at.is_(None),
             FirebaseLinkApproval.expires_at <= now,
+            or_(
+                FirebaseLinkApproval.user_id == user_id,
+                FirebaseLinkApproval.firebase_uid == firebase_uid,
+            ),
         )
         .values(consumed_at=now)
         .execution_options(synchronize_session=False)
     )
-    if identity_approval is not None:
-        expired_approvals = expired_approvals.where(
-            FirebaseLinkApproval.id != identity_approval.id
-        )
     db.execute(expired_approvals)
-    if identity_approval is None:
-        approval = FirebaseLinkApproval(
-            user_id=user_id,
-            firebase_uid=firebase_uid,
-            approved_by=operator.strip(),
-            approved_at=now,
-            expires_at=now + timedelta(hours=24),
-        )
-        db.add(approval)
-    else:
-        approval = identity_approval
-        approval.approved_by = operator.strip()
-        approval.approved_at = now
-        approval.expires_at = now + timedelta(hours=24)
-        approval.consumed_at = None
+    approval = FirebaseLinkApproval(
+        user_id=user_id,
+        firebase_uid=firebase_uid,
+        approved_by=operator.strip(),
+        approved_at=now,
+        expires_at=now + timedelta(hours=24),
+    )
+    db.add(approval)
     try:
         db.commit()
     except IntegrityError:

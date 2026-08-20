@@ -1,12 +1,16 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from tempfile import gettempdir
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import update
+from sqlalchemy import create_engine, event, update
 from sqlalchemy.orm import sessionmaker
 
 from app.config import Settings
+from app.database import Base
 from app.dependencies import get_current_user
 from app.firebase_auth import FirebaseIdentity
 from app.firebase_mapping import resolve_firebase_user
@@ -21,6 +25,61 @@ from app.security import create_access_token
 
 PAST = datetime(2000, 1, 1, tzinfo=timezone.utc)
 FUTURE = datetime(2999, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def independent_database():
+    database_path = Path(gettempdir()) / f"firebase-races-{uuid4().hex}.sqlite3"
+    engine = create_engine(
+        f"sqlite+pysqlite:///{database_path}",
+        connect_args={"check_same_thread": False, "timeout": 5},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    try:
+        yield engine, sessions
+    finally:
+        engine.dispose()
+        for database_file in (
+            database_path,
+            Path(f"{database_path}-journal"),
+            Path(f"{database_path}-shm"),
+            Path(f"{database_path}-wal"),
+        ):
+            database_file.unlink(missing_ok=True)
+
+
+def run_after_committed_winner(
+    engine,
+    *,
+    pause_on: str,
+    loser,
+    winner,
+):
+    winner_ran = False
+
+    def commit_winner(connection, _cursor, statement, _parameters, _context, _many):
+        nonlocal winner_ran
+        if (
+            connection.info.get("race_actor") == "loser"
+            and statement.lstrip().upper().startswith(pause_on)
+        ):
+            connection.info["race_actor"] = "winner-committed"
+            connection.connection.commit()
+            winner()
+            winner_ran = True
+
+    event.listen(engine, "before_cursor_execute", commit_winner)
+    try:
+        result = loser()
+    finally:
+        event.remove(engine, "before_cursor_execute", commit_winner)
+    assert winner_ran is True
+    return result
 
 
 def add_approved_expert(
@@ -210,122 +269,172 @@ def test_legacy_jwt_mapping_rejects_inactive_accounts(
 
 
 def test_new_farmer_unique_race_recovers_winner_from_independent_session(
-    db_session, monkeypatch
+    independent_database,
 ):
-    independent_session = sessionmaker(
-        bind=db_session.bind,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-    original_commit = db_session.commit
-    raced = False
+    engine, sessions = independent_database
 
-    def commit_after_winner():
-        nonlocal raced
-        if not raced:
-            raced = True
-            with independent_session() as winner:
-                winner.add(
-                    User(
-                        phone_number="test-phone-race-winner",
-                        firebase_uid="farmer-identity-race",
-                        role=UserRole.FARMER,
-                    )
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return resolve(
+                loser,
+                uid="farmer-identity-race",
+                phone_number="test-phone-race-loser",
+            )
+
+    def win_race():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.add(
+                User(
+                    phone_number="test-phone-race-winner",
+                    firebase_uid="farmer-identity-race",
+                    role=UserRole.FARMER,
                 )
-                winner.commit()
-        return original_commit()
+            )
+            winner.commit()
 
-    monkeypatch.setattr(db_session, "commit", commit_after_winner)
-
-    resolved = resolve(
-        db_session,
-        uid="farmer-identity-race",
-        phone_number="test-phone-race-loser",
+    resolved = run_after_committed_winner(
+        engine,
+        pause_on="INSERT INTO USERS",
+        loser=lose_race,
+        winner=win_race,
     )
 
-    assert raced is True
     assert resolved.phone_number == "test-phone-race-winner"
 
 
 def test_farmer_link_race_recovers_same_winner_from_independent_session(
-    db_session, monkeypatch
+    independent_database,
 ):
-    farmer = User(phone_number="test-phone-farmer-a", role=UserRole.FARMER)
-    db_session.add(farmer)
-    db_session.commit()
-    independent_session = sessionmaker(
-        bind=db_session.bind,
-        autoflush=False,
-        expire_on_commit=False,
+    engine, sessions = independent_database
+    with sessions() as setup:
+        farmer = User(phone_number="test-phone-farmer-a", role=UserRole.FARMER)
+        setup.add(farmer)
+        setup.commit()
+        farmer_id = farmer.id
+        farmer_phone = farmer.phone_number
+
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return resolve(
+                loser,
+                uid="farmer-identity-race",
+                phone_number=farmer_phone,
+            )
+
+    def win_race():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.execute(
+                update(User)
+                .where(User.id == farmer_id)
+                .values(firebase_uid="farmer-identity-race")
+            )
+            winner.commit()
+
+    resolved = run_after_committed_winner(
+        engine,
+        pause_on="UPDATE USERS",
+        loser=lose_race,
+        winner=win_race,
     )
-    original_execute = db_session.execute
-    raced = False
 
-    def execute_after_winner(statement, *args, **kwargs):
-        nonlocal raced
-        if not raced and isinstance(statement, type(update(User))):
-            raced = True
-            with independent_session() as winner:
-                winner.execute(
-                    update(User)
-                    .where(User.id == farmer.id)
-                    .values(firebase_uid="farmer-identity-race")
-                )
-                winner.commit()
-        return original_execute(statement, *args, **kwargs)
-
-    monkeypatch.setattr(db_session, "execute", execute_after_winner)
-
-    resolved = resolve(
-        db_session,
-        uid="farmer-identity-race",
-        phone_number=farmer.phone_number,
-    )
-
-    assert raced is True
-    assert resolved.id == farmer.id
+    assert resolved.id == farmer_id
     assert resolved.firebase_uid == "farmer-identity-race"
 
 
-def test_agronomist_approval_race_is_idempotent_across_sessions(
-    db_session, monkeypatch
+def test_farmer_role_transition_race_cannot_bypass_expert_approval(
+    independent_database,
 ):
-    expert, approval = add_approved_expert(db_session)
-    independent_session = sessionmaker(
-        bind=db_session.bind,
-        autoflush=False,
-        expire_on_commit=False,
+    engine, sessions = independent_database
+    with sessions() as setup:
+        farmer = User(phone_number="test-phone-role-race", role=UserRole.FARMER)
+        setup.add(farmer)
+        setup.commit()
+        farmer_id = farmer.id
+        farmer_phone = farmer.phone_number
+
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return resolve(
+                loser,
+                uid="expert-identity-role-race",
+                phone_number=farmer_phone,
+            )
+
+    def promote_to_expert():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.execute(
+                update(User)
+                .where(User.id == farmer_id)
+                .values(role=UserRole.AGRONOMIST)
+            )
+            winner.commit()
+
+    with pytest.raises(HTTPException) as error:
+        run_after_committed_winner(
+            engine,
+            pause_on="UPDATE USERS",
+            loser=lose_race,
+            winner=promote_to_expert,
+        )
+
+    assert error.value.status_code == 409
+    assert farmer_phone not in str(error.value.detail)
+    assert "expert-identity-role-race" not in str(error.value.detail)
+    with sessions() as verification:
+        promoted = verification.get(User, farmer_id)
+        assert promoted.role is UserRole.AGRONOMIST
+        assert promoted.firebase_uid is None
+
+
+def test_agronomist_approval_race_is_idempotent_across_sessions(
+    independent_database,
+):
+    engine, sessions = independent_database
+    with sessions() as setup:
+        expert, approval = add_approved_expert(setup)
+        expert_id = expert.id
+        expert_phone = expert.phone_number
+        approval_id = approval.id
+        approval_uid = approval.firebase_uid
+
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return resolve(
+                loser,
+                uid=approval_uid,
+                phone_number=expert_phone,
+            )
+
+    def win_race():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.execute(
+                update(User)
+                .where(User.id == expert_id)
+                .values(firebase_uid=approval_uid)
+            )
+            winner.execute(
+                update(FirebaseLinkApproval)
+                .where(FirebaseLinkApproval.id == approval_id)
+                .values(consumed_at=datetime.now(timezone.utc))
+            )
+            winner.commit()
+
+    resolved = run_after_committed_winner(
+        engine,
+        pause_on="UPDATE USERS",
+        loser=lose_race,
+        winner=win_race,
     )
-    original_execute = db_session.execute
-    raced = False
 
-    def execute_after_winner(statement, *args, **kwargs):
-        nonlocal raced
-        if not raced and isinstance(statement, type(update(User))):
-            raced = True
-            with independent_session() as winner:
-                winner.execute(
-                    update(User)
-                    .where(User.id == expert.id)
-                    .values(firebase_uid=approval.firebase_uid)
-                )
-                winner.execute(
-                    update(FirebaseLinkApproval)
-                    .where(FirebaseLinkApproval.id == approval.id)
-                    .values(consumed_at=datetime.now(timezone.utc))
-                )
-                winner.commit()
-        return original_execute(statement, *args, **kwargs)
-
-    monkeypatch.setattr(db_session, "execute", execute_after_winner)
-
-    resolved = resolve(
-        db_session,
-        uid=approval.firebase_uid,
-        phone_number=expert.phone_number,
-    )
-
-    assert raced is True
-    assert resolved.id == expert.id
-    db_session.refresh(approval)
-    assert approval.consumed_at is not None
+    assert resolved.id == expert_id
+    with sessions() as verification:
+        consumed = verification.get(FirebaseLinkApproval, approval_id)
+        assert consumed.consumed_at is not None

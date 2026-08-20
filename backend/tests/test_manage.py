@@ -1,10 +1,14 @@
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from tempfile import gettempdir
+from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import sessionmaker
 
+from app.database import Base
 from app.manage import ManagementCommandError, approve_firebase_link, main
 from app.models import (
     AccountStatus,
@@ -17,6 +21,61 @@ from app.models import (
 TEST_NOW = datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture
+def independent_database():
+    database_path = Path(gettempdir()) / f"approval-races-{uuid4().hex}.sqlite3"
+    engine = create_engine(
+        f"sqlite+pysqlite:///{database_path}",
+        connect_args={"check_same_thread": False, "timeout": 5},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    try:
+        yield engine, sessions
+    finally:
+        engine.dispose()
+        for database_file in (
+            database_path,
+            Path(f"{database_path}-journal"),
+            Path(f"{database_path}-shm"),
+            Path(f"{database_path}-wal"),
+        ):
+            database_file.unlink(missing_ok=True)
+
+
+def run_after_committed_winner(
+    engine,
+    *,
+    pause_on: str,
+    loser,
+    winner,
+):
+    winner_ran = False
+
+    def commit_winner(connection, _cursor, statement, _parameters, _context, _many):
+        nonlocal winner_ran
+        if (
+            connection.info.get("race_actor") == "loser"
+            and statement.lstrip().upper().startswith(pause_on)
+        ):
+            connection.info["race_actor"] = "winner-committed"
+            connection.connection.commit()
+            winner()
+            winner_ran = True
+
+    event.listen(engine, "before_cursor_execute", commit_winner)
+    try:
+        result = loser()
+    finally:
+        event.remove(engine, "before_cursor_execute", commit_winner)
+    assert winner_ran is True
+    return result
+
+
 def add_user(
     db_session,
     *,
@@ -25,7 +84,7 @@ def add_user(
     firebase_uid: str | None = None,
 ) -> User:
     user = User(
-        phone_number=f"test-phone-{role.value.lower()}-{id(db_session)}",
+        phone_number=f"test-phone-{role.value.lower()}-{uuid4().hex}",
         role=role,
         account_status=account_status,
         firebase_uid=firebase_uid,
@@ -141,12 +200,17 @@ def test_approve_firebase_link_renews_expired_approval_for_same_identity(
     )
 
     assert renewed is not None
-    assert renewed.id == expired.id
+    assert renewed.id != expired.id
     assert renewed.approved_by == "new-operator"
     assert as_utc(renewed.approved_at) == TEST_NOW
     assert as_utc(renewed.expires_at) == TEST_NOW + timedelta(hours=24)
     assert renewed.consumed_at is None
-    assert approval_count(db_session) == 1
+    db_session.refresh(expired)
+    assert expired.approved_by == "old-operator"
+    assert as_utc(expired.approved_at) == TEST_NOW - timedelta(days=2)
+    assert as_utc(expired.expires_at) == TEST_NOW - timedelta(days=1)
+    assert as_utc(expired.consumed_at) == TEST_NOW
+    assert approval_count(db_session) == 2
 
 
 @pytest.mark.parametrize(
@@ -229,48 +293,97 @@ def test_approve_firebase_link_rejects_a_second_unexpired_approval(db_session):
 
 
 def test_approval_unique_race_returns_a_safe_management_error(
-    db_session, monkeypatch
+    independent_database,
 ):
-    expert = add_user(db_session)
-    independent_session = sessionmaker(
-        bind=db_session.bind,
-        autoflush=False,
-        expire_on_commit=False,
-    )
-    original_commit = db_session.commit
-    raced = False
+    engine, sessions = independent_database
+    with sessions() as setup:
+        expert = add_user(setup)
+        expert_id = expert.id
 
-    def commit_after_winner():
-        nonlocal raced
-        if not raced:
-            raced = True
-            with independent_session() as winner:
-                winner.add(
-                    FirebaseLinkApproval(
-                        user_id=expert.id,
-                        firebase_uid="expert-identity-winner",
-                        approved_by="other-operator",
-                        approved_at=TEST_NOW,
-                        expires_at=TEST_NOW + timedelta(hours=24),
-                    )
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return approve_firebase_link(
+                loser,
+                user_id=expert_id,
+                firebase_uid="expert-identity-loser",
+                operator="test-operator",
+                now=TEST_NOW,
+            )
+
+    def win_race():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.add(
+                FirebaseLinkApproval(
+                    user_id=expert_id,
+                    firebase_uid="expert-identity-winner",
+                    approved_by="other-operator",
+                    approved_at=TEST_NOW,
+                    expires_at=TEST_NOW + timedelta(hours=24),
                 )
-                winner.commit()
-        return original_commit()
-
-    monkeypatch.setattr(db_session, "commit", commit_after_winner)
+            )
+            winner.commit()
 
     with pytest.raises(ManagementCommandError) as error:
-        approve_firebase_link(
-            db_session,
-            user_id=expert.id,
-            firebase_uid="expert-identity-loser",
-            operator="test-operator",
-            now=TEST_NOW,
+        run_after_committed_winner(
+            engine,
+            pause_on="INSERT INTO FIREBASE_LINK_APPROVALS",
+            loser=lose_race,
+            winner=win_race,
         )
 
-    assert raced is True
     assert "expert-identity" not in str(error.value)
-    assert approval_count(db_session) == 1
+    with sessions() as verification:
+        assert approval_count(verification) == 1
+
+
+def test_approval_identity_unique_race_returns_a_safe_management_error(
+    independent_database,
+):
+    engine, sessions = independent_database
+    with sessions() as setup:
+        target = add_user(setup)
+        winner_user = add_user(setup)
+        target_id = target.id
+        winner_user_id = winner_user.id
+
+    def lose_race():
+        with sessions() as loser:
+            loser.connection().info["race_actor"] = "loser"
+            return approve_firebase_link(
+                loser,
+                user_id=target_id,
+                firebase_uid="expert-identity-shared-race",
+                operator="test-operator",
+                now=TEST_NOW,
+            )
+
+    def win_race():
+        with sessions() as winner:
+            assert winner.connection().info.get("race_actor") is None
+            winner.add(
+                FirebaseLinkApproval(
+                    user_id=winner_user_id,
+                    firebase_uid="expert-identity-shared-race",
+                    approved_by="other-operator",
+                    approved_at=TEST_NOW,
+                    expires_at=TEST_NOW + timedelta(hours=24),
+                )
+            )
+            winner.commit()
+
+    with pytest.raises(ManagementCommandError) as error:
+        run_after_committed_winner(
+            engine,
+            pause_on="INSERT INTO FIREBASE_LINK_APPROVALS",
+            loser=lose_race,
+            winner=win_race,
+        )
+
+    assert "expert-identity" not in str(error.value)
+    with sessions() as verification:
+        assert approval_count(verification) == 1
 
 
 def test_approval_cli_success_output_excludes_sensitive_identifiers(

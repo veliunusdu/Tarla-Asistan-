@@ -106,6 +106,7 @@ def _link_farmer(db: Session, *, user: User, uid: str) -> User:
             User.id == user.id,
             User.firebase_uid.is_(None),
             User.account_status == AccountStatus.ACTIVE,
+            User.role == UserRole.FARMER,
         )
         .values(firebase_uid=uid)
         .execution_options(synchronize_session=False)

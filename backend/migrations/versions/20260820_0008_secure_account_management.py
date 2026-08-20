@@ -96,7 +96,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("firebase_uid"),
     )
     op.create_index(
         "ix_firebase_link_approvals_user_id",
@@ -114,6 +113,13 @@ def upgrade() -> None:
         "uq_firebase_link_approvals_one_unconsumed_per_user",
         "firebase_link_approvals",
         ["user_id"],
+        unique=True,
+        postgresql_where=sa.text("consumed_at IS NULL"),
+    )
+    op.create_index(
+        "uq_firebase_link_approvals_one_unconsumed_per_uid",
+        "firebase_link_approvals",
+        ["firebase_uid"],
         unique=True,
         postgresql_where=sa.text("consumed_at IS NULL"),
     )
@@ -155,6 +161,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("account_deletion_jobs")
+    op.drop_index(
+        "uq_firebase_link_approvals_one_unconsumed_per_uid",
+        table_name="firebase_link_approvals",
+    )
     op.drop_index(
         "uq_firebase_link_approvals_one_unconsumed_per_user",
         table_name="firebase_link_approvals",
