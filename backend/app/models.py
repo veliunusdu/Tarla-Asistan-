@@ -169,15 +169,33 @@ class FeedbackStatus(str, enum.Enum):
     RESOLVED = "RESOLVED"
 
 
+class AccountStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    DELETION_PENDING = "DELETION_PENDING"
+    ANONYMIZED = "ANONYMIZED"
+
+
+class AccountDeletionStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    RETRY_REQUIRED = "RETRY_REQUIRED"
+    COMPLETED = "COMPLETED"
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (Index("ix_users_phone_number", "phone_number"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    phone_number: Mapped[str] = mapped_column(String(20), unique=True)
+    phone_number: Mapped[str] = mapped_column(String(64), unique=True)
     firebase_uid: Mapped[str | None] = mapped_column(
         String(128), unique=True, index=True, nullable=True
     )
+    account_status: Mapped[AccountStatus] = mapped_column(
+        Enum(AccountStatus, name="account_status"), default=AccountStatus.ACTIVE
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anonymized_subject_id: Mapped[str | None] = mapped_column(String(64), unique=True)
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, name="user_role"), default=UserRole.FARMER, index=True
     )
@@ -196,6 +214,12 @@ class User(Base):
     )
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    firebase_link_approvals: Mapped[list["FirebaseLinkApproval"]] = relationship(
+        back_populates="user"
+    )
+    account_deletion_job: Mapped["AccountDeletionJob | None"] = relationship(
+        back_populates="user", uselist=False
     )
 
     @property
@@ -237,9 +261,9 @@ class Profile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
-    full_name: Mapped[str] = mapped_column(String(120))
-    province: Mapped[str] = mapped_column(String(80))
-    district: Mapped[str] = mapped_column(String(80))
+    full_name: Mapped[str | None] = mapped_column(String(120))
+    province: Mapped[str | None] = mapped_column(String(80))
+    district: Mapped[str | None] = mapped_column(String(80))
     terms_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -250,6 +274,69 @@ class Profile(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="profile")
+
+
+class FirebaseLinkApproval(Base):
+    __tablename__ = "firebase_link_approvals"
+    __table_args__ = (
+        Index(
+            "uq_firebase_link_approvals_one_unconsumed_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("consumed_at IS NULL"),
+            sqlite_where=text("consumed_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    firebase_uid: Mapped[str] = mapped_column(String(128), unique=True)
+    approved_by: Mapped[str] = mapped_column(String(120))
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="firebase_link_approvals")
+
+
+class AccountDeletionJob(Base):
+    __tablename__ = "account_deletion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), unique=True)
+    firebase_uid_snapshot: Mapped[str | None] = mapped_column(String(128))
+    status: Mapped[AccountDeletionStatus] = mapped_column(
+        Enum(AccountDeletionStatus, name="account_deletion_status"),
+        default=AccountDeletionStatus.PENDING,
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    firebase_tokens_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    firestore_anonymized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    media_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    firebase_auth_deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    postgres_anonymized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship(back_populates="account_deletion_job")
 
 
 class RefreshToken(Base):
