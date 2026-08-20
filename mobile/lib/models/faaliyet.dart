@@ -6,6 +6,7 @@ class Faaliyet {
   final DateTime timestamp; // Oluşturulma veya Tamamlanma tarihi
   final DateTime? dueDate; // Yapılacak faaliyet için planlanan tarih (Opsiyonel)
   final bool isCompleted; // Faaliyet tamamlandı mı?
+  final String inputMethod;
 
   Faaliyet({
     required this.id,
@@ -15,6 +16,7 @@ class Faaliyet {
     required this.timestamp,
     this.dueDate,
     this.isCompleted = false,
+    this.inputMethod = 'MANUAL',
   });
 
   // Veritabanından gelen veriyi modele dönüştürme
@@ -29,6 +31,7 @@ class Faaliyet {
       dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
       // SQLite'dan 0 veya 1 gelir, biz bunu bool'a çeviriyoruz
       isCompleted: json['isCompleted'] == 1,
+      inputMethod: json['inputMethod']?.toString() ?? 'MANUAL',
     );
   }
 
@@ -43,6 +46,7 @@ class Faaliyet {
       'dueDate': dueDate?.toIso8601String(),
       // bool değerini SQLite'ın anlayacağı 0 veya 1'e çeviriyoruz
       'isCompleted': isCompleted ? 1 : 0,
+      'inputMethod': inputMethod,
     };
   }
 }

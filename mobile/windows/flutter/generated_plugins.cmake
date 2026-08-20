@@ -3,6 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  cloud_firestore
+  connectivity_plus
+  firebase_auth
+  firebase_core
   speech_to_text_windows
 )
 

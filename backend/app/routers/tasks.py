@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import get_db
-from app.dependencies import get_current_user, require_roles
+from app.dependencies import get_current_user, get_push_provider, require_roles
 from app.models import (
     Activity,
     ActivitySource,
@@ -17,6 +17,7 @@ from app.models import (
     CropPeriod,
     CropPeriodStatus,
     Farm,
+    NotificationType,
     Task,
     TaskSource,
     TaskStatus,
@@ -24,6 +25,8 @@ from app.models import (
     UserRole,
     utcnow,
 )
+from app.notifications import safe_notify_user
+from app.push import PushProvider
 from app.routers.farms import get_owned_farm
 from app.schemas import (
     DailyTaskListResponse,
@@ -60,10 +63,9 @@ def create_expert_task(
     payload: TaskCreate,
     user: User = Depends(require_roles(UserRole.AGRONOMIST)),
     db: Session = Depends(get_db),
+    provider: PushProvider = Depends(get_push_provider),
 ) -> Task:
-    farm = db.scalar(
-        select(Farm).where(Farm.id == farm_id, Farm.archived_at.is_(None))
-    )
+    farm = db.scalar(select(Farm).where(Farm.id == farm_id, Farm.archived_at.is_(None)))
     if farm is None:
         raise HTTPException(status_code=404, detail="Tarla bulunamadı.")
 
@@ -75,12 +77,15 @@ def create_expert_task(
                 CropPeriod.status == CropPeriodStatus.ACTIVE,
             )
         )
-    elif db.scalar(
-        select(CropPeriod.id).where(
-            CropPeriod.id == crop_period_id,
-            CropPeriod.farm_id == farm.id,
+    elif (
+        db.scalar(
+            select(CropPeriod.id).where(
+                CropPeriod.id == crop_period_id,
+                CropPeriod.farm_id == farm.id,
+            )
         )
-    ) is None:
+        is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Üretim dönemi bu tarlaya ait değil.",
@@ -117,6 +122,17 @@ def create_expert_task(
             detail="Aynı görev bu tarla ve tarih için zaten mevcut.",
         ) from None
     db.refresh(task)
+    safe_notify_user(
+        db,
+        provider,
+        user_id=farm.owner_id,
+        notification_type=NotificationType.TASK_ASSIGNED,
+        title="Yeni uzman göreviniz var",
+        body=task.title,
+        deep_link=f"tarla-asistani://farms/{farm.id}/tasks/{task.id}",
+        data={"farm_id": str(farm.id), "task_id": str(task.id)},
+        dedupe_key=f"task-assigned:{task.id}",
+    )
     return task
 
 
@@ -131,9 +147,29 @@ def list_daily_tasks(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    provider: PushProvider = Depends(get_push_provider),
 ) -> DailyTaskListResponse:
     farm = get_owned_farm(db, user, farm_id)
-    ensure_daily_tasks(db, farm, target_date, settings)
+    created_tasks = ensure_daily_tasks(db, farm, target_date, settings)
+    for created_task in created_tasks:
+        if (
+            created_task.source == TaskSource.WEATHER
+            and created_task.priority.value == "CRITICAL"
+        ):
+            safe_notify_user(
+                db,
+                provider,
+                user_id=farm.owner_id,
+                notification_type=NotificationType.CRITICAL_WEATHER,
+                title="Kritik hava uyarısı",
+                body=created_task.title,
+                deep_link=(
+                    f"tarla-asistani://farms/{farm.id}/weather"
+                    f"?task_id={created_task.id}"
+                ),
+                data={"farm_id": str(farm.id), "task_id": str(created_task.id)},
+                dedupe_key=f"critical-weather:{created_task.id}",
+            )
     mark_overdue_tasks(db, farm.id, date.today())
 
     daily_tasks = db.scalars(
@@ -147,17 +183,12 @@ def list_daily_tasks(
         (
             task
             for task in daily_tasks
-            if task.source == TaskSource.WEATHER
-            and task.priority.value == "CRITICAL"
+            if task.source == TaskSource.WEATHER and task.priority.value == "CRITICAL"
         ),
         key=task_sort_key,
     )
     visible_tasks = sorted(
-        (
-            task
-            for task in daily_tasks
-            if task not in critical_weather_alerts
-        ),
+        (task for task in daily_tasks if task not in critical_weather_alerts),
         key=task_sort_key,
     )[:3]
     overdue = db.scalars(

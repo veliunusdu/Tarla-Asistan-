@@ -1,0 +1,16 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "farms",
+      "queryScope": "COLLECTION",
+      "density": "DENSE",
+      "fields": [
+        {
+          "fieldPath": "ownerId",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

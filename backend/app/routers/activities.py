@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_roles
+from app.idempotency import record_operation, replayed_resource_id
 from app.models import (
     Activity,
     ActivityRevision,
@@ -48,6 +49,17 @@ def create_activity(
     db: Session = Depends(get_db),
 ) -> Activity:
     farm = get_owned_farm(db, user, farm_id)
+    replayed_id = replayed_resource_id(
+        db,
+        actor_id=user.id,
+        client_operation_id=payload.client_operation_id,
+        scope=f"activity.create:{farm.id}",
+        payload=payload,
+    )
+    if replayed_id is not None:
+        replayed = db.get(Activity, replayed_id)
+        if replayed is not None and replayed.farm_id == farm.id:
+            return replayed
     _validate_crop_period(db, farm.id, payload.crop_period_id)
     now = utcnow()
     is_voice_draft = payload.input_method == ActivitySource.VOICE
@@ -75,6 +87,16 @@ def create_activity(
         confirmed_at=None if is_voice_draft else now,
     )
     db.add(activity)
+    db.flush()
+    record_operation(
+        db,
+        actor_id=user.id,
+        client_operation_id=payload.client_operation_id,
+        scope=f"activity.create:{farm.id}",
+        payload=payload,
+        resource_type="activity",
+        resource_id=activity.id,
+    )
     db.commit()
     db.refresh(activity)
     return activity

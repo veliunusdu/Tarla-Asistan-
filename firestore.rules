@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  // ===============================================================
+  // Assumed data model — Firestore Enterprise Native database
+  // `tarla-asistani` in `europe-west3`
+  //
+  // users/{uid} (private, owner only)
+  //   phoneNumber: E.164 string (required; must equal auth token claim)
+  //   role: "FARMER" (required, immutable)
+  //   notificationsEnabled: bool (required)
+  //   createdAt, updatedAt: server timestamps (required)
+  //
+  // farms/{farmId} (owner only)
+  //   ownerId: Firebase UID (required, immutable)
+  //   name: 2..120-char string; latitude/longitude: number in geographic range
+  //   sizeInHectares: number in (0, 1,000,000]; cropType and irrigationMethod:
+  //   approved enums; plantedAt: timestamp not in the future; createdAt and
+  //   updatedAt: server timestamps.
+  //
+  // farms/{farmId}/activities/{activityId} (farm owner only, append-only)
+  //   activityType: approved enum; description: 2..4,000-char string;
+  //   occurredAt: non-future timestamp; inputMethod: MANUAL or VOICE;
+  //   createdAt: server timestamp. Activity documents are immutable after
+  //   creation so the activity history cannot be silently rewritten.
+  // ===============================================================
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Document IDs carry user identity; the strict user schema deliberately
+    // does not duplicate a mutable uid field.
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function uidUnchanged(uid) {
+      return isOwner(uid);
+    }
+
+    function uidNotModified(uid) {
+      return isOwner(uid);
+    }
+
+    function hasExactKeys(data, keys) {
+      return data.keys().hasAll(keys) && data.keys().hasOnly(keys);
+    }
+
+    function isServerTimestamp(value) {
+      return value is timestamp && value == request.time;
+    }
+
+    function isValidPhoneNumber(value) {
+      return value is string && value.matches('^\\+[1-9][0-9]{7,14}$');
+    }
+
+    function isValidUser(data) {
+      return hasExactKeys(data, [
+          'phoneNumber', 'role', 'notificationsEnabled', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidPhoneNumber(data.phoneNumber) &&
+        data.phoneNumber == request.auth.token.phone_number &&
+        data.role == 'FARMER' &&
+        data.notificationsEnabled is bool &&
+        data.createdAt is timestamp &&
+        isServerTimestamp(data.updatedAt);
+    }
+
+    function userImmutableFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'phoneNumber', 'role', 'createdAt'
+      ]);
+    }
+
+    function isValidFarm(data) {
+      return hasExactKeys(data, [
+          'ownerId', 'name', 'latitude', 'longitude', 'sizeInHectares',
+          'cropType', 'irrigationMethod', 'plantedAt', 'createdAt', 'updatedAt'
+        ]) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+        data.latitude is number && data.latitude >= -90 && data.latitude <= 90 &&
+        data.longitude is number && data.longitude >= -180 && data.longitude <= 180 &&
+        data.sizeInHectares is number && data.sizeInHectares > 0 &&
+        data.sizeInHectares <= 1000000 &&
+        data.cropType in ['WHEAT', 'BARLEY', 'CORN', 'SUNFLOWER', 'TOMATO'] &&
+        data.irrigationMethod in ['DRIP', 'SPRINKLER', 'FLOOD', 'RAINFED', 'OTHER'] &&
+        data.plantedAt is timestamp && data.plantedAt <= request.time &&
+        data.createdAt is timestamp &&
+        isServerTimestamp(data.updatedAt);
+    }
+
+    function farmImmutableFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'ownerId', 'createdAt'
+      ]);
+    }
+
+    function isFarmOwner(farmId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/farms/$(farmId)).data.ownerId == request.auth.uid;
+    }
+
+    function isValidActivity(data) {
+      return hasExactKeys(data, [
+          'activityType', 'description', 'occurredAt', 'inputMethod', 'createdAt'
+        ]) &&
+        data.activityType in [
+          'IRRIGATION', 'FERTILIZATION', 'SPRAYING', 'PRUNING',
+          'FIELD_CHECK', 'HARVEST', 'OTHER'
+        ] &&
+        data.description is string && data.description.size() >= 2 &&
+        data.description.size() <= 4000 &&
+        data.occurredAt is timestamp && data.occurredAt <= request.time &&
+        data.inputMethod in ['MANUAL', 'VOICE'] &&
+        isServerTimestamp(data.createdAt);
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if uidUnchanged(uid) && isValidUser(request.resource.data) &&
+        isServerTimestamp(request.resource.data.createdAt);
+      allow update: if uidNotModified(uid) && isValidUser(request.resource.data) &&
+        userImmutableFieldsUnchanged();
+      allow delete: if false;
+    }
+
+    match /farms/{farmId} {
+      // `resource` makes owner-filtered list queries provable: later client
+      // code must use where('ownerId', isEqualTo: auth.uid).
+      allow read: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidFarm(request.resource.data) &&
+        isServerTimestamp(request.resource.data.createdAt);
+      allow update: if isFarmOwner(farmId) && isValidFarm(request.resource.data) &&
+        farmImmutableFieldsUnchanged();
+      // Firestore does not cascade a parent delete to activities. Client-side
+      // deletion is forbidden so a different owner cannot recreate an ID and
+      // gain access to the former owner's orphaned activity documents.
+      // A future deletion feature must be a trusted recursive server workflow.
+      allow delete: if false;
+
+      match /activities/{activityId} {
+        allow read: if isFarmOwner(farmId);
+        allow create: if isFarmOwner(farmId) && isValidActivity(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+
+    // Default deny includes unknown top-level collections and subcollections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
