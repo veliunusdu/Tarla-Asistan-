@@ -13,10 +13,13 @@ from fastapi.security import HTTPAuthorizationCredentials
 from firebase_admin import auth, exceptions as firebase_exceptions
 from google.api_core import exceptions as google_exceptions
 from pydantic import ValidationError
-from sqlalchemy import event
+from sqlalchemy import create_engine, event
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.config import Settings
+from app.database import Base
 from app.firebase_account import (
     AccountDeletionProviderError,
     FirebaseAdminAccountGateway,
@@ -38,6 +41,7 @@ from app.models import (
 )
 from app.media_storage import MediaStorageError, MediaStorageMissing
 from app.security import create_refresh_token
+from app.schemas import DeviceTokenRegister, RefreshTokenRequest
 
 
 def login_owner(client, phone_number="+905551234567"):
@@ -56,6 +60,25 @@ def login_owner(client, phone_number="+905551234567"):
 
 
 PROCESS_NOW = datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def deletion_session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(
+        bind=engine,
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    try:
+        yield sessions
+    finally:
+        engine.dispose()
 
 
 class FakeAccountGateway:
@@ -102,6 +125,36 @@ class FakeDeletionStorage:
             )
         if self.missing:
             raise MediaStorageMissing("missing")
+
+
+class FakeUploadFile:
+    content_type = "image/jpeg"
+    filename = "race.jpg"
+
+    def __init__(self, content=b"race-media"):
+        self._chunks = [content]
+
+    async def read(self, _size):
+        return self._chunks.pop(0) if self._chunks else b""
+
+    async def close(self):
+        pass
+
+
+class FakeRaceStorage:
+    def __init__(self, *, on_save=None):
+        self.on_save = on_save
+        self.saved = {}
+        self.deleted = []
+
+    def save(self, key, content, content_type):
+        self.saved[key] = (content, content_type)
+        if self.on_save is not None:
+            self.on_save()
+
+    def delete(self, key):
+        self.deleted.append(key)
+        self.saved.pop(key, None)
 
 
 class FakeAdminApp:
@@ -540,6 +593,13 @@ def test_postgresql_migration_uses_partial_unconsumed_approval_indexes():
         "uq_firebase_link_approvals_one_unconsumed_per_uid "
         "ON firebase_link_approvals (firebase_uid) WHERE consumed_at IS NULL"
     ) in sql
+    assert "processing_started_at TIMESTAMP WITH TIME ZONE" in sql
+    assert "lease_until TIMESTAMP WITH TIME ZONE" in sql
+    assert "processing_owner_token VARCHAR(64)" in sql
+    assert (
+        "CREATE INDEX ix_account_deletion_jobs_retry_schedule "
+        "ON account_deletion_jobs (status, next_retry_at, lease_until, created_at)"
+    ) in sql
 
 
 def test_deletion_request_locks_account_and_is_idempotent(
@@ -548,7 +608,7 @@ def test_deletion_request_locks_account_and_is_idempotent(
     auth_payload = login_owner(client)
     headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
     monkeypatch.setattr(
-        "app.routers.users.process_account_deletion_by_id",
+        "app.routers.users.process_account_deletion_safely",
         lambda _job_id: None,
         raising=False,
     )
@@ -581,7 +641,7 @@ def test_deletion_request_requires_exact_confirmation(
 ):
     auth_payload = login_owner(client)
     monkeypatch.setattr(
-        "app.routers.users.process_account_deletion_by_id",
+        "app.routers.users.process_account_deletion_safely",
         lambda _job_id: None,
         raising=False,
     )
@@ -610,7 +670,7 @@ def test_pending_account_is_forbidden_on_normal_endpoint_but_can_repeat_deletion
     auth_payload = login_owner(client)
     headers = {"Authorization": f"Bearer {auth_payload['access_token']}"}
     monkeypatch.setattr(
-        "app.routers.users.process_account_deletion_by_id",
+        "app.routers.users.process_account_deletion_safely",
         lambda _job_id: None,
         raising=False,
     )
@@ -636,7 +696,7 @@ def test_pending_account_is_forbidden_on_normal_endpoint_but_can_repeat_deletion
 def test_deletion_lock_revokes_legacy_refresh_session(client, monkeypatch):
     auth_payload = login_owner(client)
     monkeypatch.setattr(
-        "app.routers.users.process_account_deletion_by_id",
+        "app.routers.users.process_account_deletion_safely",
         lambda _job_id: None,
         raising=False,
     )
@@ -670,7 +730,7 @@ def test_deletion_route_runs_background_processing_after_commit(
         processed.append(job_id)
 
     monkeypatch.setattr(
-        "app.routers.users.process_account_deletion_by_id",
+        "app.routers.users.process_account_deletion_safely",
         assert_committed_then_process,
     )
 
@@ -682,6 +742,30 @@ def test_deletion_route_runs_background_processing_after_commit(
 
     assert response.status_code == 202
     assert processed == [UUID(response.json()["request_id"])]
+
+
+def test_deletion_route_schedules_the_safe_processor(db_session):
+    from fastapi import BackgroundTasks
+
+    from app.account_deletion import process_account_deletion_safely
+    from app.routers.users import request_deletion
+    from app.schemas import AccountDeletionRequest
+
+    user = User(phone_number="+905551234569", role=UserRole.FARMER)
+    db_session.add(user)
+    db_session.commit()
+    tasks = BackgroundTasks()
+
+    response = request_deletion(
+        AccountDeletionRequest(confirmation="HESABIMI SIL"),
+        tasks,
+        user,
+        db_session,
+    )
+
+    assert response.request_id is not None
+    assert len(tasks.tasks) == 1
+    assert tasks.tasks[0].func is process_account_deletion_safely
 
 
 def add_deletion_subject(db_session):
@@ -1046,6 +1130,73 @@ def test_automatic_retry_selection_is_due_pending_and_attempt_bounded(db_session
     assert {job.id for job in jobs} == {pending.id, due.id}
 
 
+def test_startup_selection_filters_leases_and_applies_batch_limit_in_sql(
+    db_session,
+):
+    from app.account_deletion import eligible_account_deletion_jobs
+
+    pending_jobs = [add_retry_job(db_session) for _ in range(3)]
+    expired = add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.PROCESSING,
+        attempt_count=1,
+    )
+    expired.lease_until = PROCESS_NOW - timedelta(seconds=1)
+    expired.processing_owner_token = "expired-worker"
+    live = add_retry_job(
+        db_session,
+        status=AccountDeletionStatus.PROCESSING,
+        attempt_count=1,
+    )
+    live.lease_until = PROCESS_NOW + timedelta(minutes=1)
+    live.processing_owner_token = "live-worker"
+    db_session.commit()
+
+    all_eligible = eligible_account_deletion_jobs(
+        db_session,
+        Settings(),
+        PROCESS_NOW,
+        automatic=True,
+        limit=10,
+    )
+
+    assert expired.id in {job.id for job in all_eligible}
+    assert live.id not in {job.id for job in all_eligible}
+    assert {job.id for job in pending_jobs}.issubset(
+        {job.id for job in all_eligible}
+    )
+
+    statements = []
+
+    def capture_sql(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(" ".join(statement.lower().split()))
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", capture_sql)
+    try:
+        limited = eligible_account_deletion_jobs(
+            db_session,
+            Settings(),
+            PROCESS_NOW,
+            automatic=True,
+            limit=2,
+        )
+    finally:
+        event.remove(bind, "before_cursor_execute", capture_sql)
+
+    selection_sql = next(
+        statement
+        for statement in statements
+        if "from account_deletion_jobs" in statement
+    )
+    assert len(limited) == 2
+    assert "account_deletion_jobs.attempt_count" in selection_sql
+    assert "account_deletion_jobs.status" in selection_sql
+    assert "account_deletion_jobs.next_retry_at" in selection_sql
+    assert "account_deletion_jobs.lease_until" in selection_sql
+    assert " limit " in selection_sql
+
+
 def test_explicit_retry_selection_can_override_schedule_and_attempt_limit(db_session):
     from app.account_deletion import eligible_account_deletion_jobs
 
@@ -1092,6 +1243,89 @@ def test_retry_runner_continues_after_unexpected_error_without_logging_detail(
     assert set(processed) == {first.id, second.id}
     assert "ACCOUNT_DELETION_UNEXPECTED" in caplog.text
     assert str(first.id) in caplog.text
+    assert "provider detail" not in caplog.text
+    assert "user PII" not in caplog.text
+
+
+def test_safe_processor_records_unexpected_failure_in_fresh_session(
+    deletion_session_factory, caplog
+):
+    from app.account_deletion import (
+        process_account_deletion_safely,
+        request_account_deletion,
+    )
+
+    with deletion_session_factory() as setup:
+        user, _raw_token = add_deletion_subject(setup)
+        job = request_account_deletion(setup, user, PROCESS_NOW)
+        job_id = job.id
+
+    class UnexpectedGateway(FakeAccountGateway):
+        def revoke_tokens(self, uid):
+            raise RuntimeError("provider context with user PII and credential path")
+
+    result = process_account_deletion_safely(
+        job_id,
+        session_factory=deletion_session_factory,
+        gateway_factory=lambda _settings: UnexpectedGateway(),
+        storage_factory=lambda _settings: FakeDeletionStorage(),
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result is not None
+    assert result.status is AccountDeletionStatus.RETRY_REQUIRED
+    assert result.attempt_count == 1
+    assert result.last_error_code == "ACCOUNT_DELETION_UNEXPECTED"
+    assert result.processing_started_at is None
+    assert result.lease_until is None
+    assert result.processing_owner_token is None
+    assert "provider context" not in caplog.text
+    assert "user PII" not in caplog.text
+    assert "credential path" not in caplog.text
+
+
+def test_safe_processor_does_not_overwrite_a_different_live_owner(
+    deletion_session_factory, monkeypatch, caplog
+):
+    import app.account_deletion as deletion_module
+
+    with deletion_session_factory() as setup:
+        user, _raw_token = add_deletion_subject(setup)
+        job = deletion_module.request_account_deletion(setup, user, PROCESS_NOW)
+        job_id = job.id
+
+    def lose_lease_then_fail(claimed_job_id, **_kwargs):
+        with deletion_session_factory() as competing_worker:
+            competing_job = competing_worker.get(
+                AccountDeletionJob, claimed_job_id
+            )
+            competing_job.status = AccountDeletionStatus.PROCESSING
+            competing_job.attempt_count = 2
+            competing_job.processing_started_at = PROCESS_NOW
+            competing_job.lease_until = PROCESS_NOW + timedelta(minutes=10)
+            competing_job.processing_owner_token = "new-live-owner"
+            competing_worker.commit()
+        raise RuntimeError("provider detail and user PII")
+
+    monkeypatch.setattr(
+        deletion_module,
+        "process_account_deletion_by_id",
+        lose_lease_then_fail,
+    )
+
+    result = deletion_module.process_account_deletion_safely(
+        job_id,
+        session_factory=deletion_session_factory,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result is not None
+    assert result.status is AccountDeletionStatus.PROCESSING
+    assert result.attempt_count == 2
+    assert result.processing_owner_token == "new-live-owner"
+    assert result.last_error_code is None
     assert "provider detail" not in caplog.text
     assert "user PII" not in caplog.text
 
@@ -1177,6 +1411,65 @@ def test_process_by_id_skips_firebase_initialization_for_legacy_account(db_sessi
     assert user.account_status is AccountStatus.ANONYMIZED
 
 
+def test_completed_firebase_steps_do_not_initialize_an_unavailable_gateway(
+    db_session,
+):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    user, _raw_token = add_deletion_subject(db_session)
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+    job.firebase_tokens_revoked_at = PROCESS_NOW
+    job.firestore_anonymized_at = PROCESS_NOW
+    job.firebase_auth_deleted_at = PROCESS_NOW
+    db_session.commit()
+    storage = FakeDeletionStorage()
+
+    def unavailable_gateway(_settings):
+        raise AssertionError("completed Firebase steps must not create the gateway")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=unavailable_gateway,
+        storage_factory=lambda _settings: storage,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert storage.deleted == ["owned-media-key"]
+
+
+def test_empty_media_step_completes_without_initializing_storage(db_session):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    user = User(phone_number="+905551234568", role=UserRole.FARMER)
+    db_session.add(user)
+    db_session.commit()
+    job = request_account_deletion(db_session, user, PROCESS_NOW)
+
+    def unavailable_storage(_settings):
+        raise AssertionError("empty media ownership must not create storage")
+
+    result = process_account_deletion_by_id(
+        job.id,
+        session_factory=lambda: nullcontext(db_session),
+        gateway_factory=lambda _settings: FakeAccountGateway(),
+        storage_factory=unavailable_storage,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert result.media_deleted_at is not None
+
+
 @pytest.mark.parametrize(
     ("attempt_count", "next_retry_at"),
     [
@@ -1214,10 +1507,16 @@ def test_process_by_id_automatic_retry_does_not_bypass_retry_bounds(
     assert result.next_retry_at == next_retry_at
 
 
-def test_application_lifespan_invokes_startup_deletion_retry(monkeypatch):
-    from app.main import app, lifespan
+def test_application_lifespan_invokes_startup_deletion_retry_off_event_loop(
+    monkeypatch,
+):
+    import app.main as main_module
+
+    app = main_module.app
+    lifespan = main_module.lifespan
 
     calls = []
+    thread_calls = []
     missing = object()
     state_names = (
         "redis",
@@ -1240,15 +1539,25 @@ def test_application_lifespan_invokes_startup_deletion_retry(monkeypatch):
     monkeypatch.setattr("app.main.create_push_provider", lambda _settings: object())
     monkeypatch.setattr("app.main.create_ai_chat_provider", lambda _settings: object())
     monkeypatch.setattr("app.main.create_media_storage", lambda _settings: object())
-    monkeypatch.setattr(
-        "app.main.run_startup_account_deletion_retries",
-        lambda: calls.append("startup-retry"),
-        raising=False,
-    )
+    def startup_retry():
+        calls.append("startup-retry")
+
+    async def to_thread(function, *args, **kwargs):
+        thread_calls.append(function)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(main_module, "run_startup_account_deletion_retries", startup_retry)
+
+    class AsyncioStub:
+        pass
+
+    AsyncioStub.to_thread = staticmethod(to_thread)
+    monkeypatch.setattr(main_module, "asyncio", AsyncioStub, raising=False)
 
     async def enter_lifespan():
         async with lifespan(app):
             assert calls == ["startup-retry"]
+            assert thread_calls == [startup_retry]
 
     try:
         asyncio.run(enter_lifespan())
@@ -1258,3 +1567,393 @@ def test_application_lifespan_invokes_startup_deletion_retry(monkeypatch):
                 delattr(app.state, name)
             else:
                 setattr(app.state, name, previous)
+
+
+def test_application_lifespan_contains_startup_retry_failure(monkeypatch, caplog):
+    import app.main as main_module
+
+    app = main_module.app
+    lifespan = main_module.lifespan
+    missing = object()
+    state_names = (
+        "redis",
+        "otp_store",
+        "weather_provider",
+        "push_provider",
+        "ai_chat_provider",
+        "media_storage",
+    )
+    previous_state = {
+        name: getattr(app.state, name, missing) for name in state_names
+    }
+
+    class FakeRedis:
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.main.Redis.from_url", lambda *args, **kwargs: FakeRedis())
+    monkeypatch.setattr("app.main.create_weather_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_push_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_ai_chat_provider", lambda _settings: object())
+    monkeypatch.setattr("app.main.create_media_storage", lambda _settings: object())
+
+    def failing_startup_retry():
+        raise RuntimeError("provider details and user PII")
+
+    async def to_thread(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(
+        main_module,
+        "run_startup_account_deletion_retries",
+        failing_startup_retry,
+    )
+
+    class AsyncioStub:
+        pass
+
+    AsyncioStub.to_thread = staticmethod(to_thread)
+    monkeypatch.setattr(main_module, "asyncio", AsyncioStub, raising=False)
+    entered = []
+
+    async def enter_lifespan():
+        async with lifespan(app):
+            entered.append(True)
+
+    try:
+        asyncio.run(enter_lifespan())
+    finally:
+        for name, previous in previous_state.items():
+            if previous is missing:
+                delattr(app.state, name)
+            else:
+                setattr(app.state, name, previous)
+
+    assert entered == [True]
+    assert "ACCOUNT_DELETION_UNEXPECTED" in caplog.text
+    assert "provider details" not in caplog.text
+    assert "user PII" not in caplog.text
+
+
+def test_expired_processing_lease_is_reclaimed_and_completed(
+    deletion_session_factory,
+):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    with deletion_session_factory() as setup:
+        user, _raw_token = add_deletion_subject(setup)
+        job = request_account_deletion(setup, user, PROCESS_NOW)
+        job.status = AccountDeletionStatus.PROCESSING
+        job.attempt_count = 1
+        job.processing_started_at = PROCESS_NOW - timedelta(minutes=20)
+        job.lease_until = PROCESS_NOW - timedelta(minutes=10)
+        job.processing_owner_token = "abandoned-worker"
+        setup.commit()
+        job_id = job.id
+
+    gateway = FakeAccountGateway()
+    storage = FakeDeletionStorage()
+    result = process_account_deletion_by_id(
+        job_id,
+        session_factory=deletion_session_factory,
+        gateway_factory=lambda _settings: gateway,
+        storage_factory=lambda _settings: storage,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+    )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert result.attempt_count == 2
+    assert gateway.calls == ["firebase_tokens", "firestore", "firebase_auth"]
+    assert storage.deleted == ["owned-media-key"]
+
+
+def test_explicit_retry_does_not_steal_a_live_processing_lease(
+    deletion_session_factory,
+):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    with deletion_session_factory() as setup:
+        user, _raw_token = add_deletion_subject(setup)
+        job = request_account_deletion(setup, user, PROCESS_NOW)
+        job.status = AccountDeletionStatus.PROCESSING
+        job.attempt_count = 1
+        job.processing_started_at = PROCESS_NOW
+        job.lease_until = PROCESS_NOW + timedelta(minutes=10)
+        job.processing_owner_token = "live-worker"
+        setup.commit()
+        job_id = job.id
+
+    factory_calls = []
+
+    def gateway_factory(_settings):
+        factory_calls.append("gateway")
+        return FakeAccountGateway()
+
+    def storage_factory(_settings):
+        factory_calls.append("storage")
+        return FakeDeletionStorage()
+
+    result = process_account_deletion_by_id(
+        job_id,
+        session_factory=deletion_session_factory,
+        gateway_factory=gateway_factory,
+        storage_factory=storage_factory,
+        settings=Settings(),
+        now_factory=lambda: PROCESS_NOW,
+        force=True,
+    )
+
+    assert result.status is AccountDeletionStatus.PROCESSING
+    assert result.attempt_count == 1
+    assert factory_calls == []
+    assert result.processing_owner_token == "live-worker"
+
+
+def test_stale_second_session_cannot_repeat_completed_external_steps(
+    deletion_session_factory,
+):
+    from app.account_deletion import (
+        process_account_deletion_by_id,
+        request_account_deletion,
+    )
+
+    with deletion_session_factory() as setup:
+        user, _raw_token = add_deletion_subject(setup)
+        job = request_account_deletion(setup, user, PROCESS_NOW)
+        job_id = job.id
+
+    stale_session = deletion_session_factory()
+    stale_job = stale_session.get(AccountDeletionJob, job_id)
+    assert stale_job.status is AccountDeletionStatus.PENDING
+    first_gateway = FakeAccountGateway()
+    first_storage = FakeDeletionStorage()
+    second_gateway = FakeAccountGateway()
+    second_storage = FakeDeletionStorage()
+    try:
+        first = process_account_deletion_by_id(
+            job_id,
+            session_factory=deletion_session_factory,
+            gateway_factory=lambda _settings: first_gateway,
+            storage_factory=lambda _settings: first_storage,
+            settings=Settings(),
+            now_factory=lambda: PROCESS_NOW,
+            force=True,
+        )
+        second = process_account_deletion_by_id(
+            job_id,
+            session_factory=lambda: nullcontext(stale_session),
+            gateway_factory=lambda _settings: second_gateway,
+            storage_factory=lambda _settings: second_storage,
+            settings=Settings(),
+            now_factory=lambda: PROCESS_NOW + timedelta(seconds=1),
+            force=True,
+        )
+    finally:
+        stale_session.close()
+
+    assert first.status is AccountDeletionStatus.COMPLETED
+    assert second.status is AccountDeletionStatus.COMPLETED
+    assert first_gateway.calls == ["firebase_tokens", "firestore", "firebase_auth"]
+    assert first_storage.deleted == ["owned-media-key"]
+    assert second_gateway.calls == []
+    assert second_storage.deleted == []
+
+
+def _commit_deletion_lock(session_factory, user_id):
+    from app.account_deletion import request_account_deletion
+
+    with session_factory() as deleter:
+        user = deleter.get(User, user_id)
+        request_account_deletion(deleter, user, PROCESS_NOW)
+
+
+def test_legacy_session_issue_rechecks_active_after_competing_deletion(
+    deletion_session_factory,
+):
+    from app.routers.auth import issue_session
+
+    with deletion_session_factory() as setup:
+        user = User(phone_number="+905551230001", role=UserRole.FARMER)
+        setup.add(user)
+        setup.commit()
+        user_id = user.id
+
+    writer = deletion_session_factory()
+    stale_user = writer.get(User, user_id)
+    _commit_deletion_lock(deletion_session_factory, user_id)
+    try:
+        with pytest.raises(HTTPException) as error:
+            issue_session(stale_user, writer, Settings())
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert error.value.status_code == 403
+    with deletion_session_factory() as check:
+        assert check.query(User).filter_by(id=user_id).one().refresh_tokens == []
+
+
+def test_refresh_rotation_rechecks_active_after_competing_deletion(
+    deletion_session_factory, monkeypatch
+):
+    from app.routers.auth import refresh_session
+
+    with deletion_session_factory() as setup:
+        user = User(phone_number="+905551230002", role=UserRole.FARMER)
+        setup.add(user)
+        setup.flush()
+        raw_token, token = create_refresh_token(user.id, Settings())
+        setup.add(token)
+        setup.commit()
+        user_id = user.id
+        token_id = token.id
+
+    writer = deletion_session_factory()
+    stale_user = writer.get(User, user_id)
+    stale_token = writer.get(type(token), token_id)
+    assert stale_user.account_status is AccountStatus.ACTIVE
+    assert stale_token.revoked_at is None
+    original_scalar = writer.scalar
+    deletion_committed = False
+
+    def scalar_then_commit_deletion(statement, *args, **kwargs):
+        nonlocal deletion_committed
+        result = original_scalar(statement, *args, **kwargs)
+        if not deletion_committed:
+            deletion_committed = True
+            _commit_deletion_lock(deletion_session_factory, user_id)
+        return result
+
+    monkeypatch.setattr(writer, "scalar", scalar_then_commit_deletion)
+    try:
+        with pytest.raises(HTTPException) as error:
+            refresh_session(RefreshTokenRequest(refresh_token=raw_token), writer, Settings())
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert deletion_committed is True
+    assert error.value.status_code == 403
+    with deletion_session_factory() as check:
+        assert all(item.revoked_at is not None for item in check.get(User, user_id).refresh_tokens)
+
+
+def test_media_uploaded_before_competing_deletion_lock_is_removed_on_denial(
+    deletion_session_factory,
+):
+    from app.routers.media import upload_media
+
+    with deletion_session_factory() as setup:
+        user = User(phone_number="+905551230003", role=UserRole.FARMER)
+        setup.add(user)
+        setup.commit()
+        user_id = user.id
+
+    writer = deletion_session_factory()
+    stale_user = writer.get(User, user_id)
+    storage = FakeRaceStorage(
+        on_save=lambda: _commit_deletion_lock(deletion_session_factory, user_id)
+    )
+    try:
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(
+                upload_media(
+                    FakeUploadFile(),
+                    stale_user,
+                    writer,
+                    Settings(),
+                    storage,
+                )
+            )
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert error.value.status_code == 403
+    assert storage.saved == {}
+    assert len(storage.deleted) == 1
+    with deletion_session_factory() as check:
+        assert check.query(MediaAsset).filter_by(owner_id=user_id).count() == 0
+
+
+def test_media_committed_before_deletion_is_seen_by_the_deletion_sweep(
+    deletion_session_factory,
+):
+    from app.account_deletion import process_account_deletion, request_account_deletion
+    from app.routers.media import upload_media
+
+    with deletion_session_factory() as setup:
+        user = User(phone_number="+905551230004", role=UserRole.FARMER)
+        setup.add(user)
+        setup.commit()
+        user_id = user.id
+
+    storage = FakeRaceStorage()
+    with deletion_session_factory() as writer:
+        writer_user = writer.get(User, user_id)
+        asset = asyncio.run(
+            upload_media(
+                FakeUploadFile(),
+                writer_user,
+                writer,
+                Settings(),
+                storage,
+            )
+        )
+        storage_key = asset.storage_key
+
+    with deletion_session_factory() as deleter:
+        user = deleter.get(User, user_id)
+        job = request_account_deletion(deleter, user, PROCESS_NOW)
+        result = process_account_deletion(
+            deleter,
+            job.id,
+            FakeAccountGateway(),
+            storage,
+            Settings(),
+            PROCESS_NOW,
+        )
+
+    assert result.status is AccountDeletionStatus.COMPLETED
+    assert storage_key in storage.deleted
+
+
+def test_device_registration_rechecks_active_after_competing_deletion(
+    deletion_session_factory,
+):
+    from app.routers.notifications import register_device
+
+    with deletion_session_factory() as setup:
+        user = User(phone_number="+905551230005", role=UserRole.FARMER)
+        setup.add(user)
+        setup.commit()
+        user_id = user.id
+
+    writer = deletion_session_factory()
+    stale_user = writer.get(User, user_id)
+    _commit_deletion_lock(deletion_session_factory, user_id)
+    try:
+        with pytest.raises(HTTPException) as error:
+            register_device(
+                DeviceTokenRegister(
+                    token="race-device-token",
+                    platform=DevicePlatform.ANDROID,
+                ),
+                stale_user,
+                writer,
+                object(),
+            )
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert error.value.status_code == 403
+    with deletion_session_factory() as check:
+        assert check.query(DeviceToken).filter_by(user_id=user_id).count() == 0

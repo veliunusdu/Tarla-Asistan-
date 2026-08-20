@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -44,6 +45,21 @@ def require_active(user: User) -> User:
             detail="Hesap aktif değil.",
         )
     return user
+
+
+def lock_active_user_for_update(db: Session, user_id: uuid.UUID) -> User:
+    user = db.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hesap aktif değil.",
+        )
+    return require_active(user)
 
 
 def _resolve_after_race(

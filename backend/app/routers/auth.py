@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies import get_current_user, get_otp_store
-from app.firebase_mapping import require_active
+from app.firebase_mapping import lock_active_user_for_update
 from app.models import RefreshToken, User, UserRole
 from app.otp import (
     OtpExpired,
@@ -32,16 +32,18 @@ logger = logging.getLogger(__name__)
 
 
 def issue_session(user: User, db: Session, settings: Settings) -> TokenResponse:
-    require_active(user)
-    access_token = create_access_token(str(user.id), user.role.value, settings)
-    raw_refresh_token, refresh_token = create_refresh_token(user.id, settings)
+    locked_user = lock_active_user_for_update(db, user.id)
+    access_token = create_access_token(
+        str(locked_user.id), locked_user.role.value, settings
+    )
+    raw_refresh_token, refresh_token = create_refresh_token(locked_user.id, settings)
     db.add(refresh_token)
     db.commit()
     return TokenResponse(
         access_token=access_token,
         refresh_token=raw_refresh_token,
         expires_in=settings.access_token_expire_minutes * 60,
-        user=UserResponse.model_validate(user),
+        user=UserResponse.model_validate(locked_user),
     )
 
 
@@ -143,10 +145,22 @@ def refresh_session(
         db.commit()
         raise HTTPException(status_code=401, detail="Refresh oturumunun süresi doldu.")
 
-    user = db.get(User, stored_token.user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
-    require_active(user)
+    user = lock_active_user_for_update(db, stored_token.user_id)
+    stored_token = db.scalar(
+        select(RefreshToken)
+        .where(RefreshToken.id == stored_token.id)
+        .execution_options(populate_existing=True)
+    )
+    if stored_token is None or stored_token.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="Refresh oturumu geçersiz.")
+
+    expires_at = stored_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        stored_token.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Refresh oturumunun süresi doldu.")
 
     stored_token.revoked_at = datetime.now(timezone.utc)
     raw_refresh_token, replacement = create_refresh_token(

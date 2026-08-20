@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_push_provider
+from app.firebase_mapping import lock_active_user_for_update
 from app.models import DeviceToken, Notification, NotificationStatus, User, utcnow
 from app.notifications import dispatch_notification
 from app.push import PushProvider
@@ -31,16 +32,17 @@ def register_device(
     db: Session = Depends(get_db),
     provider: PushProvider = Depends(get_push_provider),
 ) -> DeviceToken:
+    locked_user = lock_active_user_for_update(db, user.id)
     device = db.scalar(select(DeviceToken).where(DeviceToken.token == payload.token))
     if device is None:
         device = DeviceToken(
-            user_id=user.id,
+            user_id=locked_user.id,
             token=payload.token,
             platform=payload.platform,
         )
         db.add(device)
     else:
-        device.user_id = user.id
+        device.user_id = locked_user.id
         device.platform = payload.platform
         device.active = True
         device.last_seen_at = utcnow()
@@ -48,7 +50,7 @@ def register_device(
     db.refresh(device)
     pending = db.scalars(
         select(Notification).where(
-            Notification.user_id == user.id,
+            Notification.user_id == locked_user.id,
             Notification.status == NotificationStatus.PENDING,
         )
     ).all()

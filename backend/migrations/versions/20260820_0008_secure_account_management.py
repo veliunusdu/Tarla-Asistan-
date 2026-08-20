@@ -133,6 +133,9 @@ def upgrade() -> None:
         sa.Column("attempt_count", sa.Integer(), nullable=False),
         sa.Column("last_error_code", sa.String(length=80), nullable=True),
         sa.Column("next_retry_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("processing_started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("lease_until", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("processing_owner_token", sa.String(length=64), nullable=True),
         sa.Column(
             "firebase_tokens_revoked_at", sa.DateTime(timezone=True), nullable=True
         ),
@@ -148,6 +151,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
+    )
+    op.create_index(
+        "ix_account_deletion_jobs_retry_schedule",
+        "account_deletion_jobs",
+        ["status", "next_retry_at", "lease_until", "created_at"],
+        unique=False,
     )
 
     op.alter_column(

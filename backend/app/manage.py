@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.account_deletion import (
     eligible_account_deletion_jobs,
-    process_account_deletion_by_id,
+    process_account_deletion_safely,
 )
 from app.config import get_settings
 from app.database import SessionLocal
@@ -175,7 +175,7 @@ def main(
             )
         for job in jobs:
             if not args.dry_run:
-                process_account_deletion_by_id(
+                process_account_deletion_safely(
                     job.id, force=requested_job_id is not None
                 )
             print(f"job_id={job.id} status={job.status.value}")

@@ -11,6 +11,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.dependencies import get_media_storage
+from app.firebase_mapping import lock_active_user_for_update
 from app.media_storage import MediaStorage, MediaStorageError, MediaStorageMissing
 from app.models import (
     CaseMedia,
@@ -85,20 +86,25 @@ async def upload_media(
     except MediaStorageError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    asset = MediaAsset(
-        owner_id=user.id,
-        kind=media_type[0],
-        original_name=(Path(file.filename or "dosya").name[:255] or "dosya"),
-        content_type=file.content_type or "application/octet-stream",
-        size_bytes=total,
-        storage_key=storage_key,
-        checksum_sha256=digest.hexdigest(),
-    )
-    db.add(asset)
     try:
+        locked_user = lock_active_user_for_update(db, user.id)
+        asset = MediaAsset(
+            owner_id=locked_user.id,
+            kind=media_type[0],
+            original_name=(Path(file.filename or "dosya").name[:255] or "dosya"),
+            content_type=file.content_type or "application/octet-stream",
+            size_bytes=total,
+            storage_key=storage_key,
+            checksum_sha256=digest.hexdigest(),
+        )
+        db.add(asset)
         db.commit()
     except Exception:
-        storage.delete(storage_key)
+        db.rollback()
+        try:
+            storage.delete(storage_key)
+        except Exception:
+            pass
         raise
     db.refresh(asset)
     return asset

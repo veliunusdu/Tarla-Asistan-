@@ -502,7 +502,7 @@ def test_retry_account_deletions_dry_run_lists_eligible_jobs_without_processing(
     def process(job_id, *, force=False):
         processed.append((job_id, force))
 
-    monkeypatch.setattr("app.manage.process_account_deletion_by_id", process)
+    monkeypatch.setattr("app.manage.process_account_deletion_safely", process)
 
     exit_code = main(
         ["retry-account-deletions", "--dry-run"],
@@ -531,7 +531,7 @@ def test_retry_account_deletions_explicit_job_overrides_automatic_attempt_limit(
     def process(job_id, *, force=False):
         processed.append((job_id, force))
 
-    monkeypatch.setattr("app.manage.process_account_deletion_by_id", process)
+    monkeypatch.setattr("app.manage.process_account_deletion_safely", process)
 
     exit_code = main(
         ["retry-account-deletions", "--job-id", str(exhausted.id)],

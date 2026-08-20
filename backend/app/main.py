@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 from time import perf_counter
@@ -10,7 +11,10 @@ from redis import Redis
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.account_deletion import run_startup_account_deletion_retries
+from app.account_deletion import (
+    ACCOUNT_DELETION_UNEXPECTED,
+    run_startup_account_deletion_retries,
+)
 from app.ai_chat import create_ai_chat_provider
 from app.media_storage import create_media_storage
 from app.database import SessionLocal
@@ -48,7 +52,13 @@ async def lifespan(app: FastAPI):
     app.state.push_provider = create_push_provider(settings)
     app.state.ai_chat_provider = create_ai_chat_provider(settings)
     app.state.media_storage = create_media_storage(settings)
-    run_startup_account_deletion_retries()
+    try:
+        await asyncio.to_thread(run_startup_account_deletion_retries)
+    except Exception:
+        logger.error(
+            "account_deletion_startup_failed error_code=%s",
+            ACCOUNT_DELETION_UNEXPECTED,
+        )
     yield
     redis_client.close()
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.orm import Session
 
 from app.account_deletion import (
-    process_account_deletion_by_id,
+    process_account_deletion_safely,
     request_account_deletion,
 )
 from app.database import get_db
@@ -36,7 +36,7 @@ def request_deletion(
     db: Session = Depends(get_db),
 ) -> AccountDeletionResponse:
     job = request_account_deletion(db, user, utcnow())
-    background_tasks.add_task(process_account_deletion_by_id, job.id)
+    background_tasks.add_task(process_account_deletion_safely, job.id)
     return AccountDeletionResponse(request_id=job.id, status=job.status.value)
 
 

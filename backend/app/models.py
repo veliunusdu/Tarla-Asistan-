@@ -311,6 +311,15 @@ class FirebaseLinkApproval(Base):
 
 class AccountDeletionJob(Base):
     __tablename__ = "account_deletion_jobs"
+    __table_args__ = (
+        Index(
+            "ix_account_deletion_jobs_retry_schedule",
+            "status",
+            "next_retry_at",
+            "lease_until",
+            "created_at",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), unique=True)
@@ -322,6 +331,11 @@ class AccountDeletionJob(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processing_owner_token: Mapped[str | None] = mapped_column(String(64))
     firebase_tokens_revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )

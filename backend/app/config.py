@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     firestore_database_id: Literal["tarla-asistani"] = "tarla-asistani"
     account_deletion_retry_minutes: int = Field(default=15, ge=1, le=1440)
     account_deletion_max_automatic_attempts: int = Field(default=5, ge=1, le=20)
+    account_deletion_processing_lease_minutes: int = Field(default=30, ge=1, le=120)
+    account_deletion_startup_batch_limit: int = Field(default=20, ge=1, le=100)
     push_gateway_url: str | None = None
     push_gateway_token: str | None = None
     push_timeout_seconds: float = Field(default=8, gt=0, le=30)

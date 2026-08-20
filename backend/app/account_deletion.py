@@ -1,11 +1,11 @@
-import uuid
 import logging
+import uuid
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, select, update
+from sqlalchemy.orm import Session, attributes
 
 from app.config import Settings, get_settings
 from app.database import SessionLocal
@@ -35,16 +35,31 @@ MEDIA_STORAGE_UNAVAILABLE = "MEDIA_STORAGE_UNAVAILABLE"
 ACCOUNT_DELETION_UNEXPECTED = "ACCOUNT_DELETION_UNEXPECTED"
 logger = logging.getLogger(__name__)
 
+_JOB_DATETIME_FIELDS = (
+    "next_retry_at",
+    "processing_started_at",
+    "lease_until",
+    "firebase_tokens_revoked_at",
+    "firestore_anonymized_at",
+    "media_deleted_at",
+    "firebase_auth_deleted_at",
+    "postgres_anonymized_at",
+    "created_at",
+    "updated_at",
+    "completed_at",
+)
 
-class _NoopFirebaseAccountGateway:
-    def revoke_tokens(self, uid: str) -> None:
-        pass
 
-    def anonymize_firestore(self, uid: str, anonymous_subject: str) -> None:
-        pass
-
-    def delete_auth_user(self, uid: str) -> None:
-        pass
+def _normalize_job_datetimes(job: AccountDeletionJob) -> AccountDeletionJob:
+    for field in _JOB_DATETIME_FIELDS:
+        value = getattr(job, field)
+        if value is not None and value.tzinfo is None:
+            attributes.set_committed_value(
+                job,
+                field,
+                value.replace(tzinfo=timezone.utc),
+            )
+    return job
 
 
 def request_account_deletion(
@@ -82,110 +97,331 @@ def request_account_deletion(
     return job
 
 
-def _commit_step(db: Session, job: AccountDeletionJob, field: str, now: datetime) -> None:
-    setattr(job, field, now)
+def _automatic_eligibility_clause(settings: Settings, now: datetime):
+    return and_(
+        AccountDeletionJob.attempt_count
+        < settings.account_deletion_max_automatic_attempts,
+        or_(
+            AccountDeletionJob.status == AccountDeletionStatus.PENDING,
+            and_(
+                AccountDeletionJob.status == AccountDeletionStatus.RETRY_REQUIRED,
+                or_(
+                    AccountDeletionJob.next_retry_at.is_(None),
+                    AccountDeletionJob.next_retry_at <= now,
+                ),
+            ),
+            and_(
+                AccountDeletionJob.status == AccountDeletionStatus.PROCESSING,
+                or_(
+                    AccountDeletionJob.lease_until.is_(None),
+                    AccountDeletionJob.lease_until <= now,
+                ),
+            ),
+        ),
+    )
+
+
+def _forced_eligibility_clause(now: datetime):
+    return or_(
+        AccountDeletionJob.status.in_(
+            [
+                AccountDeletionStatus.PENDING,
+                AccountDeletionStatus.RETRY_REQUIRED,
+            ]
+        ),
+        and_(
+            AccountDeletionJob.status == AccountDeletionStatus.PROCESSING,
+            or_(
+                AccountDeletionJob.lease_until.is_(None),
+                AccountDeletionJob.lease_until <= now,
+            ),
+        ),
+    )
+
+
+def _claim_account_deletion_job(
+    db: Session,
+    job_id: uuid.UUID,
+    *,
+    settings: Settings,
+    now: datetime,
+    owner_token: str,
+    force: bool,
+) -> tuple[AccountDeletionJob | None, bool]:
+    eligibility = (
+        _forced_eligibility_clause(now)
+        if force
+        else _automatic_eligibility_clause(settings, now)
+    )
+    claimed_id = db.execute(
+        update(AccountDeletionJob)
+        .where(AccountDeletionJob.id == job_id, eligibility)
+        .values(
+            status=AccountDeletionStatus.PROCESSING,
+            attempt_count=AccountDeletionJob.attempt_count + 1,
+            last_error_code=None,
+            next_retry_at=None,
+            processing_started_at=now,
+            lease_until=now
+            + timedelta(minutes=settings.account_deletion_processing_lease_minutes),
+            processing_owner_token=owner_token,
+        )
+        .returning(AccountDeletionJob.id)
+        .execution_options(synchronize_session=False)
+    ).scalar_one_or_none()
+    if claimed_id is None:
+        db.rollback()
+        current = db.get(AccountDeletionJob, job_id, populate_existing=True)
+        return (
+            _normalize_job_datetimes(current) if current is not None else None,
+            False,
+        )
     db.commit()
+    claimed = db.get(AccountDeletionJob, claimed_id, populate_existing=True)
+    return (
+        _normalize_job_datetimes(claimed) if claimed is not None else None,
+        True,
+    )
+
+
+def _owns_processing_lease(job: AccountDeletionJob, owner_token: str) -> bool:
+    return (
+        job.status is AccountDeletionStatus.PROCESSING
+        and job.processing_owner_token == owner_token
+    )
+
+
+def _owned_job(
+    db: Session, job_id: uuid.UUID, owner_token: str
+) -> AccountDeletionJob | None:
+    job = db.get(AccountDeletionJob, job_id, populate_existing=True)
+    if job is None:
+        return None
+    _normalize_job_datetimes(job)
+    return job if _owns_processing_lease(job, owner_token) else None
+
+
+def _current_job(db: Session, job_id: uuid.UUID) -> AccountDeletionJob:
+    job = db.get(AccountDeletionJob, job_id, populate_existing=True)
+    if job is None:
+        raise ValueError("Account deletion job was not found.")
+    return _normalize_job_datetimes(job)
+
+
+def _commit_step(
+    db: Session,
+    job: AccountDeletionJob,
+    field: str,
+    *,
+    owner_token: str,
+    now: datetime,
+) -> AccountDeletionJob:
+    result = db.execute(
+        update(AccountDeletionJob)
+        .where(
+            AccountDeletionJob.id == job.id,
+            AccountDeletionJob.status == AccountDeletionStatus.PROCESSING,
+            AccountDeletionJob.processing_owner_token == owner_token,
+            getattr(AccountDeletionJob, field).is_(None),
+        )
+        .values({field: now})
+        .execution_options(synchronize_session="fetch")
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        return _current_job(db, job.id)
+    db.refresh(job)
+    _normalize_job_datetimes(job)
+    db.commit()
+    return job
 
 
 def _mark_retry_required(
     db: Session,
     job: AccountDeletionJob,
     *,
+    owner_token: str,
     error_code: str,
     settings: Settings,
     now: datetime,
 ) -> AccountDeletionJob:
-    job.status = AccountDeletionStatus.RETRY_REQUIRED
-    job.last_error_code = error_code
-    job.next_retry_at = now + timedelta(
-        minutes=settings.account_deletion_retry_minutes
+    result = db.execute(
+        update(AccountDeletionJob)
+        .where(
+            AccountDeletionJob.id == job.id,
+            AccountDeletionJob.status == AccountDeletionStatus.PROCESSING,
+            AccountDeletionJob.processing_owner_token == owner_token,
+        )
+        .values(
+            status=AccountDeletionStatus.RETRY_REQUIRED,
+            last_error_code=error_code,
+            next_retry_at=now
+            + timedelta(minutes=settings.account_deletion_retry_minutes),
+            processing_started_at=None,
+            lease_until=None,
+            processing_owner_token=None,
+        )
+        .execution_options(synchronize_session="fetch")
     )
+    if result.rowcount != 1:
+        db.rollback()
+        return _current_job(db, job.id)
+    db.refresh(job)
+    _normalize_job_datetimes(job)
     db.commit()
     return job
 
 
-def process_account_deletion(
+def _process_claimed_account_deletion(
     db: Session,
-    job_id: uuid.UUID,
-    gateway: FirebaseAccountGateway,
-    storage: MediaStorage,
+    job: AccountDeletionJob,
+    *,
+    owner_token: str,
+    gateway_factory: Callable[[Settings], FirebaseAccountGateway],
+    storage_factory: Callable[[Settings], MediaStorage],
     settings: Settings,
     now: datetime,
 ) -> AccountDeletionJob:
-    job = db.scalar(
-        select(AccountDeletionJob)
-        .where(AccountDeletionJob.id == job_id)
-        .with_for_update()
-    )
-    if job is None:
-        raise ValueError("Account deletion job was not found.")
-    if job.status in {
-        AccountDeletionStatus.PROCESSING,
-        AccountDeletionStatus.COMPLETED,
-    }:
-        return job
-
-    job.status = AccountDeletionStatus.PROCESSING
-    job.attempt_count += 1
-    job.last_error_code = None
-    job.next_retry_at = None
-    db.commit()
-
+    gateway: FirebaseAccountGateway | None = None
     uid = job.firebase_uid_snapshot
+
     try:
+        job = _owned_job(db, job.id, owner_token) or _current_job(db, job.id)
+        if not _owns_processing_lease(job, owner_token):
+            return job
         if job.firebase_tokens_revoked_at is None:
             if uid is not None:
+                gateway = gateway_factory(settings)
                 gateway.revoke_tokens(uid)
-            _commit_step(db, job, "firebase_tokens_revoked_at", now)
+            job = _commit_step(
+                db,
+                job,
+                "firebase_tokens_revoked_at",
+                owner_token=owner_token,
+                now=now,
+            )
+            if not _owns_processing_lease(job, owner_token):
+                return job
 
+        job = _owned_job(db, job.id, owner_token) or _current_job(db, job.id)
+        if not _owns_processing_lease(job, owner_token):
+            return job
         if job.firestore_anonymized_at is None:
             if uid is not None:
+                gateway = gateway or gateway_factory(settings)
                 gateway.anonymize_firestore(uid, job.user.anonymized_subject_id)
-            _commit_step(db, job, "firestore_anonymized_at", now)
+            job = _commit_step(
+                db,
+                job,
+                "firestore_anonymized_at",
+                owner_token=owner_token,
+                now=now,
+            )
+            if not _owns_processing_lease(job, owner_token):
+                return job
     except AccountDeletionProviderError as error:
         return _mark_retry_required(
             db,
             job,
+            owner_token=owner_token,
             error_code=error.code,
             settings=settings,
             now=now,
         )
 
+    job = _owned_job(db, job.id, owner_token) or _current_job(db, job.id)
+    if not _owns_processing_lease(job, owner_token):
+        return job
     if job.media_deleted_at is None:
         media_assets = db.scalars(
             select(MediaAsset).where(MediaAsset.owner_id == job.user_id)
         ).all()
-        try:
-            for asset in media_assets:
-                try:
-                    storage.delete(asset.storage_key)
-                except MediaStorageMissing:
-                    pass
-        except MediaStorageError:
-            return _mark_retry_required(
-                db,
-                job,
-                error_code=MEDIA_STORAGE_UNAVAILABLE,
-                settings=settings,
-                now=now,
-            )
-        _commit_step(db, job, "media_deleted_at", now)
+        if media_assets:
+            try:
+                storage = storage_factory(settings)
+            except Exception:
+                return _mark_retry_required(
+                    db,
+                    job,
+                    owner_token=owner_token,
+                    error_code=MEDIA_STORAGE_UNAVAILABLE,
+                    settings=settings,
+                    now=now,
+                )
+            try:
+                for asset in media_assets:
+                    try:
+                        storage.delete(asset.storage_key)
+                    except MediaStorageMissing:
+                        pass
+            except MediaStorageError:
+                return _mark_retry_required(
+                    db,
+                    job,
+                    owner_token=owner_token,
+                    error_code=MEDIA_STORAGE_UNAVAILABLE,
+                    settings=settings,
+                    now=now,
+                )
+        job = _commit_step(
+            db,
+            job,
+            "media_deleted_at",
+            owner_token=owner_token,
+            now=now,
+        )
+        if not _owns_processing_lease(job, owner_token):
+            return job
 
     try:
+        job = _owned_job(db, job.id, owner_token) or _current_job(db, job.id)
+        if not _owns_processing_lease(job, owner_token):
+            return job
         if job.firebase_auth_deleted_at is None:
             if uid is not None:
+                gateway = gateway or gateway_factory(settings)
                 gateway.delete_auth_user(uid)
-            _commit_step(db, job, "firebase_auth_deleted_at", now)
+            job = _commit_step(
+                db,
+                job,
+                "firebase_auth_deleted_at",
+                owner_token=owner_token,
+                now=now,
+            )
+            if not _owns_processing_lease(job, owner_token):
+                return job
     except AccountDeletionProviderError as error:
         return _mark_retry_required(
             db,
             job,
+            owner_token=owner_token,
             error_code=error.code,
             settings=settings,
             now=now,
         )
 
-    user = job.user
+    job_id = job.id
+    job = db.scalar(
+        select(AccountDeletionJob)
+        .where(
+            AccountDeletionJob.id == job_id,
+            AccountDeletionJob.status == AccountDeletionStatus.PROCESSING,
+            AccountDeletionJob.processing_owner_token == owner_token,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if job is None:
+        db.rollback()
+        return _current_job(db, job_id)
+    user = db.scalar(
+        select(User)
+        .where(User.id == job.user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None:
+        raise ValueError("Account deletion user was not found.")
     user.phone_number = f"deleted-{user.anonymized_subject_id}"
     user.firebase_uid = None
     user.account_status = AccountStatus.ANONYMIZED
@@ -206,8 +442,43 @@ def process_account_deletion(
     job.completed_at = now
     job.last_error_code = None
     job.next_retry_at = None
+    job.processing_started_at = None
+    job.lease_until = None
+    job.processing_owner_token = None
     db.commit()
     return job
+
+
+def process_account_deletion(
+    db: Session,
+    job_id: uuid.UUID,
+    gateway: FirebaseAccountGateway,
+    storage: MediaStorage,
+    settings: Settings,
+    now: datetime,
+) -> AccountDeletionJob:
+    owner_token = uuid.uuid4().hex
+    job, claimed = _claim_account_deletion_job(
+        db,
+        job_id,
+        settings=settings,
+        now=now,
+        owner_token=owner_token,
+        force=True,
+    )
+    if job is None:
+        raise ValueError("Account deletion job was not found.")
+    if not claimed:
+        return job
+    return _process_claimed_account_deletion(
+        db,
+        job,
+        owner_token=owner_token,
+        gateway_factory=lambda _settings: gateway,
+        storage_factory=lambda _settings: storage,
+        settings=settings,
+        now=now,
+    )
 
 
 def _create_gateway(settings: Settings) -> FirebaseAccountGateway:
@@ -223,74 +494,104 @@ def process_account_deletion_by_id(
     settings: Settings | None = None,
     now_factory: Callable[[], datetime] = utcnow,
     force: bool = False,
+    owner_token: str | None = None,
 ) -> AccountDeletionJob:
     resolved_settings = settings or get_settings()
     now = now_factory()
+    resolved_owner_token = owner_token or uuid.uuid4().hex
     with session_factory() as db:
-        job = db.get(AccountDeletionJob, job_id)
+        job, claimed = _claim_account_deletion_job(
+            db,
+            job_id,
+            settings=resolved_settings,
+            now=now,
+            owner_token=resolved_owner_token,
+            force=force,
+        )
         if job is None:
             raise ValueError("Account deletion job was not found.")
-        if job.status is AccountDeletionStatus.COMPLETED:
+        if not claimed:
             return job
-        if not force and not _is_automatic_retry_eligible(
-            job, resolved_settings, now
-        ):
-            return job
-        if job.firebase_uid_snapshot is None:
-            gateway: FirebaseAccountGateway = _NoopFirebaseAccountGateway()
-        else:
-            try:
-                gateway = gateway_factory(resolved_settings)
-            except AccountDeletionProviderError as error:
-                job.attempt_count += 1
-                return _mark_retry_required(
-                    db,
-                    job,
-                    error_code=error.code,
-                    settings=resolved_settings,
-                    now=now,
-                )
         try:
-            storage = storage_factory(resolved_settings)
-        except Exception:
-            job.attempt_count += 1
-            return _mark_retry_required(
+            return _process_claimed_account_deletion(
                 db,
                 job,
-                error_code=MEDIA_STORAGE_UNAVAILABLE,
+                owner_token=resolved_owner_token,
+                gateway_factory=gateway_factory,
+                storage_factory=storage_factory,
                 settings=resolved_settings,
                 now=now,
             )
-        return process_account_deletion(
+        except Exception:
+            db.rollback()
+            raise
+
+
+def _mark_retry_required_in_fresh_session(
+    job_id: uuid.UUID,
+    *,
+    owner_token: str,
+    error_code: str,
+    session_factory: Callable[[], Any],
+    settings: Settings,
+    now: datetime,
+) -> AccountDeletionJob | None:
+    with session_factory() as db:
+        job = db.get(AccountDeletionJob, job_id, populate_existing=True)
+        if job is None:
+            return None
+        return _mark_retry_required(
             db,
+            job,
+            owner_token=owner_token,
+            error_code=error_code,
+            settings=settings,
+            now=now,
+        )
+
+
+def process_account_deletion_safely(
+    job_id: uuid.UUID,
+    *,
+    session_factory: Callable[[], Any] = SessionLocal,
+    gateway_factory: Callable[[Settings], FirebaseAccountGateway] = _create_gateway,
+    storage_factory: Callable[[Settings], MediaStorage] = create_media_storage,
+    settings: Settings | None = None,
+    now_factory: Callable[[], datetime] = utcnow,
+    force: bool = False,
+) -> AccountDeletionJob | None:
+    resolved_settings = settings or get_settings()
+    now = now_factory()
+    owner_token = uuid.uuid4().hex
+    try:
+        return process_account_deletion_by_id(
             job_id,
-            gateway,
-            storage,
-            resolved_settings,
-            now,
+            session_factory=session_factory,
+            gateway_factory=gateway_factory,
+            storage_factory=storage_factory,
+            settings=resolved_settings,
+            now_factory=lambda: now,
+            force=force,
+            owner_token=owner_token,
         )
-
-
-def _aware(value: datetime) -> datetime:
-    return value if value.tzinfo is not None else value.replace(tzinfo=utcnow().tzinfo)
-
-
-def _is_automatic_retry_eligible(
-    job: AccountDeletionJob, settings: Settings, now: datetime
-) -> bool:
-    return (
-        job.status
-        in {
-            AccountDeletionStatus.PENDING,
-            AccountDeletionStatus.RETRY_REQUIRED,
-        }
-        and job.attempt_count < settings.account_deletion_max_automatic_attempts
-        and (
-            job.status is AccountDeletionStatus.PENDING
-            or job.next_retry_at is None
-            or _aware(job.next_retry_at) <= _aware(now)
+    except Exception:
+        try:
+            result = _mark_retry_required_in_fresh_session(
+                job_id,
+                owner_token=owner_token,
+                error_code=ACCOUNT_DELETION_UNEXPECTED,
+                session_factory=session_factory,
+                settings=resolved_settings,
+                now=now,
+            )
+        except Exception:
+            result = None
+        logger.error(
+            "account_deletion_processing_failed job_id=%s error_code=%s",
+            job_id,
+            ACCOUNT_DELETION_UNEXPECTED,
         )
-    )
+        return result
 
 
 def eligible_account_deletion_jobs(
@@ -300,29 +601,21 @@ def eligible_account_deletion_jobs(
     *,
     automatic: bool,
     job_id: uuid.UUID | None = None,
+    limit: int | None = None,
 ) -> list[AccountDeletionJob]:
-    statement = (
-        select(AccountDeletionJob)
-        .where(
-            AccountDeletionJob.status.in_(
-                [
-                    AccountDeletionStatus.PENDING,
-                    AccountDeletionStatus.RETRY_REQUIRED,
-                ]
-            )
-        )
-        .order_by(AccountDeletionJob.created_at, AccountDeletionJob.id)
+    eligibility = (
+        _automatic_eligibility_clause(settings, now)
+        if automatic
+        else _forced_eligibility_clause(now)
+    )
+    statement = select(AccountDeletionJob).where(eligibility).order_by(
+        AccountDeletionJob.created_at, AccountDeletionJob.id
     )
     if job_id is not None:
         statement = statement.where(AccountDeletionJob.id == job_id)
-    jobs = list(db.scalars(statement))
-    if not automatic:
-        return jobs
-    return [
-        job
-        for job in jobs
-        if _is_automatic_retry_eligible(job, settings, now)
-    ]
+    if limit is not None:
+        statement = statement.limit(limit)
+    return list(db.scalars(statement))
 
 
 def run_account_deletion_retries(
@@ -333,6 +626,7 @@ def run_account_deletion_retries(
     processor: Callable[[uuid.UUID], AccountDeletionJob | None],
     automatic: bool,
     job_id: uuid.UUID | None = None,
+    limit: int | None = None,
 ) -> list[uuid.UUID]:
     jobs = eligible_account_deletion_jobs(
         db,
@@ -340,6 +634,7 @@ def run_account_deletion_retries(
         now,
         automatic=automatic,
         job_id=job_id,
+        limit=limit,
     )
     processed: list[uuid.UUID] = []
     for job in jobs:
@@ -372,6 +667,7 @@ def run_startup_account_deletion_retries() -> list[uuid.UUID]:
             db,
             settings=resolved_settings,
             now=utcnow(),
-            processor=process_account_deletion_by_id,
+            processor=process_account_deletion_safely,
             automatic=True,
+            limit=resolved_settings.account_deletion_startup_batch_limit,
         )
