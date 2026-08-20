@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     firebase_auth_enabled: bool = False
     firebase_service_account_path: str | None = None
     firebase_project_id: str | None = None
+    firestore_database_id: str = "tarla-asistani"
+    account_deletion_retry_minutes: int = Field(default=15, ge=1, le=1440)
+    account_deletion_max_automatic_attempts: int = Field(default=5, ge=1, le=20)
     push_gateway_url: str | None = None
     push_gateway_token: str | None = None
     push_timeout_seconds: float = Field(default=8, gt=0, le=30)

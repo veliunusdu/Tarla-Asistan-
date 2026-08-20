@@ -5,8 +5,14 @@ import sys
 from datetime import timedelta
 
 import pytest
+from firebase_admin import auth, exceptions as firebase_exceptions
+from google.api_core import exceptions as google_exceptions
 from sqlalchemy.exc import IntegrityError
 
+from app.firebase_account import (
+    AccountDeletionProviderError,
+    FirebaseAdminAccountGateway,
+)
 from app.models import (
     AccountDeletionJob,
     AccountDeletionStatus,
@@ -16,6 +22,207 @@ from app.models import (
     UserRole,
     utcnow,
 )
+
+
+class FakeDocumentSnapshot:
+    def __init__(self, document_id: str):
+        self.id = document_id
+        self.reference = FakeDocumentReference("farms", document_id)
+
+
+class FakeDocumentReference:
+    def __init__(self, collection: str, document_id: str, firestore=None):
+        self.collection = collection
+        self.id = document_id
+        self.firestore = firestore
+
+    def delete(self):
+        self.firestore.deleted_documents.append(f"{self.collection}/{self.id}")
+
+
+class FakeQuery:
+    def __init__(self, firestore, documents):
+        self.firestore = firestore
+        self.documents = documents
+
+    def where(self, *, filter):
+        self.firestore.query = (
+            filter.field_path,
+            filter.op_string,
+            filter.value,
+        )
+        return self
+
+    def stream(self):
+        if self.firestore.stream_error is not None:
+            raise self.firestore.stream_error
+        return iter(self.documents)
+
+
+class FakeCollection:
+    def __init__(self, firestore, name: str):
+        self.firestore = firestore
+        self.name = name
+
+    def where(self, *, filter):
+        documents = [
+            FakeDocumentSnapshot(farm["id"])
+            for farm in self.firestore.farms
+            if farm["ownerId"] == filter.value
+        ]
+        return FakeQuery(self.firestore, documents).where(filter=filter)
+
+    def document(self, document_id: str):
+        return FakeDocumentReference(self.name, document_id, self.firestore)
+
+
+class FakeBatch:
+    def __init__(self, firestore):
+        self.firestore = firestore
+        self.operations = []
+
+    def update(self, document, values):
+        self.operations.append((document, values))
+
+    def commit(self):
+        self.firestore.batch_sizes.append(len(self.operations))
+        for document, values in self.operations:
+            self.firestore.updated[document.id] = values
+
+
+class FakeFirestoreClient:
+    def __init__(self, firestore):
+        self.firestore = firestore
+
+    def collection(self, name: str):
+        return FakeCollection(self.firestore, name)
+
+    def batch(self):
+        return FakeBatch(self.firestore)
+
+
+class FakeFirestore:
+    def __init__(self, farms=None, stream_error=None):
+        self.farms = farms or []
+        self.stream_error = stream_error
+        self.database_id = None
+        self.query = None
+        self.updated = {}
+        self.deleted_documents = []
+        self.batch_sizes = []
+
+    def client(self, *, app, database_id):
+        assert app is not None
+        self.database_id = database_id
+        return FakeFirestoreClient(self)
+
+
+class FakeAuth:
+    UserNotFoundError = auth.UserNotFoundError
+
+    def __init__(self, *, missing=False, error=None):
+        self.missing = missing
+        self.error = error
+        self.revoked = []
+        self.deleted = []
+
+    def revoke_refresh_tokens(self, uid, *, app):
+        self.revoked.append(uid)
+        if self.missing:
+            raise self.UserNotFoundError("missing user")
+        if self.error is not None:
+            raise self.error
+
+    def delete_user(self, uid, *, app):
+        self.deleted.append(uid)
+        if self.missing:
+            raise self.UserNotFoundError("missing user")
+        if self.error is not None:
+            raise self.error
+
+
+def test_gateway_uses_named_database_and_anonymizes_owned_farms():
+    fake = FakeFirestore(farms=[{"id": "farm-1", "ownerId": "uid-1"}])
+    gateway = FirebaseAdminAccountGateway(
+        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+    )
+
+    gateway.anonymize_firestore("uid-1", "anon-123")
+
+    assert fake.database_id == "tarla-asistani"
+    assert fake.query == ("ownerId", "==", "uid-1")
+    assert fake.updated["farm-1"] == {
+        "ownerId": "anon-123",
+        "anonymousOwnerId": "anon-123",
+    }
+    assert fake.deleted_documents == ["users/uid-1"]
+
+
+def test_gateway_anonymizes_more_than_500_farms_in_bounded_batches():
+    fake = FakeFirestore(
+        farms=[{"id": f"farm-{index}", "ownerId": "uid-1"} for index in range(501)]
+    )
+    gateway = FirebaseAdminAccountGateway(
+        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+    )
+
+    gateway.anonymize_firestore("uid-1", "anon-123")
+
+    assert fake.batch_sizes == [450, 51]
+    assert len(fake.updated) == 501
+    assert max(fake.batch_sizes) <= 450
+
+
+def test_gateway_treats_missing_auth_user_as_idempotent_success():
+    fake_auth = FakeAuth(missing=True)
+    gateway = FirebaseAdminAccountGateway(
+        app=object(),
+        auth_module=fake_auth,
+        firestore_factory=FakeFirestore().client,
+    )
+
+    gateway.revoke_tokens("uid-1")
+    gateway.delete_auth_user("uid-1")
+
+    assert fake_auth.revoked == ["uid-1"]
+    assert fake_auth.deleted == ["uid-1"]
+
+
+def test_gateway_maps_firestore_failure_without_provider_detail():
+    provider_text = "upstream timeout containing sensitive provider context"
+    fake = FakeFirestore(
+        stream_error=google_exceptions.ServiceUnavailable(provider_text)
+    )
+    gateway = FirebaseAdminAccountGateway(
+        app=object(), auth_module=FakeAuth(), firestore_factory=fake.client
+    )
+
+    with pytest.raises(AccountDeletionProviderError) as exc_info:
+        gateway.anonymize_firestore("uid-1", "anon-123")
+
+    assert exc_info.value.code == "FIRESTORE_UNAVAILABLE"
+    assert str(exc_info.value) == "FIRESTORE_UNAVAILABLE"
+    assert provider_text not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("operation", ["revoke_tokens", "delete_auth_user"])
+def test_gateway_maps_auth_failure_without_provider_detail(operation):
+    provider_text = "auth backend leaked text"
+    fake_auth = FakeAuth(
+        error=firebase_exceptions.FirebaseError("UNAVAILABLE", provider_text)
+    )
+    gateway = FirebaseAdminAccountGateway(
+        app=object(),
+        auth_module=fake_auth,
+        firestore_factory=FakeFirestore().client,
+    )
+
+    with pytest.raises(AccountDeletionProviderError) as exc_info:
+        getattr(gateway, operation)("uid-1")
+
+    assert exc_info.value.code == "FIREBASE_AUTH_UNAVAILABLE"
+    assert str(exc_info.value) == "FIREBASE_AUTH_UNAVAILABLE"
+    assert provider_text not in str(exc_info.value)
 
 
 def test_secure_account_models_have_safe_defaults(db_session):
