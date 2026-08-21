@@ -8,10 +8,9 @@ import 'models/notification_target.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
-import 'screens/ozet_ekrani.dart';
+import 'screens/ana_ekran.dart';
 import 'services/api_client.dart';
 import 'services/firebase_auth_service.dart';
-import 'services/firestore_farm_repository.dart';
 import 'services/firestore_user_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/post_login_initializer.dart';
@@ -95,11 +94,6 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       );
     }
     return _postLoginFuture!;
-  }
-
-  Future<void> _onLogout() async {
-    await _notificationService.deactivateCurrentDevice();
-    await _authService.signOut();
   }
 
   Future<void> _finishOnboarding() async {
@@ -203,12 +197,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           ),
                         );
                       }
-                      return OzetEkrani(
-                        syncService: _syncService,
-                        apiClient: _apiClient,
-                        onLogout: _onLogout,
-                        repository: FirestoreFarmRepository(uid: user.uid),
-                      );
+                      return const AnaEkran();
                     },
                   );
                 }
