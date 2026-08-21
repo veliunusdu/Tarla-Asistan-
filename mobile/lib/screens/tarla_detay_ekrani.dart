@@ -1,133 +1,372 @@
 import 'package:flutter/material.dart';
 
+import '../app/theme/app_colors.dart';
+import '../app/theme/app_spacing.dart';
+import '../features/activities/data/faaliyet_repository.dart';
+import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
-import '../services/firestore_farm_repository.dart';
-import '../services/sync_service.dart';
+import '../services/database_helper.dart';
+import '../shared/widgets/app_empty_view.dart';
+import '../shared/widgets/app_error_view.dart';
+import '../shared/widgets/app_loading_view.dart';
 import 'faaliyet_ekleme_ekrani.dart';
+
+const List<String> _trAylar = [
+  'Oca',
+  'Şub',
+  'Mar',
+  'Nis',
+  'May',
+  'Haz',
+  'Tem',
+  'Ağu',
+  'Eyl',
+  'Eki',
+  'Kas',
+  'Ara',
+];
+
+String _tarihStr(DateTime dt) =>
+    '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
 class TarlaDetayEkrani extends StatefulWidget {
   const TarlaDetayEkrani({
     super.key,
     required this.tarla,
-    required this.syncService,
-    required this.repository,
-  });
+    FaaliyetRepository? faaliyetRepository,
+  }) : _faaliyetRepository =
+           faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final Tarla tarla;
-  final SyncService syncService;
-  final FirestoreFarmRepository repository;
+  final FaaliyetRepository _faaliyetRepository;
 
   @override
   State<TarlaDetayEkrani> createState() => _TarlaDetayEkraniState();
 }
 
-class _TarlaDetayEkraniState extends State<TarlaDetayEkrani> {
+class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  late Future<List<Faaliyet>> _faaliyetler;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _faaliyetler = widget._faaliyetRepository.getFaaliyetler(widget.tarla.id);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _yenile() {
+    setState(() {
+      _faaliyetler = widget._faaliyetRepository.getFaaliyetler(widget.tarla.id);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.tarla.name),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Geçmiş', icon: Icon(Icons.history)),
-              Tab(text: 'Yapılacak', icon: Icon(Icons.event_note)),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.tarla.name),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Yapılacaklar', icon: Icon(Icons.event_note)),
+            Tab(text: 'Geçmiş', icon: Icon(Icons.history)),
+          ],
         ),
-        body: StreamBuilder<List<Faaliyet>>(
-          stream: widget.repository.watchActivities(widget.tarla.id),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: const Text('Faaliyetler yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.'),
-                ),
-              );
-            }
-            final activities = snapshot.data ?? const <Faaliyet>[];
-            final completed = activities
-                .where((item) => item.isCompleted)
-                .toList();
-            final planned = activities
-                .where((item) => !item.isCompleted)
-                .toList();
-            return TabBarView(
-              children: [
-                _ActivityList(
-                  items: completed,
-                  emptyMessage: 'Henüz kayıtlı faaliyet yok.',
-                ),
-                _ActivityList(
-                  items: planned,
-                  emptyMessage: 'Planlanan faaliyet yok.',
-                ),
-              ],
-            );
-          },
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          tooltip: 'Yeni faaliyet ekle',
-          onPressed: () async {
-            await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(
-                builder: (_) => FaaliyetEklemeEkrani(
-                  tarlaId: widget.tarla.id,
-                  syncService: widget.syncService,
-                  repository: widget.repository,
-                ),
-              ),
-            );
-          },
-          icon: const Icon(Icons.add),
-          label: const Text('Faaliyet ekle'),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TarlaBilgiKarti(tarla: widget.tarla),
+          Expanded(child: _faaliyetTabView()),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        onPressed: () async {
+          final result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  FaaliyetEklemeEkrani(tarlaId: widget.tarla.id),
+            ),
+          );
+          if (result == true) _yenile();
+        },
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _faaliyetTabView() {
+    return FutureBuilder<List<Faaliyet>>(
+      future: _faaliyetler,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const AppLoadingView(message: 'Faaliyetler yükleniyor…');
+        }
+
+        if (snapshot.hasError) {
+          return AppErrorView(onRetry: _yenile);
+        }
+
+        final all = snapshot.data ?? [];
+        final yapilacaklar = all.where((f) => !f.isCompleted).toList();
+        final gecmis = all.where((f) => f.isCompleted).toList();
+
+        return TabBarView(
+          controller: _tabController,
+          children: [
+            _FaaliyetListesi(
+              faaliyetler: yapilacaklar,
+              isGecmis: false,
+              onDelete: (id) async {
+                await DatabaseHelper.instance.deleteFaaliyet(id);
+                _yenile();
+              },
+            ),
+            _FaaliyetListesi(
+              faaliyetler: gecmis,
+              isGecmis: true,
+              onDelete: (id) async {
+                await DatabaseHelper.instance.deleteFaaliyet(id);
+                _yenile();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tarla bilgi kartı
+// ---------------------------------------------------------------------------
+
+class _TarlaBilgiKarti extends StatelessWidget {
+  const _TarlaBilgiKarti({required this.tarla});
+
+  final Tarla tarla;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final konumMetin = (tarla.latitude == 0.0 && tarla.longitude == 0.0)
+        ? 'Konum henüz eklenmedi'
+        : '${tarla.latitude.toStringAsFixed(5)}, '
+              '${tarla.longitude.toStringAsFixed(5)}';
+
+    return Card(
+      margin: const EdgeInsets.all(AppSpacing.md),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(tarla.name, style: theme.textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.sm),
+            _InfoSatiri(
+              icon: Icons.grass,
+              label: 'Ürün',
+              deger: tarla.cropType,
+            ),
+            _InfoSatiri(
+              icon: Icons.straighten,
+              label: 'Büyüklük',
+              deger: '${tarla.size} dönüm',
+            ),
+            _InfoSatiri(
+              icon: Icons.calendar_today,
+              label: 'Ekim Tarihi',
+              deger: _tarihStr(tarla.plantingDate),
+            ),
+            _InfoSatiri(
+              icon: Icons.location_on,
+              label: 'Konum',
+              deger: konumMetin,
+              renkli: tarla.latitude == 0.0 && tarla.longitude == 0.0,
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _ActivityList extends StatelessWidget {
-  const _ActivityList({required this.items, required this.emptyMessage});
+class _InfoSatiri extends StatelessWidget {
+  const _InfoSatiri({
+    required this.icon,
+    required this.label,
+    required this.deger,
+    this.renkli = false,
+  });
 
-  final List<Faaliyet> items;
-  final String emptyMessage;
+  final IconData icon;
+  final String label;
+  final String deger;
+  final bool renkli;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(emptyMessage, textAlign: TextAlign.center),
-        ),
+    final theme = Theme.of(context);
+    final degerStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: renkli ? AppColors.textDisabled : AppColors.textSecondary,
+      fontStyle: renkli ? FontStyle.italic : FontStyle.normal,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppColors.primary),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            '$label: ',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          Expanded(child: Text(deger, style: degerStyle)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Faaliyet listesi
+// ---------------------------------------------------------------------------
+
+class _FaaliyetListesi extends StatelessWidget {
+  const _FaaliyetListesi({
+    required this.faaliyetler,
+    required this.isGecmis,
+    required this.onDelete,
+  });
+
+  final List<Faaliyet> faaliyetler;
+  final bool isGecmis;
+  final Future<void> Function(String id) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    if (faaliyetler.isEmpty) {
+      return AppEmptyView(
+        icon: isGecmis ? Icons.history : Icons.event_note,
+        title: isGecmis
+            ? 'Henüz geçmiş faaliyet yok.'
+            : 'Planlanmış faaliyet yok.',
+        description: isGecmis
+            ? 'Tamamlanan faaliyetler burada görünecek.'
+            : 'Faaliyet eklemek için + butonuna dokunun.',
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      itemCount: faaliyetler.length,
       itemBuilder: (context, index) {
-        final activity = items[index];
-        return Card(
-          child: ListTile(
-            leading: Icon(
-              activity.isCompleted
-                  ? Icons.check_circle_outline
-                  : Icons.schedule,
-            ),
-            title: Text(activity.type),
-            subtitle: Text(activity.note),
-          ),
+        return _FaaliyetKarti(
+          faaliyet: faaliyetler[index],
+          isGecmis: isGecmis,
+          onDelete: onDelete,
         );
       },
+    );
+  }
+}
+
+class _FaaliyetKarti extends StatelessWidget {
+  const _FaaliyetKarti({
+    required this.faaliyet,
+    required this.isGecmis,
+    required this.onDelete,
+  });
+
+  final Faaliyet faaliyet;
+  final bool isGecmis;
+  final Future<void> Function(String id) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: isGecmis
+                ? AppColors.success.withValues(alpha: 0.15)
+                : AppColors.warning.withValues(alpha: 0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            isGecmis ? Icons.check_circle : Icons.schedule,
+            color: isGecmis ? AppColors.success : AppColors.warning,
+            size: 20,
+          ),
+        ),
+        title: Text(faaliyet.type, style: theme.textTheme.titleMedium),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (faaliyet.note.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(faaliyet.note, style: theme.textTheme.bodyMedium),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _tarihStr(faaliyet.timestamp),
+                style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
+              ),
+            ),
+            if (faaliyet.dueDate != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  'Plan: ${_tarihStr(faaliyet.dueDate!)}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.warning,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          color: AppColors.textDisabled,
+          onPressed: () => onDelete(faaliyet.id),
+        ),
+      ),
     );
   }
 }

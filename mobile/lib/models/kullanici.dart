@@ -26,11 +26,6 @@ class Kullanici {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'phone': phone,
-      'role': role.toString(),
-    };
+    return {'id': id, 'name': name, 'phone': phone, 'role': role.toString()};
   }
 }

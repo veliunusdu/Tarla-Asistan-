@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+
+import '../core/database/migrations.dart';
+import '../models/faaliyet.dart';
 import '../models/sync_operation.dart';
 import '../models/tarla.dart';
-import '../models/faaliyet.dart';
 
 class DatabaseHelper implements SyncOperationStore {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -31,8 +33,7 @@ class DatabaseHelper implements SyncOperationStore {
     );
   }
 
-  Future _createDB(Database db, int version) async {
-    // Tarla Tablosu
+  Future<void> _createDB(Database db, int version) async {
     await db.execute('''
       CREATE TABLE tarlalar (
         id TEXT PRIMARY KEY,
@@ -44,14 +45,34 @@ class DatabaseHelper implements SyncOperationStore {
         plantingDate TEXT NOT NULL
       )
     ''');
-    await _createSyncOperations(db);
+
+    await db.execute('''
+      CREATE TABLE faaliyetler (
+        id TEXT PRIMARY KEY,
+        tarlaId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        note TEXT,
+        audioPath TEXT,
+        photos TEXT,
+        timestamp TEXT NOT NULL,
+        dueDate TEXT,
+        isCompleted INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
+    await _createSyncOperationsTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 3) await _createSyncOperations(db);
+    if (oldVersion < 2) {
+      await Migrations.v1ToV2(db);
+    }
+    if (oldVersion < 3) {
+      await _createSyncOperationsTable(db);
+    }
   }
 
-  Future<void> _createSyncOperations(Database db) async {
+  Future<void> _createSyncOperationsTable(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_operations (
         id TEXT PRIMARY KEY,
@@ -67,21 +88,6 @@ class DatabaseHelper implements SyncOperationStore {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS ix_sync_operations_created
       ON sync_operations(createdAt)
-    ''');
-
-    // Faaliyet Tablosu (dueDate ve isCompleted eklendi)
-    await db.execute('''
-      CREATE TABLE faaliyetler (
-        id TEXT PRIMARY KEY,
-        tarlaId TEXT NOT NULL,
-        type TEXT NOT NULL,
-        note TEXT,
-        audioPath TEXT,
-        photos TEXT,
-        timestamp TEXT NOT NULL,
-        dueDate TEXT,
-        isCompleted INTEGER
-      )
     ''');
   }
 
@@ -99,16 +105,7 @@ class DatabaseHelper implements SyncOperationStore {
   Future<List<Tarla>> getTarlalar() async {
     final db = await instance.database;
     final List<Map<String, dynamic>> result = await db.query('tarlalar');
-
     return result.map((json) => Tarla.fromJson(json)).toList();
-  }
-
-  // --- FAALİYET METODLARI ---
-
-  // Yeni faaliyet ekleme
-  Future<int> insertFaaliyet(Faaliyet faaliyet) async {
-    final db = await instance.database;
-    return await db.insert('faaliyetler', faaliyet.toJson());
   }
 
   Future<void> upsertTarlalar(List<Tarla> tarlalar) async {
@@ -122,6 +119,13 @@ class DatabaseHelper implements SyncOperationStore {
         );
       }
     });
+  }
+
+  // --- FAALİYET METODLARI ---
+
+  Future<int> insertFaaliyet(Faaliyet faaliyet) async {
+    final db = await instance.database;
+    return await db.insert('faaliyetler', faaliyet.toJson());
   }
 
   Future<void> insertFaaliyetWithSync(Faaliyet faaliyet) async {
@@ -142,7 +146,7 @@ class DatabaseHelper implements SyncOperationStore {
           'activity_type': 'OTHER',
           'description': faaliyet.type,
           'occurred_at': faaliyet.timestamp.toUtc().toIso8601String(),
-          'input_method': 'MANUAL',
+          'input_method': faaliyet.inputMethod,
         }),
         'attempts': 0,
         'createdAt': now,
@@ -150,6 +154,25 @@ class DatabaseHelper implements SyncOperationStore {
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     });
   }
+
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> result = await db.query(
+      'faaliyetler',
+      where: 'tarlaId = ?',
+      whereArgs: [tarlaId],
+      orderBy: 'timestamp DESC',
+    );
+    return result.map((json) => Faaliyet.fromJson(json)).toList();
+  }
+
+  Future<List<Faaliyet>> getTumFaaliyetler() async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> result = await db.query('faaliyetler');
+    return result.map((json) => Faaliyet.fromJson(json)).toList();
+  }
+
+  // --- SyncOperationStore ---
 
   @override
   Future<List<SyncOperation>> getPendingSyncOperations({int limit = 20}) async {
@@ -190,19 +213,6 @@ class DatabaseHelper implements SyncOperationStore {
         id,
       ],
     );
-  }
-
-  // Belirli bir tarlaya ait faaliyetleri getirme
-  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async {
-    final db = await instance.database;
-    final List<Map<String, dynamic>> result = await db.query(
-      'faaliyetler',
-      where: 'tarlaId = ?',
-      whereArgs: [tarlaId],
-      orderBy: 'timestamp DESC',
-    );
-
-    return result.map((json) => Faaliyet.fromJson(json)).toList();
   }
 
   // --- İSTATİSTİK SORGULARI ---

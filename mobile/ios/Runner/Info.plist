@@ -47,6 +47,13 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Kamera ve fotoğraf kütüphanesi erişimi (image_picker) -->
+	<key>NSCameraUsageDescription</key>
+	<string>Tarla fotoğrafı çekmek için kamera erişimi gerekiyor.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Tarla fotoğrafı seçmek için fotoğraf kütüphanesi erişimi gerekiyor.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Çekilen fotoğrafı kaydetmek için fotoğraf kütüphanesi yazma erişimi gerekiyor.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -28,11 +28,23 @@ class FirestoreWriteFailure {
 abstract final class FirestoreFarmContract {
   static const databaseId = 'tarla-asistani';
   static const farmFields = {
-    'ownerId', 'name', 'latitude', 'longitude', 'sizeInHectares', 'cropType',
-    'irrigationMethod', 'plantedAt', 'createdAt', 'updatedAt',
+    'ownerId',
+    'name',
+    'latitude',
+    'longitude',
+    'sizeInHectares',
+    'cropType',
+    'irrigationMethod',
+    'plantedAt',
+    'createdAt',
+    'updatedAt',
   };
   static const activityFields = {
-    'activityType', 'description', 'occurredAt', 'inputMethod', 'createdAt',
+    'activityType',
+    'description',
+    'occurredAt',
+    'inputMethod',
+    'createdAt',
   };
 }
 
@@ -65,31 +77,34 @@ class FirestoreFarmRepository {
 
   Stream<List<Faaliyet>> watchActivities(String farmId) => _store
       .watchActivities(farmId)
-      .map((documents) => documents.map((document) {
-        final data = document.data;
-        return Faaliyet(
-          id: document.id,
-          tarlaId: farmId,
-          type: _requiredString(data, 'activityType'),
-          note: _requiredString(data, 'description'),
-          timestamp: _requiredTimestamp(data, 'occurredAt'),
-          inputMethod: _requiredInputMethod(data),
-          isCompleted: true,
-        );
-      }).toList());
+      .map(
+        (documents) => documents.map((document) {
+          final data = document.data;
+          return Faaliyet(
+            id: document.id,
+            tarlaId: farmId,
+            type: _requiredString(data, 'activityType'),
+            note: _requiredString(data, 'description'),
+            timestamp: _requiredTimestamp(data, 'occurredAt'),
+            inputMethod: _requiredInputMethod(data),
+            isCompleted: true,
+          );
+        }).toList(),
+      );
 
-  Future<void> createFarm(Tarla farm) => _store.setDocument('farms/${farm.id}', {
-    'ownerId': uid,
-    'name': farm.name,
-    'latitude': farm.latitude,
-    'longitude': farm.longitude,
-    'sizeInHectares': farm.size,
-    'cropType': farm.cropType,
-    'irrigationMethod': 'OTHER',
-    'plantedAt': farm.plantingDate,
-    'createdAt': const FirestoreServerTimestamp(),
-    'updatedAt': const FirestoreServerTimestamp(),
-  });
+  Future<void> createFarm(Tarla farm) =>
+      _store.setDocument('farms/${farm.id}', {
+        'ownerId': uid,
+        'name': farm.name,
+        'latitude': farm.latitude,
+        'longitude': farm.longitude,
+        'sizeInHectares': farm.size,
+        'cropType': farm.cropType,
+        'irrigationMethod': 'OTHER',
+        'plantedAt': farm.plantingDate,
+        'createdAt': const FirestoreServerTimestamp(),
+        'updatedAt': const FirestoreServerTimestamp(),
+      });
 
   Future<void> createActivity(String farmId, Faaliyet activity) =>
       _store.setDocument('farms/$farmId/activities/${activity.id}', {
@@ -136,7 +151,9 @@ class FirestoreFarmRepository {
   static String _requiredInputMethod(Map<String, Object?> data) {
     final method = _requiredString(data, 'inputMethod');
     if (method == 'MANUAL' || method == 'VOICE') return method;
-    throw const FormatException('Geçersiz Firestore faaliyet verisi: inputMethod');
+    throw const FormatException(
+      'Geçersiz Firestore faaliyet verisi: inputMethod',
+    );
   }
 }
 
@@ -148,12 +165,16 @@ abstract class FirebaseFirestoreInstanceFactory {
   FirebaseFirestore instanceFor({required String databaseId});
 }
 
-class FirebaseFirestoreSdkInstanceFactory implements FirebaseFirestoreInstanceFactory {
+class FirebaseFirestoreSdkInstanceFactory
+    implements FirebaseFirestoreInstanceFactory {
   const FirebaseFirestoreSdkInstanceFactory();
 
   @override
   FirebaseFirestore instanceFor({required String databaseId}) =>
-      FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: databaseId);
+      FirebaseFirestore.instanceFor(
+        app: Firebase.app(),
+        databaseId: databaseId,
+      );
 }
 
 abstract final class FirestoreMapEncoder {
@@ -169,12 +190,10 @@ class FirebaseFirestoreFarmStore implements FirestoreFarmStore {
   FirebaseFirestoreFarmStore({
     FirebaseFirestore? firestore,
     FirebaseFirestoreInstanceFactory? instanceFactory,
-  })
-    : _firestore =
-          firestore ??
-          (instanceFactory ?? const FirebaseFirestoreSdkInstanceFactory()).instanceFor(
-            databaseId: FirestoreFarmContract.databaseId,
-          );
+  }) : _firestore =
+           firestore ??
+           (instanceFactory ?? const FirebaseFirestoreSdkInstanceFactory())
+               .instanceFor(databaseId: FirestoreFarmContract.databaseId);
 
   final FirebaseFirestore _firestore;
   final _writeFailures = StreamController<FirestoreWriteFailure>.broadcast();
@@ -222,11 +241,12 @@ class FirebaseFirestoreFarmStore implements FirestoreFarmStore {
     // Firestore queues writes locally. Do not hold the form open for a server
     // acknowledgement; a later remote failure is retained by the SDK retry path.
     unawaited(
-      _firestore.doc(path).set(FirestoreMapEncoder.encode(data)).catchError((error) {
+      _firestore.doc(path).set(FirestoreMapEncoder.encode(data)).catchError((
+        error,
+      ) {
         _writeFailures.add(FirestoreWriteFailure(path: path, cause: error));
       }),
     );
     return Future.value();
   }
-
 }

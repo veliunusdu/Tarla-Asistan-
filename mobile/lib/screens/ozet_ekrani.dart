@@ -36,7 +36,9 @@ class _OzetEkraniState extends State<OzetEkrani> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Çevrimdışı kaydedilen işlem reddedildi. Bağlantınızı ve yetkinizi kontrol edip yeniden deneyin.'),
+          content: Text(
+            'Çevrimdışı kaydedilen işlem reddedildi. Bağlantınızı ve yetkinizi kontrol edip yeniden deneyin.',
+          ),
         ),
       );
     });
@@ -92,43 +94,52 @@ class _OzetEkraniState extends State<OzetEkrani> {
               StreamBuilder<List<Tarla>>(
                 stream: widget.repository.watchFarms(widget.repository.uid),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (snapshot.hasError) return const Text('Tarla özeti yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.');
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return const Text(
+                      'Tarla özeti yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.',
+                    );
+                  }
                   final farms = snapshot.data ?? const <Tarla>[];
                   final count = farms.length;
-                  final total = farms.fold<double>(0, (sum, farm) => sum + farm.size);
+                  final total = farms.fold<double>(
+                    0,
+                    (sum, farm) => sum + farm.size,
+                  );
                   return LayoutBuilder(
-                  builder: (context, constraints) {
-                    final vertical = constraints.maxWidth < 360;
-                    final cards = [
-                      _StatCard(
-                        label: 'Toplam tarla',
-                        value: '$count',
-                        icon: Icons.landscape_outlined,
-                      ),
-                      _StatCard(
-                        label: 'Toplam alan',
-                        value: '${total.toStringAsFixed(1)} hektar',
-                        icon: Icons.straighten,
-                      ),
-                    ];
-                    if (vertical) {
-                      return Column(
+                    builder: (context, constraints) {
+                      final vertical = constraints.maxWidth < 360;
+                      final cards = [
+                        _StatCard(
+                          label: 'Toplam tarla',
+                          value: '$count',
+                          icon: Icons.landscape_outlined,
+                        ),
+                        _StatCard(
+                          label: 'Toplam alan',
+                          value: '${total.toStringAsFixed(1)} hektar',
+                          icon: Icons.straighten,
+                        ),
+                      ];
+                      if (vertical) {
+                        return Column(
+                          children: [
+                            cards[0],
+                            const SizedBox(height: 12),
+                            cards[1],
+                          ],
+                        );
+                      }
+                      return Row(
                         children: [
-                          cards[0],
-                          const SizedBox(height: 12),
-                          cards[1],
+                          Expanded(child: cards[0]),
+                          const SizedBox(width: 12),
+                          Expanded(child: cards[1]),
                         ],
                       );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(child: cards[0]),
-                        const SizedBox(width: 12),
-                        Expanded(child: cards[1]),
-                      ],
-                    );
-                  },
+                    },
                   );
                 },
               ),
@@ -138,10 +149,7 @@ class _OzetEkraniState extends State<OzetEkrani> {
                   await Navigator.push<void>(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TarlaListesiEkrani(
-                        syncService: widget.syncService,
-                        repository: widget.repository,
-                      ),
+                      builder: (_) => const TarlaListesiEkrani(),
                     ),
                   );
                 },
