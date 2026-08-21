@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .worktrees/
 backend/secrets/*.json
 __pycache__/
