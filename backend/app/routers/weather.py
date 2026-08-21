@@ -45,6 +45,11 @@ async def get_farm_weather(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Hava durumu için tarlanın konumu tanımlanmalıdır.",
         )
+    if not (-90.0 <= farm.latitude <= 90.0) or not (-180.0 <= farm.longitude <= 180.0):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Geçersiz tarla koordinatları.",
+        )
 
     now = utcnow()
     is_stale = False
