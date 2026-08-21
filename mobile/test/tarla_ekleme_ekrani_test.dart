@@ -1,49 +1,39 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/features/fields/data/tarla_repository.dart';
+import 'package:mobile/models/tarla.dart';
 import 'package:mobile/screens/tarla_ekleme_ekrani.dart';
-import 'package:mobile/services/firestore_farm_repository.dart';
 
-void main() {
-  testWidgets('rejects a farm name longer than 120 characters', (tester) async {
-    final store = _RecordingFarmStore();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: TarlaEklemeEkrani(
-          repository: FirestoreFarmRepository(uid: 'uid-1', store: store),
-        ),
-      ),
-    );
-
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Tarla adı'),
-      List.filled(121, 'a').join(),
-    );
-    await tester.tap(find.text('Tarlayı kaydet'));
-    await tester.pump();
-
-    expect(find.text('En fazla 120 karakter girin.'), findsOneWidget);
-    expect(store.writes, 0);
-  });
-}
-
-class _RecordingFarmStore implements FirestoreFarmStore {
+class _RecordingTarlaRepository implements TarlaRepository {
   int writes = 0;
 
   @override
-  Future<void> setDocument(String path, Map<String, Object?> data) async {
+  Future<List<Tarla>> getTarlalar() async => [];
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {
     writes += 1;
   }
+}
 
-  @override
-  Stream<List<FirestoreActivityDocument>> watchActivities(String farmId) =>
-      const Stream.empty();
+void main() {
+  testWidgets('rejects a farm name longer than 120 characters', (tester) async {
+    final store = _RecordingTarlaRepository();
+    await tester.pumpWidget(
+      MaterialApp(home: TarlaEklemeEkrani(repository: store)),
+    );
 
-  @override
-  Stream<List<FirestoreFarmDocument>> watchFarms(String ownerId) =>
-      const Stream.empty();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Tarla Adı'),
+      List.filled(121, 'a').join(),
+    );
+    await tester.tap(find.text('Kaydet'));
+    await tester.pump();
 
-  @override
-  Stream<FirestoreWriteFailure> get writeFailures => const Stream.empty();
+    expect(
+      find.text('Tarla adı en fazla 120 karakter olabilir.'),
+      findsOneWidget,
+    );
+    expect(store.writes, 0);
+  });
 }
