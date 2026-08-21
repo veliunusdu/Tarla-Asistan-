@@ -63,3 +63,27 @@ def test_weather_failure_without_snapshot_is_service_unavailable(client: TestCli
     response = client.get(f"/api/v1/farms/{farm_id}/weather", headers=headers)
     assert response.status_code == 503
     assert "saha koşullarını" in response.json()["detail"].lower()
+
+
+def test_weather_invalid_coordinates_returns_422(
+    client: TestClient, db_session
+):
+    from sqlalchemy import update
+    from app.models import Farm
+    import uuid
+
+    headers = auth_headers(client)
+    farm_id = create_farm(client, headers)["farm"]["id"]
+    app.dependency_overrides[get_weather_provider] = lambda: SuccessfulProvider()
+
+    db_session.execute(
+        update(Farm)
+        .where(Farm.id == uuid.UUID(farm_id))
+        .values(latitude=999.0, longitude=999.0)
+    )
+    db_session.commit()
+
+    response = client.get(f"/api/v1/farms/{farm_id}/weather", headers=headers)
+    assert response.status_code == 422
+    assert "Geçersiz tarla koordinatları" in response.json()["detail"]
+
