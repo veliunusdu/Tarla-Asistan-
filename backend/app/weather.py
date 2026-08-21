@@ -42,6 +42,8 @@ class OpenMeteoWeatherProvider:
         latitude: float,
         longitude: float,
     ) -> list[WeatherPoint]:
+        if not (-90.0 <= latitude <= 90.0) or not (-180.0 <= longitude <= 180.0):
+            raise WeatherProviderError("Geçersiz koordinat değerleri.")
         params = {
             "latitude": latitude,
             "longitude": longitude,
