@@ -99,7 +99,9 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                     tarla.name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text('${tarla.cropType} • ${tarla.size} dönüm'),
+                  subtitle: Text(
+                    '${tarla.cropType ?? 'Ürün bilgisi yok'} • ${tarla.size != null ? '${tarla.size} dönüm' : 'Alan bilinmiyor'}',
+                  ),
                   onTap: () async {
                     await Navigator.push(
                       context,

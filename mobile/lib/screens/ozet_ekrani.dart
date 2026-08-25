@@ -106,7 +106,7 @@ class _OzetEkraniState extends State<OzetEkrani> {
                   final count = farms.length;
                   final total = farms.fold<double>(
                     0,
-                    (sum, farm) => sum + farm.size,
+                    (sum, farm) => sum + (farm.size ?? 0.0),
                   );
                   return LayoutBuilder(
                     builder: (context, constraints) {

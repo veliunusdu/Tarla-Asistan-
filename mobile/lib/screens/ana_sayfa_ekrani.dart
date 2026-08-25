@@ -277,7 +277,9 @@ class _TarlaSecimSayfasi extends StatelessWidget {
             (t) => ListTile(
               leading: const Icon(Icons.terrain, color: AppColors.primary),
               title: Text(t.name),
-              subtitle: Text('${t.cropType} · ${t.size.toInt()} dönüm'),
+              subtitle: Text(
+                '${t.cropType ?? 'Ürün bilgisi yok'} · ${t.size != null ? '${t.size!.toInt()} dönüm' : 'Alan bilinmiyor'}',
+              ),
               onTap: () => Navigator.pop(context, t),
             ),
           ),
@@ -397,7 +399,10 @@ class _TarlaIstatistikSection extends StatelessWidget {
                 onAction: onTarlaEkle,
               );
             }
-            final toplamAlan = tarlalar.fold<double>(0, (s, t) => s + t.size);
+            final toplamAlan = tarlalar.fold<double>(
+              0,
+              (s, t) => s + (t.size ?? 0.0),
+            );
             return Row(
               children: [
                 Expanded(

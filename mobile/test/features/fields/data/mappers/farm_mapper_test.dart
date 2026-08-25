@@ -22,8 +22,7 @@ CropPeriodResponseDto _crop({
   updatedAt: DateTime.parse('2026-03-15T00:00:00Z'),
 );
 
-/// [hasCrop] — when false, [currentCrop] is set to null so the mapper
-/// cannot obtain cropType / plantedAt without fabricating values.
+/// [hasCrop] — when false, currentCrop is null so cropType / plantedAt are absent.
 FarmResponseDto _dto({
   double? latitude = 39.92,
   double? longitude = 32.85,
@@ -52,11 +51,10 @@ FarmResponseDto _dto({
 void main() {
   group('FarmMapper.fromDto', () {
     test('maps a complete DTO to Tarla correctly', () {
-      final dto = _dto(); // hasCrop defaults to true
+      final dto = _dto();
       final tarla = FarmMapper.fromDto(dto);
 
-      expect(tarla, isNotNull);
-      expect(tarla!.id, 'farm-1');
+      expect(tarla.id, 'farm-1');
       expect(tarla.name, 'Test Tarla');
       expect(tarla.latitude, 39.92);
       expect(tarla.longitude, 32.85);
@@ -66,15 +64,12 @@ void main() {
     });
 
     test(
-      'API DTO and SQLite model are clearly separated — DTO fields are not used directly as Tarla.toJson keys',
+      'API DTO and SQLite model are clearly separated — Tarla.toJson uses camelCase keys',
       () {
         final dto = _dto();
-        final tarla = FarmMapper.fromDto(dto)!;
+        final tarla = FarmMapper.fromDto(dto);
         final tarlaJson = tarla.toJson();
 
-        // Tarla model uses camelCase keys (e.g. 'cropType', 'plantingDate')
-        // DTO uses snake_case (e.g. 'crop_type', 'planted_at').
-        // Confirming the mapper translates between the two without mixing them.
         expect(tarlaJson.containsKey('cropType'), isTrue);
         expect(tarlaJson.containsKey('crop_type'), isFalse);
         expect(tarlaJson.containsKey('plantingDate'), isTrue);
@@ -82,57 +77,88 @@ void main() {
       },
     );
 
-    test('returns null when latitude is null — no fake 0.0 generated', () {
+    test('nullable latitude maps to null Tarla.latitude — no fake 0.0', () {
       final dto = _dto(latitude: null);
-      expect(FarmMapper.fromDto(dto), isNull);
+      final tarla = FarmMapper.fromDto(dto);
+
+      expect(tarla.latitude, isNull);
     });
 
-    test('returns null when longitude is null — no fake 0.0 generated', () {
+    test('nullable longitude maps to null Tarla.longitude — no fake 0.0', () {
       final dto = _dto(longitude: null);
-      expect(FarmMapper.fromDto(dto), isNull);
+      final tarla = FarmMapper.fromDto(dto);
+
+      expect(tarla.longitude, isNull);
+    });
+
+    test('nullable sizeInHectares maps to null Tarla.size — no fake 0.0', () {
+      final dto = _dto(sizeInHectares: null);
+      final tarla = FarmMapper.fromDto(dto);
+
+      expect(tarla.size, isNull);
+    });
+
+    test('null currentCrop maps to null cropType and plantingDate', () {
+      final dto = _dto(hasCrop: false);
+      final tarla = FarmMapper.fromDto(dto);
+
+      expect(tarla.cropType, isNull);
+      expect(tarla.plantingDate, isNull);
     });
 
     test(
-      'returns null when sizeInHectares is null — no fake 0.0 generated',
+      'fully null optional fields produce a valid Tarla with no fake values',
       () {
-        final dto = _dto(sizeInHectares: null);
-        expect(FarmMapper.fromDto(dto), isNull);
+        final dto = _dto(
+          latitude: null,
+          longitude: null,
+          sizeInHectares: null,
+          hasCrop: false,
+        );
+        final tarla = FarmMapper.fromDto(dto);
+
+        expect(tarla.id, 'farm-1');
+        expect(tarla.name, 'Test Tarla');
+        expect(tarla.latitude, isNull);
+        expect(tarla.longitude, isNull);
+        expect(tarla.size, isNull);
+        expect(tarla.cropType, isNull);
+        expect(tarla.plantingDate, isNull);
       },
     );
+  });
 
+  group('FarmMapper.fromDtoList', () {
     test(
-      'returns null when currentCrop is null — no fake cropType generated',
+      'converts all DTOs — records with nullable fields are not dropped',
       () {
-        final dto = _dto(hasCrop: false);
-        expect(FarmMapper.fromDto(dto), isNull);
+        final withCoords = _dto();
+        final withoutCoords = _dto(latitude: null, longitude: null);
+
+        final result = FarmMapper.fromDtoList([withCoords, withoutCoords]);
+
+        expect(result, hasLength(2));
+        expect(result[0].latitude, 39.92);
+        expect(result[1].latitude, isNull);
       },
     );
 
-    test('returns null when all nullable required fields are null', () {
-      final dto = _dto(
+    test('returns empty list for empty input', () {
+      expect(FarmMapper.fromDtoList([]), isEmpty);
+    });
+
+    test('list with all nullable optional fields converts without loss', () {
+      final allNull = _dto(
         latitude: null,
         longitude: null,
         sizeInHectares: null,
         hasCrop: false,
       );
-      expect(FarmMapper.fromDto(dto), isNull);
-    });
-  });
 
-  group('FarmMapper.fromDtoList', () {
-    test('filters out DTOs that cannot be mapped, keeps valid ones', () {
-      final valid = _dto();
-      final invalid = _dto(latitude: null); // returns null from fromDto
-
-      final result = FarmMapper.fromDtoList([valid, invalid]);
+      final result = FarmMapper.fromDtoList([allNull]);
 
       expect(result, hasLength(1));
-      expect(result.first.id, 'farm-1');
-    });
-
-    test('returns empty list when all DTOs are unmappable', () {
-      final result = FarmMapper.fromDtoList([_dto(latitude: null)]);
-      expect(result, isEmpty);
+      expect(result.first.size, isNull);
     });
   });
 }
