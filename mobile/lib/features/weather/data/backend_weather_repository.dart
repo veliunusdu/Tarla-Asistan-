@@ -1,12 +1,12 @@
-import '../../../core/api/api_client.dart';
-import '../../../core/api/api_exception.dart';
+// ignore_for_file: prefer_initializing_formals
+import '../../../services/api_client.dart';
 import '../domain/weather_summary.dart';
 import 'weather_repository.dart';
 
 /// Backend `/api/v1/farms/{farmId}/weather` endpoint'ini kullanan implementasyon.
 ///
 /// Endpoint: GET /api/v1/farms/{farm_id}/weather
-/// Auth: Bearer token (JWT)
+/// Auth: Bearer token (Firebase ID token)
 /// Response: FarmWeatherResponse
 ///   - farm_id, provider, fetched_at, is_stale, stale_reason
 ///   - points[]: WeatherPointResponse (observed_at, temperature_c,
@@ -16,35 +16,35 @@ import 'weather_repository.dart';
 class BackendWeatherRepository implements WeatherRepository {
   const BackendWeatherRepository({
     required ApiClient apiClient,
-    required this._farmId,
-  }) : _client = apiClient;
+    required String farmId,
+  }) : _client = apiClient,
+       _farmId = farmId;
 
   final ApiClient _client;
   final String _farmId;
 
   @override
   Future<WeatherSummary> getWeather() async {
-    final raw = await _client.get('farms/$_farmId/weather');
-    if (raw == null || raw is! Map<String, dynamic>) {
-      throw const ApiException(
-        statusCode: null,
-        message: 'Hava durumu verisi alınamadı.',
-      );
+    final Map<String, dynamic> raw;
+    try {
+      raw = await _client.getJson('farms/$_farmId/weather');
+    } on ApiException {
+      rethrow;
     }
 
     final points = raw['points'];
     if (points is! List || points.isEmpty) {
       throw const ApiException(
+        'Hava durumu noktası bulunamadı.',
         statusCode: null,
-        message: 'Hava durumu noktası bulunamadı.',
       );
     }
 
     final first = points.first;
     if (first is! Map<String, dynamic>) {
       throw const ApiException(
+        'Hava durumu verisi geçersiz.',
         statusCode: null,
-        message: 'Hava durumu verisi geçersiz.',
       );
     }
 
