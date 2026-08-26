@@ -1,15 +1,15 @@
-﻿using MediatR;
+using MediatR;
+using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
-using TarlaAsistani.Infrastructure.Persistence;
 
 namespace TarlaAsistani.Application.Features.Farms.Commands;
 
 public class CreateFarmCommandHandler : IRequestHandler<CreateFarmCommand, Guid>
 {
-    private readonly ApplicationDbContext _db;
+    private readonly IApplicationDbContext _db;
 
-    public CreateFarmCommandHandler(ApplicationDbContext db)
+    public CreateFarmCommandHandler(IApplicationDbContext db)
     {
         _db = db;
     }
