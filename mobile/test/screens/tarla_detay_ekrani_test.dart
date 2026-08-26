@@ -80,15 +80,27 @@ void main() {
       expect(find.textContaining('2024'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('konum 0.0 ise "Konum henüz eklenmedi" gösterilir', (
-      tester,
-    ) async {
+    testWidgets('konum 0.0 ise "Konum eklenmedi" gösterilir', (tester) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
       await tester.pumpWidget(
         _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
       );
 
-      expect(find.text('Konum henüz eklenmedi'), findsOneWidget);
+      expect(find.text('Konum eklenmedi'), findsOneWidget);
+    });
+
+    testWidgets('konum null ise "Konum eklenmedi" gösterilir', (tester) async {
+      final repo = FakeFaaliyetRepository(Future.value([]));
+      final tarla = Tarla(
+        id: 't-null',
+        name: 'Konum Yok Tarla',
+        // latitude and longitude intentionally null
+      );
+      await tester.pumpWidget(
+        _wrap(TarlaDetayEkrani(tarla: tarla, faaliyetRepository: repo)),
+      );
+
+      expect(find.text('Konum eklenmedi'), findsOneWidget);
     });
 
     testWidgets('konum 0.0 değilse koordinatlar gösterilir', (tester) async {

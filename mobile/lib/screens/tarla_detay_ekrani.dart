@@ -30,6 +30,9 @@ const List<String> _trAylar = [
 String _tarihStr(DateTime dt) =>
     '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
+bool _konumYok(double? lat, double? lng) =>
+    lat == null || lng == null || (lat == 0.0 && lng == 0.0);
+
 class TarlaDetayEkrani extends StatefulWidget {
   const TarlaDetayEkrani({
     super.key,
@@ -89,7 +92,11 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _TarlaBilgiKarti(tarla: widget.tarla),
+          Flexible(
+            child: SingleChildScrollView(
+              child: _TarlaBilgiKarti(tarla: widget.tarla),
+            ),
+          ),
           Expanded(child: _faaliyetTabView()),
         ],
       ),
@@ -165,10 +172,12 @@ class _TarlaBilgiKarti extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final konumMetin = (tarla.latitude == 0.0 && tarla.longitude == 0.0)
-        ? 'Konum henüz eklenmedi'
-        : '${tarla.latitude.toStringAsFixed(5)}, '
-              '${tarla.longitude.toStringAsFixed(5)}';
+    final lat = tarla.latitude;
+    final lng = tarla.longitude;
+    final konumYok = _konumYok(lat, lng);
+    final konumMetin = konumYok
+        ? 'Konum eklenmedi'
+        : '${lat!.toStringAsFixed(5)}, ${lng!.toStringAsFixed(5)}';
 
     return Card(
       margin: const EdgeInsets.all(AppSpacing.md),
@@ -182,23 +191,27 @@ class _TarlaBilgiKarti extends StatelessWidget {
             _InfoSatiri(
               icon: Icons.grass,
               label: 'Ürün',
-              deger: tarla.cropType,
+              deger: tarla.cropType ?? 'Ürün bilgisi yok',
             ),
             _InfoSatiri(
               icon: Icons.straighten,
               label: 'Büyüklük',
-              deger: '${tarla.size} dönüm',
+              deger: tarla.size != null
+                  ? '${tarla.size} dönüm'
+                  : 'Alan bilgisi yok',
             ),
             _InfoSatiri(
               icon: Icons.calendar_today,
               label: 'Ekim Tarihi',
-              deger: _tarihStr(tarla.plantingDate),
+              deger: tarla.plantingDate != null
+                  ? _tarihStr(tarla.plantingDate!)
+                  : 'Ekim tarihi yok',
             ),
             _InfoSatiri(
               icon: Icons.location_on,
               label: 'Konum',
               deger: konumMetin,
-              renkli: tarla.latitude == 0.0 && tarla.longitude == 0.0,
+              renkli: konumYok,
             ),
           ],
         ),

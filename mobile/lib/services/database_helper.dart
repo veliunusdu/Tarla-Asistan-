@@ -26,7 +26,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -38,11 +38,11 @@ class DatabaseHelper implements SyncOperationStore {
       CREATE TABLE tarlalar (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
-        size REAL NOT NULL,
-        cropType TEXT NOT NULL,
-        plantingDate TEXT NOT NULL
+        latitude REAL,
+        longitude REAL,
+        size REAL,
+        cropType TEXT,
+        plantingDate TEXT
       )
     ''');
 
@@ -69,6 +69,9 @@ class DatabaseHelper implements SyncOperationStore {
     }
     if (oldVersion < 3) {
       await _createSyncOperationsTable(db);
+    }
+    if (oldVersion < 4) {
+      await Migrations.v3ToV4(db);
     }
   }
 

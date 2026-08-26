@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../features/fields/data/local_tarla_repository.dart';
-import '../features/fields/data/tarla_repository.dart';
+import '../features/fields/data/tarla_read_repository.dart';
 import '../models/tarla.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
@@ -12,11 +12,11 @@ import 'tarla_ekleme_ekrani.dart';
 class TarlaListesiEkrani extends StatefulWidget {
   const TarlaListesiEkrani({
     super.key,
-    TarlaRepository? repository,
+    TarlaReadRepository? repository,
     this.onDataChanged,
   }) : _repository = repository ?? const LocalTarlaRepository();
 
-  final TarlaRepository _repository;
+  final TarlaReadRepository _repository;
 
   /// Tarla başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
@@ -99,7 +99,9 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                     tarla.name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text('${tarla.cropType} • ${tarla.size} dönüm'),
+                  subtitle: Text(
+                    '${tarla.cropType ?? 'Ürün bilgisi yok'} • ${tarla.size != null ? '${tarla.size} dönüm' : 'Alan bilinmiyor'}',
+                  ),
                   onTap: () async {
                     await Navigator.push(
                       context,

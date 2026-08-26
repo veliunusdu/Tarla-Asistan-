@@ -23,6 +23,66 @@ abstract final class Migrations {
     }
   }
 
+  /// Version 3 → 4: tarlalar tablosundaki latitude, longitude, size, cropType,
+  /// plantingDate kolonlarından NOT NULL kısıtını kaldırır.
+  ///
+  /// SQLite ALTER COLUMN'u desteklemediği için tablo yeniden oluşturulur.
+  /// Mevcut kayıtlar korunur.
+  ///
+  /// **Idempotency**: Beş kolonun tamamı zaten nullable ise migration atlanır.
+  ///
+  /// **Crash recovery**: Önceki bir çalışmada tablo yeniden oluşturulurken
+  /// uygulama çökmüş olabilir.  Bu durumda yarım kalan `tarlalar_new`
+  /// güvenle bırakılır; asıl `tarlalar` verisi sağlamdır.  Bir sonraki
+  /// başlatmada DROP TABLE IF EXISTS ile bu artık tablo temizlenir ve
+  /// migration baştan yapılır.
+  ///
+  /// **Foreign keys**: `faaliyetler.tarlaId` → `tarlalar.id` ilişkisi şema
+  /// kısıtı (FOREIGN KEY referansı) olarak tanımlanmamıştır; migration
+  /// süresince referans bütünlüğü SQLite tarafından zorlanmaz.
+  static Future<void> v3ToV4(Database db) async {
+    // Clean up any leftover table from a previous partial run so that a
+    // CREATE TABLE below never fails on an already-existing name.
+    await db.execute('DROP TABLE IF EXISTS tarlalar_new');
+
+    // Check whether ALL five columns are already nullable.
+    final cols = await db.rawQuery('PRAGMA table_info(tarlalar)');
+    final colMap = <String, Map<String, Object?>>{
+      for (final c in cols)
+        c['name'] as String: Map<String, Object?>.from(c),
+    };
+    const needsNullable = [
+      'latitude',
+      'longitude',
+      'size',
+      'cropType',
+      'plantingDate',
+    ];
+    final allNullable = needsNullable.every(
+      (name) => (colMap[name]?['notnull'] as int? ?? 0) == 0,
+    );
+    if (allNullable) return; // Already nullable — no-op.
+
+    await db.execute('''
+      CREATE TABLE tarlalar_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        size REAL,
+        cropType TEXT,
+        plantingDate TEXT
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO tarlalar_new (id, name, latitude, longitude, size, cropType, plantingDate)
+      SELECT id, name, latitude, longitude, size, cropType, plantingDate
+      FROM tarlalar
+    ''');
+    await db.execute('DROP TABLE tarlalar');
+    await db.execute('ALTER TABLE tarlalar_new RENAME TO tarlalar');
+  }
+
   /// [table] tablosundaki mevcut kolon adlarını döndürür.
   static Future<Set<String>> _columnNames(Database db, String table) async {
     final rows = await db.rawQuery('PRAGMA table_info($table)');
