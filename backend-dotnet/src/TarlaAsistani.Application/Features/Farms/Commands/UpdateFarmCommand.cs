@@ -7,11 +7,11 @@ namespace TarlaAsistani.Application.Features.Farms.Commands;
 public record UpdateFarmCommand(
     Guid FarmId,
     Guid UserId,
-    string? Name,
-    double? Latitude,
-    double? Longitude,
-    double? SizeInHectares,
-    IrrigationMethod? IrrigationMethod,
-    string? SoilType,
-    string? Note
+    string? Name = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? SizeInHectares = null,
+    IrrigationMethod? IrrigationMethod = null,
+    string? SoilType = null,
+    string? Note = null
 ) : IRequest<FarmMutationResultDto?>;

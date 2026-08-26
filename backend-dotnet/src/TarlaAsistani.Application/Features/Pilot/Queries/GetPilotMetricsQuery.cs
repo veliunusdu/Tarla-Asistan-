@@ -49,9 +49,12 @@ public class GetPilotMetricsQueryHandler : IRequestHandler<GetPilotMetricsQuery,
         var feedbackCount = await _db.PilotFeedbacks
             .CountAsync(pf => pf.CreatedAtUtc >= since, cancellationToken);
 
-        var avgRatingNullable = await _db.PilotFeedbacks
+        var ratedFeedbacks = await _db.PilotFeedbacks
             .Where(pf => pf.CreatedAtUtc >= since && pf.Rating != null)
-            .AverageAsync(pf => (double?)pf.Rating, cancellationToken);
+            .Select(pf => (double)pf.Rating!.Value)
+            .ToListAsync(cancellationToken);
+
+        var avgRating = ratedFeedbacks.Count > 0 ? ratedFeedbacks.Average() : (double?)null;
 
         // 3. Support Cases
         var cases = await _db.SupportCases
@@ -67,7 +70,7 @@ public class GetPilotMetricsQueryHandler : IRequestHandler<GetPilotMetricsQuery,
         {
             var firstExpertMessageTime = await _db.CaseMessages
                 .Include(m => m.Sender)
-                .Where(m => m.CaseId == sc.Id && m.Sender.Role == UserRole.Agronomist)
+                .Where(m => m.CaseId == sc.Id && m.Sender != null && m.Sender.Role == UserRole.Agronomist)
                 .OrderBy(m => m.CreatedAtUtc)
                 .Select(m => (DateTime?)m.CreatedAtUtc)
                 .FirstOrDefaultAsync(cancellationToken);
@@ -89,21 +92,21 @@ public class GetPilotMetricsQueryHandler : IRequestHandler<GetPilotMetricsQuery,
         // 5. Active Farmers
         var activeFarmersActivities = await _db.Activities
             .Include(a => a.Farm)
-            .Where(a => a.CreatedAtUtc >= since)
+            .Where(a => a.CreatedAtUtc >= since && a.Farm != null)
             .Select(a => a.Farm.OwnerId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
         var activeFarmersCases = await _db.SupportCases
             .Include(sc => sc.Farm)
-            .Where(sc => sc.CreatedAtUtc >= since)
+            .Where(sc => sc.CreatedAtUtc >= since && sc.Farm != null)
             .Select(sc => sc.Farm.OwnerId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
         var activeFarmersFeedback = await _db.PilotFeedbacks
             .Include(pf => pf.CreatedBy)
-            .Where(pf => pf.CreatedAtUtc >= since && pf.CreatedBy.Role == UserRole.Farmer)
+            .Where(pf => pf.CreatedAtUtc >= since)
             .Select(pf => pf.CreatedById)
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -128,7 +131,7 @@ public class GetPilotMetricsQueryHandler : IRequestHandler<GetPilotMetricsQuery,
             NotificationsSent: notificationsSent,
             NotificationDeliveryRate: notificationsCreated > 0 ? Math.Round((double)notificationsSent / notificationsCreated * 100, 2) : 0.0,
             FeedbackCount: feedbackCount,
-            AverageFeedbackRating: avgRatingNullable.HasValue ? Math.Round(avgRatingNullable.Value, 2) : null
+            AverageFeedbackRating: avgRating.HasValue ? Math.Round(avgRating.Value, 2) : null
         );
     }
 }
