@@ -11,8 +11,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    options.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower;
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper));
 });
+
 
 // 2. CORS Policy for Web & Mobile Clients
 builder.Services.AddCors(options =>
@@ -32,6 +35,8 @@ builder.Services.AddApplication();
 // 4. Configure JWT Authentication & Authorization
 var jwtSecret = builder.Configuration["Auth:JwtSecret"] 
              ?? builder.Configuration["Jwt:Secret"] 
+             ?? builder.Configuration["JWT_SECRET"]
+             ?? Environment.GetEnvironmentVariable("JWT_SECRET")
              ?? "super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!";
 
 builder.Services.AddAuthentication(options =>

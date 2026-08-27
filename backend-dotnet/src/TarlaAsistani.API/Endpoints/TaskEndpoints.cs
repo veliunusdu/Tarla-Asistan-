@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Tasks.Commands;
 using TarlaAsistani.Application.Features.Tasks.DTOs;
 using TarlaAsistani.Application.Features.Tasks.Queries;
@@ -22,12 +23,18 @@ public static class TaskEndpoints
         // 1. POST /api/v1/farms/{farmId}/tasks - Create expert task (AGRONOMIST only)
         farmTasks.MapPost("/", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateExpertTaskApiRequest req,
             IMediator mediator,
             IValidator<CreateExpertTaskCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CreateExpertTaskCommand(
                 FarmId: farmId,
                 CreatedById: userId,
@@ -66,22 +73,24 @@ public static class TaskEndpoints
         })
         .WithName("CreateExpertTask")
         .Produces<TaskDto>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
-        .Produces(StatusCodes.Status422UnprocessableEntity)
-        .ProducesValidationProblem();
+        .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/farms/{farmId}/tasks - List daily tasks
         farmTasks.MapGet("/", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             [FromQuery] DateOnly? date,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
             var targetDate = date ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
             var result = await mediator.Send(new ListDailyTasksQuery(farmId, queryUserId, userRole, targetDate));
@@ -94,13 +103,14 @@ public static class TaskEndpoints
         // 3. GET /api/v1/tasks/{id} - Get task details
         tasks.MapGet("/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new GetTaskByIdQuery(id, queryUserId, userRole));
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Görev bulunamadı." });
@@ -112,13 +122,18 @@ public static class TaskEndpoints
         // 4. PATCH /api/v1/tasks/{id}/status - Update task status
         tasks.MapPatch("/{id:guid}/status", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             UpdateTaskStatusApiRequest req,
             IMediator mediator,
             IValidator<UpdateTaskStatusCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Farmer;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Farmer);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             var command = new UpdateTaskStatusCommand(
                 TaskId: id,
@@ -152,6 +167,7 @@ public static class TaskEndpoints
         })
         .WithName("UpdateTaskStatus")
         .Produces<TaskDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
@@ -160,12 +176,17 @@ public static class TaskEndpoints
         // 5. POST /api/v1/tasks/{id}/complete - Complete task and record in journal
         tasks.MapPost("/{id:guid}/complete", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CompleteTaskApiRequest req,
             IMediator mediator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Farmer;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Farmer);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             try
             {
@@ -183,6 +204,7 @@ public static class TaskEndpoints
         })
         .WithName("CompleteTask")
         .Produces<TaskDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict);
@@ -192,7 +214,7 @@ public static class TaskEndpoints
 }
 
 public record CreateExpertTaskApiRequest(
-    Guid UserId,
+    Guid? UserId,
     string Title,
     string Description,
     string Reason,
@@ -203,7 +225,7 @@ public record CreateExpertTaskApiRequest(
 );
 
 public record UpdateTaskStatusApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     TaskStatus Status,
     string? NotAppliedReason,
@@ -212,7 +234,7 @@ public record UpdateTaskStatusApiRequest(
 );
 
 public record CompleteTaskApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     string? Note,
     string? PhotoUrl

@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Cases.Commands;
 using TarlaAsistani.Application.Features.Cases.DTOs;
 using TarlaAsistani.Application.Features.Cases.Queries;
@@ -16,12 +17,18 @@ public static class CaseEndpoints
 
         // 1. POST /api/v1/cases - Create support case
         group.MapPost("/", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateCaseApiRequest req,
             IMediator mediator,
             IValidator<CreateCaseCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CreateCaseCommand(
                 FarmId: req.FarmId,
                 CreatedById: userId,
@@ -52,11 +59,13 @@ public static class CaseEndpoints
         .WithName("CreateCase")
         .Produces<CaseDetailDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/cases - List role-filtered cases
         group.MapGet("/", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
@@ -67,8 +76,8 @@ public static class CaseEndpoints
             [FromQuery] int? offset,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new ListCasesQuery(
                 UserId: queryUserId,
@@ -88,13 +97,14 @@ public static class CaseEndpoints
         // 3. GET /api/v1/cases/{id} - Get case details
         group.MapGet("/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new GetCaseByIdQuery(id, queryUserId, userRole));
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Vaka bulunamadı." });
@@ -106,13 +116,18 @@ public static class CaseEndpoints
         // 4. PATCH /api/v1/cases/{id}/status - Update case status & priority (Agronomist only)
         group.MapPatch("/{id:guid}/status", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             UpdateCaseStatusApiRequest req,
             IMediator mediator,
             IValidator<UpdateCaseStatusCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Agronomist;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Agronomist);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             var command = new UpdateCaseStatusCommand(
                 CaseId: id,
@@ -142,6 +157,7 @@ public static class CaseEndpoints
         })
         .WithName("UpdateCaseStatus")
         .Produces<CaseDetailDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
@@ -150,13 +166,18 @@ public static class CaseEndpoints
         // 5. POST /api/v1/cases/{id}/messages - Add message to case
         group.MapPost("/{id:guid}/messages", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateCaseMessageApiRequest req,
             IMediator mediator,
             IValidator<CreateCaseMessageCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Farmer;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Farmer);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             var command = new CreateCaseMessageCommand(
                 CaseId: id,
@@ -195,6 +216,7 @@ public static class CaseEndpoints
         })
         .WithName("CreateCaseMessage")
         .Produces<CaseMessageDto>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
@@ -204,12 +226,17 @@ public static class CaseEndpoints
         // 6. POST /api/v1/cases/{id}/expert-response - Respond as expert and optionally close
         group.MapPost("/{id:guid}/expert-response", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateExpertResponseApiRequest req,
             IMediator mediator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Agronomist;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Agronomist);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             var command = new CreateExpertResponseCommand(
                 CaseId: id,
@@ -245,6 +272,7 @@ public static class CaseEndpoints
         })
         .WithName("CreateExpertResponse")
         .Produces<CaseDetailDto>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
@@ -255,7 +283,7 @@ public static class CaseEndpoints
 }
 
 public record CreateCaseApiRequest(
-    Guid UserId,
+    Guid? UserId,
     Guid FarmId,
     CaseCategory Category,
     string Title,
@@ -265,7 +293,7 @@ public record CreateCaseApiRequest(
 );
 
 public record UpdateCaseStatusApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     CaseStatus Status,
     CasePriority? Priority,
@@ -273,7 +301,7 @@ public record UpdateCaseStatusApiRequest(
 );
 
 public record CreateCaseMessageApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     CaseMessageType MessageType,
     string Body,
@@ -282,7 +310,7 @@ public record CreateCaseMessageApiRequest(
 );
 
 public record CreateExpertResponseApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     string Body,
     bool? CloseCase,

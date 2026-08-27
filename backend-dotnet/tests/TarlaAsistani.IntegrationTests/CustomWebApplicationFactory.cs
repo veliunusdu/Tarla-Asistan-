@@ -15,7 +15,9 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new(System.Text.Json.JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
-        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower,
+        DictionaryKeyPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.SnakeCaseUpper) }
     };
 
     public Mock<IWeatherProvider> MockWeatherProvider { get; } = new();

@@ -132,13 +132,13 @@ public static class AuthEndpoints
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? httpContext.GetUserId();
-            if (!queryUserId.HasValue || queryUserId.Value == Guid.Empty)
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            if (queryUserId == Guid.Empty)
             {
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId.Value));
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
         })
         .WithName("GetCurrentUser")

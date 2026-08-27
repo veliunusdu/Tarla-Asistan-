@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Pilot.Commands;
 using TarlaAsistani.Application.Features.Pilot.DTOs;
 using TarlaAsistani.Application.Features.Pilot.Queries;
@@ -16,13 +17,18 @@ public static class PilotEndpoints
 
         // 1. POST /api/v1/pilot/feedback - Submit feedback or false alert
         group.MapPost("/feedback", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreatePilotFeedbackApiRequest req,
             IMediator mediator,
             IValidator<CreatePilotFeedbackCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Farmer;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Farmer);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             var command = new CreatePilotFeedbackCommand(
                 CreatedById: userId,
@@ -54,11 +60,13 @@ public static class PilotEndpoints
         .WithName("CreatePilotFeedback")
         .Produces<PilotFeedbackDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/pilot/feedback - List feedback (Agronomist only)
         group.MapGet("/feedback", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
@@ -68,8 +76,8 @@ public static class PilotEndpoints
             [FromQuery] int? offset,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Agronomist;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Agronomist);
 
             try
             {
@@ -95,12 +103,17 @@ public static class PilotEndpoints
         // 3. PATCH /api/v1/pilot/feedback/{id} - Review feedback (Agronomist only)
         group.MapPatch("/feedback/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             UpdatePilotFeedbackStatusApiRequest req,
             IMediator mediator) =>
         {
-            var reviewerId = headerUserId ?? req.UserId;
-            var userRole = req.Role ?? UserRole.Agronomist;
+            var reviewerId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(req.Role, defaultRole: UserRole.Agronomist);
+            if (reviewerId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
 
             try
             {
@@ -114,19 +127,21 @@ public static class PilotEndpoints
         })
         .WithName("UpdatePilotFeedbackStatus")
         .Produces<PilotFeedbackDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
         // 4. GET /api/v1/pilot/metrics - Pilot success & quality metrics (Agronomist only)
         group.MapGet("/metrics", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             [FromQuery] int? windowDays,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Agronomist;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Agronomist);
 
             try
             {
@@ -147,7 +162,7 @@ public static class PilotEndpoints
 }
 
 public record CreatePilotFeedbackApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     FeedbackType FeedbackType,
     string Comment,
@@ -157,7 +172,7 @@ public record CreatePilotFeedbackApiRequest(
 );
 
 public record UpdatePilotFeedbackStatusApiRequest(
-    Guid UserId,
+    Guid? UserId,
     UserRole? Role,
     FeedbackStatus Status
 );

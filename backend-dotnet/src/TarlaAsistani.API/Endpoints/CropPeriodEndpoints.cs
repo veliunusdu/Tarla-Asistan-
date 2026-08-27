@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.CropPeriods.Commands;
 using TarlaAsistani.Application.Features.CropPeriods.DTOs;
 using TarlaAsistani.Application.Features.CropPeriods.Queries;
@@ -18,13 +19,14 @@ public static class CropPeriodEndpoints
         // 1. GET /api/v1/farms/{farmId}/production-periods - List crop periods
         group.MapGet("/", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new ListCropPeriodsQuery(farmId, queryUserId, userRole));
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Tarla bulunamadı." });
@@ -36,12 +38,18 @@ public static class CropPeriodEndpoints
         // 2. POST /api/v1/farms/{farmId}/production-periods - Create new crop period
         group.MapPost("/", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateCropPeriodApiRequest req,
             IMediator mediator,
             IValidator<CreateCropPeriodCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CreateCropPeriodCommand(
                 FarmId: farmId,
                 UserId: userId,
@@ -77,21 +85,28 @@ public static class CropPeriodEndpoints
         })
         .WithName("CreateCropPeriod")
         .Produces<CropPeriodDto>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
-        .Produces(StatusCodes.Status422UnprocessableEntity)
-        .ProducesValidationProblem();
+        .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 3. POST /api/v1/farms/{farmId}/production-periods/{periodId}/close - Close active crop period
         group.MapPost("/{periodId:guid}/close", async (
             Guid farmId,
             Guid periodId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CloseCropPeriodApiRequest req,
             IMediator mediator,
             IValidator<CloseCropPeriodCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CloseCropPeriodCommand(
                 FarmId: farmId,
                 PeriodId: periodId,
@@ -121,17 +136,18 @@ public static class CropPeriodEndpoints
         })
         .WithName("CloseCropPeriod")
         .Produces<CropPeriodDto>(StatusCodes.Status200OK)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
-        .Produces(StatusCodes.Status422UnprocessableEntity)
-        .ProducesValidationProblem();
+        .Produces(StatusCodes.Status422UnprocessableEntity);
 
         return app;
     }
 }
 
 public record CreateCropPeriodApiRequest(
-    Guid UserId,
+    Guid? UserId,
     CropType CropType,
     string? Variety,
     DateOnly PlantedAt,
@@ -139,6 +155,6 @@ public record CreateCropPeriodApiRequest(
 );
 
 public record CloseCropPeriodApiRequest(
-    Guid UserId,
+    Guid? UserId,
     DateOnly? HarvestedAt
 );

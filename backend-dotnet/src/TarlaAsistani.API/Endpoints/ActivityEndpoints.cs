@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Activities.Commands;
 using TarlaAsistani.Application.Features.Activities.DTOs;
 using TarlaAsistani.Application.Features.Activities.Queries;
@@ -21,12 +22,18 @@ public static class ActivityEndpoints
         // 1. POST /api/v1/farms/{farmId}/activities - Create activity or voice draft
         farmActivities.MapPost("/activities", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateActivityApiRequest req,
             IMediator mediator,
             IValidator<CreateActivityCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CreateActivityCommand(
                 FarmId: farmId,
                 CreatedById: userId,
@@ -69,12 +76,14 @@ public static class ActivityEndpoints
         .WithName("CreateActivity")
         .Produces<ActivityDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/farms/{farmId}/activities - List farm activities
         farmActivities.MapGet("/activities", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
@@ -84,8 +93,8 @@ public static class ActivityEndpoints
             [FromQuery] int? offset,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             try
             {
@@ -114,6 +123,7 @@ public static class ActivityEndpoints
         // 3. GET /api/v1/farms/{farmId}/journal - Get chronological farm journal
         farmActivities.MapGet("/journal", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
@@ -121,8 +131,8 @@ public static class ActivityEndpoints
             [FromQuery] int? offset,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var query = new GetFarmJournalQuery(
                 FarmId: farmId,
@@ -142,13 +152,14 @@ public static class ActivityEndpoints
         // 4. GET /api/v1/activities/{id} - Get activity details
         activities.MapGet("/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new GetActivityByIdQuery(id, queryUserId, userRole));
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
@@ -160,12 +171,18 @@ public static class ActivityEndpoints
         // 5. PATCH /api/v1/activities/{id} - Update activity
         activities.MapPatch("/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             UpdateActivityApiRequest req,
             IMediator mediator,
             IValidator<UpdateActivityCommand> validator) =>
         {
-            var userId = headerUserId ?? req.UserId;
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new UpdateActivityCommand(
                 ActivityId: id,
                 UserId: userId,
@@ -202,32 +219,41 @@ public static class ActivityEndpoints
         .WithName("UpdateActivity")
         .Produces<ActivityDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status422UnprocessableEntity)
         .ProducesValidationProblem();
 
         // 6. POST /api/v1/activities/{id}/confirm - Confirm voice draft activity
         activities.MapPost("/{id:guid}/confirm", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromBody] ConfirmActivityApiRequest? req,
             IMediator mediator) =>
         {
-            var userId = headerUserId ?? req?.UserId ?? Guid.Empty;
+            var userId = httpContext.ResolveUserId(req?.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var result = await mediator.Send(new ConfirmActivityCommand(id, userId));
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
         })
         .WithName("ConfirmActivity")
         .Produces<ActivityDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
 
         // 7. DELETE /api/v1/activities/{id} - Archive activity
         activities.MapDelete("/{id:guid}", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var reqUserId = headerUserId ?? userId ?? Guid.Empty;
+            var reqUserId = httpContext.ResolveUserId(userId, headerUserId);
             var success = await mediator.Send(new ArchiveActivityCommand(id, reqUserId));
             return success ? Results.NoContent() : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
         })
@@ -238,28 +264,36 @@ public static class ActivityEndpoints
         // 8. POST /api/v1/activities/{id}/restore - Restore archived activity
         activities.MapPost("/{id:guid}/restore", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromBody] RestoreActivityApiRequest? req,
             IMediator mediator) =>
         {
-            var userId = headerUserId ?? req?.UserId ?? Guid.Empty;
+            var userId = httpContext.ResolveUserId(req?.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var result = await mediator.Send(new RestoreActivityCommand(id, userId));
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
         })
         .WithName("RestoreActivity")
         .Produces<ActivityDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
 
         // 9. GET /api/v1/activities/{id}/revisions - List activity change revisions
         activities.MapGet("/{id:guid}/revisions", async (
             Guid id,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var revisions = await mediator.Send(new ListActivityRevisionsQuery(id, queryUserId, userRole));
             return revisions is not null ? Results.Ok(revisions) : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
@@ -273,7 +307,7 @@ public static class ActivityEndpoints
 }
 
 public record CreateActivityApiRequest(
-    Guid UserId,
+    Guid? UserId,
     ActivityType ActivityType,
     string Description,
     DateTime? OccurredAt,
@@ -291,7 +325,7 @@ public record CreateActivityApiRequest(
 );
 
 public record UpdateActivityApiRequest(
-    Guid UserId,
+    Guid? UserId,
     ActivityType? ActivityType,
     string? Description,
     DateTime? OccurredAt,
@@ -306,5 +340,5 @@ public record UpdateActivityApiRequest(
     float? Cost
 );
 
-public record ConfirmActivityApiRequest(Guid UserId);
-public record RestoreActivityApiRequest(Guid UserId);
+public record ConfirmActivityApiRequest(Guid? UserId = null);
+public record RestoreActivityApiRequest(Guid? UserId = null);

@@ -20,7 +20,11 @@ public class JwtService : IJwtService
 
     public string GenerateAccessToken(User user)
     {
-        var secret = _config["Auth:JwtSecret"] ?? _config["Jwt:Secret"] ?? "super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!";
+        var secret = _config["Auth:JwtSecret"] 
+                  ?? _config["Jwt:Secret"] 
+                  ?? _config["JWT_SECRET"]
+                  ?? Environment.GetEnvironmentVariable("JWT_SECRET")
+                  ?? "super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!";
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var expiryMinutes = _config.GetValue<int>("Auth:AccessTokenExpiryMinutes", 
@@ -31,8 +35,8 @@ public class JwtService : IJwtService
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Role, user.Role.ToString().ToLowerInvariant()),
-            new Claim("role", user.Role.ToString().ToLowerInvariant()),
+            new Claim(ClaimTypes.Role, user.Role.ToString().ToUpperInvariant()),
+            new Claim("role", user.Role.ToString().ToUpperInvariant()),
             new Claim("phone", user.PhoneNumber)
         };
 

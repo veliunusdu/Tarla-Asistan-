@@ -64,4 +64,35 @@ public static class CurrentUserExtensions
 
         return null;
     }
+
+    public static Guid ResolveUserId(this HttpContext context, Guid? explicitUserId = null, Guid? headerUserId = null)
+    {
+        if (explicitUserId.HasValue && explicitUserId.Value != Guid.Empty)
+        {
+            return explicitUserId.Value;
+        }
+
+        if (headerUserId.HasValue && headerUserId.Value != Guid.Empty)
+        {
+            return headerUserId.Value;
+        }
+
+        return context.GetUserId() ?? Guid.Empty;
+    }
+
+    public static UserRole ResolveUserRole(this HttpContext context, UserRole? explicitRole = null, string? headerRole = null, UserRole defaultRole = UserRole.Farmer)
+    {
+        if (explicitRole.HasValue)
+        {
+            return explicitRole.Value;
+        }
+
+        if (!string.IsNullOrWhiteSpace(headerRole) &&
+            Enum.TryParse<UserRole>(headerRole, ignoreCase: true, out var parsedHeaderRole))
+        {
+            return parsedHeaderRole;
+        }
+
+        return context.GetUserRole() ?? defaultRole;
+    }
 }

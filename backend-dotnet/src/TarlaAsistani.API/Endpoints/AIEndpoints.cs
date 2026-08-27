@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.AI.Commands;
 using TarlaAsistani.Application.Features.AI.DTOs;
 
@@ -20,7 +21,11 @@ public static class AIEndpoints
             IMediator mediator,
             IValidator<SendAIChatMessageCommand> validator) =>
         {
-            var userId = headerUserId ?? Guid.Empty;
+            var userId = httpContext.ResolveUserId(headerUserId: headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
             string message = string.Empty;
             string? fieldId = null;
             string? conversationId = null;

@@ -18,10 +18,21 @@ public static class FarmEndpoints
                        .WithTags("Farms");
 
         // 1. POST /api/v1/farms - Create a new farm
-        group.MapPost("/", async (CreateFarmRequest req, IMediator mediator, IValidator<CreateFarmCommand> validator) =>
+        group.MapPost("/", async (
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            CreateFarmRequest req,
+            IMediator mediator,
+            IValidator<CreateFarmCommand> validator) =>
         {
+            var ownerId = httpContext.ResolveUserId(req.OwnerId, headerUserId);
+            if (ownerId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new CreateFarmCommand(
-                req.OwnerId, req.Name, req.Latitude, req.Longitude,
+                ownerId, req.Name, req.Latitude, req.Longitude,
                 req.SizeInHectares, req.IrrigationMethod,
                 req.InitialCropType, req.InitialPlantedAt
             );
@@ -37,7 +48,8 @@ public static class FarmEndpoints
         })
         .WithName("CreateFarm")
         .Produces(StatusCodes.Status201Created)
-        .ProducesValidationProblem();
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized);
 
         // 2. GET /api/v1/farms - List active farms (tenant-isolated for farmers)
         group.MapGet("/", async (
@@ -49,8 +61,8 @@ public static class FarmEndpoints
             [FromQuery] bool? includeArchived,
             IMediator mediator) =>
         {
-            var resolvedUserId = headerUserId ?? userId ?? httpContext.GetUserId();
-            var resolvedRole = role ?? (Enum.TryParse<UserRole>(headerRole, true, out var r) ? r : httpContext.GetUserRole());
+            var resolvedUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var resolvedRole = httpContext.ResolveUserRole(role, headerRole);
 
             var query = new GetFarmsQuery(resolvedUserId, resolvedRole, includeArchived ?? false);
             var farms = await mediator.Send(query);
@@ -70,11 +82,23 @@ public static class FarmEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // 4. PATCH /api/v1/farms/{id} - Update farm
-        group.MapPatch("/{id:guid}", async (Guid id, UpdateFarmRequest req, IMediator mediator, IValidator<UpdateFarmCommand> validator) =>
+        group.MapPatch("/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            UpdateFarmRequest req,
+            IMediator mediator,
+            IValidator<UpdateFarmCommand> validator) =>
         {
+            var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             var command = new UpdateFarmCommand(
                 id,
-                req.UserId,
+                userId,
                 req.Name,
                 req.Latitude,
                 req.Longitude,
@@ -96,6 +120,7 @@ public static class FarmEndpoints
         .WithName("UpdateFarm")
         .Produces<FarmMutationResultDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized)
         .ProducesValidationProblem();
 
         // 5. DELETE /api/v1/farms/{id} - Archive (Soft Delete) farm
@@ -114,7 +139,7 @@ public static class FarmEndpoints
 }
 
 public record CreateFarmRequest(
-    Guid OwnerId,
+    Guid? OwnerId,
     string Name,
     double Latitude,
     double Longitude,
@@ -125,7 +150,7 @@ public record CreateFarmRequest(
 );
 
 public record UpdateFarmRequest(
-    Guid UserId,
+    Guid? UserId,
     string? Name,
     double? Latitude,
     double? Longitude,

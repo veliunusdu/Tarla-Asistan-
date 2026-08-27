@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Weather.DTOs;
 using TarlaAsistani.Application.Features.Weather.Queries;
 
@@ -14,11 +15,12 @@ public static class WeatherEndpoints
         // 1. GET /api/v1/farms/{farmId}/weather - Get farm weather forecast & risk analysis
         group.MapGet("/{farmId:guid}/weather", async (
             Guid farmId,
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
 
             try
             {

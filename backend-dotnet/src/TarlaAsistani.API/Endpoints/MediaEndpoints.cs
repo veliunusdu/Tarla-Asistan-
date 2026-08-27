@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Media.Commands;
 using TarlaAsistani.Application.Features.Media.DTOs;
 using TarlaAsistani.Application.Features.Media.Queries;
@@ -16,13 +17,19 @@ public static class MediaEndpoints
 
         // 1. POST /api/v1/media - Upload image or audio file
         group.MapPost("/", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromForm] Guid? userId,
             IFormFile file,
             IMediator mediator,
             IValidator<UploadMediaCommand> validator) =>
         {
-            var ownerId = headerUserId ?? userId ?? Guid.Empty;
+            var ownerId = httpContext.ResolveUserId(userId, headerUserId);
+            if (ownerId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
             if (file == null || file.Length == 0)
             {
                 return Results.UnprocessableEntity(new { detail = "Boş dosya yüklenemez." });
@@ -63,6 +70,7 @@ public static class MediaEndpoints
         .DisableAntiforgery()
         .Produces<MediaAssetDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status415UnsupportedMediaType)
         .Produces(StatusCodes.Status422UnprocessableEntity)
         .Produces(StatusCodes.Status404NotFound);
@@ -70,14 +78,14 @@ public static class MediaEndpoints
         // 2. GET /api/v1/media/{id}/content - Download media content
         group.MapGet("/{id:guid}/content", async (
             Guid id,
+            HttpContext context,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             [FromQuery] UserRole? role,
-            IMediator mediator,
-            HttpContext context) =>
+            IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var userRole = role ?? UserRole.Farmer;
+            var queryUserId = context.ResolveUserId(userId, headerUserId);
+            var userRole = context.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
             var result = await mediator.Send(new GetMediaContentQuery(id, queryUserId, userRole));
             if (result == null)
