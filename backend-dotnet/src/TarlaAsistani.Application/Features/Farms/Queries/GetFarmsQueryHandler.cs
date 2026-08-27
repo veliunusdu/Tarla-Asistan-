@@ -17,10 +17,20 @@ public class GetFarmsQueryHandler : IRequestHandler<GetFarmsQuery, List<FarmDto>
 
     public async Task<List<FarmDto>> Handle(GetFarmsQuery request, CancellationToken cancellationToken)
     {
-        // AsNoTracking() improves performance for read-only queries
-        // Include() loads the related CropPeriods
-        return await _db.Farms
-            .AsNoTracking()
+        var query = _db.Farms.AsNoTracking();
+
+        if (!request.IncludeArchived)
+        {
+            query = query.Where(f => f.ArchivedAt == null);
+        }
+
+        if (request.Role == UserRole.Farmer && request.UserId.HasValue)
+        {
+            query = query.Where(f => f.OwnerId == request.UserId.Value);
+        }
+
+        return await query
+            .OrderByDescending(f => f.CreatedAtUtc)
             .Select(f => new FarmDto(
                 f.Id,
                 f.OwnerId,
@@ -48,7 +58,6 @@ public class GetFarmsQueryHandler : IRequestHandler<GetFarmsQuery, List<FarmDto>
                         cp.UpdatedAtUtc
                     )).FirstOrDefault()
             ))
-            .OrderByDescending(f => f.CreatedAtUtc)
             .ToListAsync(cancellationToken);
     }
 }

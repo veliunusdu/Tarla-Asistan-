@@ -1,5 +1,7 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Farms.Commands;
 using TarlaAsistani.Application.Features.Farms.DTOs;
 using TarlaAsistani.Application.Features.Farms.Queries;
@@ -11,11 +13,6 @@ public static class FarmEndpoints
 {
     public static IEndpointRouteBuilder MapFarmEndpoints(this IEndpointRouteBuilder app)
     {
-        // Health Check
-        app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }))
-           .WithTags("Health")
-           .WithName("HealthCheck");
-
         // Farms API Group
         var group = app.MapGroup("/api/v1/farms")
                        .WithTags("Farms");
@@ -42,10 +39,20 @@ public static class FarmEndpoints
         .Produces(StatusCodes.Status201Created)
         .ProducesValidationProblem();
 
-        // 2. GET /api/v1/farms - List all active farms
-        group.MapGet("/", async (IMediator mediator) =>
+        // 2. GET /api/v1/farms - List active farms (tenant-isolated for farmers)
+        group.MapGet("/", async (
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] Guid? userId,
+            [FromQuery] UserRole? role,
+            [FromQuery] bool? includeArchived,
+            IMediator mediator) =>
         {
-            var query = new GetFarmsQuery();
+            var resolvedUserId = headerUserId ?? userId ?? httpContext.GetUserId();
+            var resolvedRole = role ?? (Enum.TryParse<UserRole>(headerRole, true, out var r) ? r : httpContext.GetUserRole());
+
+            var query = new GetFarmsQuery(resolvedUserId, resolvedRole, includeArchived ?? false);
             var farms = await mediator.Send(query);
             return Results.Ok(farms);
         })

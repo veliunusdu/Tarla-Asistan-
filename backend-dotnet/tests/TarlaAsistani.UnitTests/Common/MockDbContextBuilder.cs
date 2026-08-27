@@ -14,6 +14,7 @@ public class MockDbContextBuilder
     private List<Profile> _profiles = new();
     private List<RefreshToken> _refreshTokens = new();
     private List<OtpCode> _otpCodes = new();
+    private List<FirebaseLinkApproval> _firebaseLinkApprovals = new();
     private List<AccountDeletionJob> _accountDeletionJobs = new();
 
     private List<Farm> _farms = new();
@@ -58,6 +59,12 @@ public class MockDbContextBuilder
     public MockDbContextBuilder WithOtpCodes(params OtpCode[] otps)
     {
         _otpCodes.AddRange(otps);
+        return this;
+    }
+
+    public MockDbContextBuilder WithFirebaseLinkApprovals(params FirebaseLinkApproval[] approvals)
+    {
+        _firebaseLinkApprovals.AddRange(approvals);
         return this;
     }
 
@@ -157,6 +164,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.Profiles, _profiles);
         SetupDbSet(_mockDb, db => db.RefreshTokens, _refreshTokens);
         SetupDbSet(_mockDb, db => db.OtpCodes, _otpCodes);
+        SetupDbSet(_mockDb, db => db.FirebaseLinkApprovals, _firebaseLinkApprovals);
         SetupDbSet(_mockDb, db => db.AccountDeletionJobs, _accountDeletionJobs);
 
         SetupDbSet(_mockDb, db => db.Farms, _farms);

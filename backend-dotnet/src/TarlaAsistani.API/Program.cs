@@ -29,7 +29,33 @@ builder.Services.AddCors(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 
-// 4. Swagger with Bearer & X-User-Id Security Definitions
+// 4. Configure JWT Authentication & Authorization
+var jwtSecret = builder.Configuration["Auth:JwtSecret"] 
+             ?? builder.Configuration["Jwt:Secret"] 
+             ?? "super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtSecret)),
+        ValidateIssuer = false,
+        ValidateAudience = false,
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
+
+// 5. Swagger with Bearer & X-User-Id Security Definitions
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -79,7 +105,10 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+app.UseMiddleware<TarlaAsistani.API.Middleware.SecurityHeadersMiddleware>();
 app.UseCors("AllowAll");
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Testing")
 {
@@ -91,6 +120,7 @@ if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Testi
 }
 
 // 5. Map Modular Endpoints
+app.MapHealthEndpoints();
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapMediaEndpoints();

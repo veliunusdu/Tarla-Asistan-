@@ -1,26 +1,68 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application.Features.Cases.DTOs;
+using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Infrastructure.Persistence;
 
 namespace TarlaAsistani.IntegrationTests;
 
 public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly HttpClient _client;
+    private readonly CustomWebApplicationFactory _factory;
 
     public CaseEndpointsIntegrationTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
     [Fact]
     public async Task CreateCaseAndSendMessage_ShouldSucceed()
     {
-        // 1. Create a Farm
+        // 0. Seed Farmer & Agronomist Users in test database
         var farmerId = Guid.NewGuid();
+        var agronomistId = Guid.NewGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.AddRange(
+                new User
+                {
+                    Id = farmerId,
+                    PhoneNumber = "+905551112233",
+                    Role = UserRole.Farmer,
+                    AccountStatus = AccountStatus.Active,
+                    Profile = new Profile
+                    {
+                        UserId = farmerId,
+                        FullName = "Hasan Çiftçi",
+                        NotificationsEnabled = true
+                    }
+                },
+                new User
+                {
+                    Id = agronomistId,
+                    PhoneNumber = "+905554445566",
+                    Role = UserRole.Agronomist,
+                    AccountStatus = AccountStatus.Active,
+                    Profile = new Profile
+                    {
+                        UserId = agronomistId,
+                        FullName = "Ayşe Uzman",
+                        NotificationsEnabled = true
+                    }
+                }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        // 1. Create a Farm
         var createFarmRequest = new CreateFarmRequest(
             OwnerId: farmerId,
             Name: "Vaka Test Tarlası",
@@ -57,7 +99,6 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         createdCase.Status.Should().Be(CaseStatus.Open);
 
         // 3. Add a Message to Case
-        var agronomistId = Guid.NewGuid();
         var addMessageRequest = new CreateCaseMessageApiRequest(
             UserId: agronomistId,
             Role: UserRole.Agronomist,

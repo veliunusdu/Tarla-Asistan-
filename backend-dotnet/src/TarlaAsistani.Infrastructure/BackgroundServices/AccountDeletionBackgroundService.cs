@@ -45,6 +45,7 @@ public class AccountDeletionBackgroundService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
         var storage = scope.ServiceProvider.GetRequiredService<IMediaStorageService>();
+        var firebaseAuth = scope.ServiceProvider.GetRequiredService<IFirebaseAuthService>();
 
         var now = DateTime.UtcNow;
 
@@ -95,7 +96,21 @@ public class AccountDeletionBackgroundService : BackgroundService
                 }
                 job.MediaDeletedAtUtc = now;
 
-                // 3. Deactivate all device tokens
+                // 3. Revoke and delete Firebase account if linked
+                if (!string.IsNullOrEmpty(user.FirebaseUid))
+                {
+                    try
+                    {
+                        await firebaseAuth.RevokeUserSessionsAsync(user.FirebaseUid, ct);
+                        await firebaseAuth.DeleteUserAsync(user.FirebaseUid, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to delete external Firebase Auth user {Uid} for user {UserId}", user.FirebaseUid, user.Id);
+                    }
+                }
+
+                // 4. Deactivate all device tokens
                 var deviceTokens = await db.DeviceTokens
                     .Where(d => d.UserId == user.Id)
                     .ToListAsync(ct);

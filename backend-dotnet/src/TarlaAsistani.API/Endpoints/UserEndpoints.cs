@@ -1,9 +1,11 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Application.Features.Auth.Queries;
 using TarlaAsistani.Application.Features.Users.Commands;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.API.Endpoints;
 
@@ -71,30 +73,60 @@ public static class UserEndpoints
 
         // 3. GET /api/v1/users/farmer-area - Role verified farmer area
         group.MapGet("/farmer-area", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
-            return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
+            var queryUserId = headerUserId ?? userId ?? httpContext.GetUserId();
+            if (!queryUserId.HasValue || queryUserId.Value == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId.Value));
+            if (result == null) return Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
+
+            if (result.Role != UserRole.Farmer)
+            {
+                return Results.Json(new { detail = "Bu alana yalnızca çiftçiler erişebilir." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            return Results.Ok(result);
         })
         .WithName("FarmerArea")
         .Produces<UserDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
         // 4. GET /api/v1/users/agronomist-area - Role verified agronomist area
         group.MapGet("/agronomist-area", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
-            return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
+            var queryUserId = headerUserId ?? userId ?? httpContext.GetUserId();
+            if (!queryUserId.HasValue || queryUserId.Value == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId.Value));
+            if (result == null) return Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
+
+            if (result.Role != UserRole.Agronomist)
+            {
+                return Results.Json(new { detail = "Bu alana yalnızca ziraat mühendisleri/uzmanlar erişebilir." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            return Results.Ok(result);
         })
         .WithName("AgronomistArea")
         .Produces<UserDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
         return app;

@@ -1,6 +1,7 @@
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.Auth.Commands;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Application.Features.Auth.Queries;
@@ -126,17 +127,57 @@ public static class AuthEndpoints
 
         // 6. GET /api/v1/auth/me
         group.MapGet("/me", async (
+            HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,
             IMediator mediator) =>
         {
-            var queryUserId = headerUserId ?? userId ?? Guid.Empty;
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
+            var queryUserId = headerUserId ?? userId ?? httpContext.GetUserId();
+            if (!queryUserId.HasValue || queryUserId.Value == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId.Value));
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
         })
         .WithName("GetCurrentUser")
         .Produces<UserDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
+
+        // 7. POST /api/v1/auth/approvals - Operator approval for Agronomist Firebase linking
+        group.MapPost("/approvals", async (
+            ApproveFirebaseLinkApiRequest req,
+            IMediator mediator,
+            IValidator<ApproveFirebaseLinkCommand> validator) =>
+        {
+            var command = new ApproveFirebaseLinkCommand(req.UserId, req.FirebaseUid, req.OperatorName);
+            var validation = await validator.ValidateAsync(command);
+            if (!validation.IsValid)
+            {
+                return Results.ValidationProblem(validation.ToDictionary());
+            }
+
+            try
+            {
+                var result = await mediator.Send(command);
+                return Results.Created($"/api/v1/auth/approvals/{result.Id}", result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { detail = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { detail = ex.Message });
+            }
+        })
+        .WithName("ApproveFirebaseLink")
+        .Produces<FirebaseLinkApprovalDto>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         return app;
     }
@@ -146,3 +187,4 @@ public record RequestOtpApiRequest(string PhoneNumber);
 public record VerifyOtpApiRequest(string PhoneNumber, string OtpCode);
 public record FirebaseLoginApiRequest(string IdToken, UserRole? Role = null);
 public record RefreshTokenApiRequest(string RefreshToken);
+public record ApproveFirebaseLinkApiRequest(Guid UserId, string FirebaseUid, string OperatorName);

@@ -107,7 +107,7 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
             var isExpertResponse = request.MessageType == CaseMessageType.ExpertResponse;
             var notification = new Notification
             {
-                UserId = supportCase.Farm.OwnerId,
+                UserId = supportCase.Farm!.OwnerId,
                 NotificationType = NotificationType.ExpertResponse,
                 Title = isExpertResponse ? "Uzmanınız vakanızı yanıtladı" : "Uzmanınız ek bilgi talep etti",
                 Body = request.Body.Length > 300 ? request.Body[..300] : request.Body,
@@ -123,7 +123,7 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
             await _db.SaveChangesAsync(cancellationToken);
 
             var activeTokens = await _db.DeviceTokens
-                .Where(d => d.UserId == supportCase.Farm.OwnerId && d.Active)
+                .Where(d => d.UserId == supportCase.Farm!.OwnerId && d.Active)
                 .ToListAsync(cancellationToken);
 
             foreach (var device in activeTokens)

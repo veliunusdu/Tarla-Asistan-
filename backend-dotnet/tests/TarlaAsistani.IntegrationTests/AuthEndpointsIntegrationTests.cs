@@ -83,4 +83,28 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         tokenResult!.User.PhoneNumber.Should().Be(phone);
         tokenResult.User.FirebaseUid.Should().Be(uid);
     }
+
+    [Fact]
+    public async Task JwtBearerAuth_WhenValidBearerToken_ShouldResolveUserOnMeEndpoint()
+    {
+        // Arrange: Log in via OTP to get a valid JWT Bearer token
+        var phone = "+905557778899";
+        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone));
+        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>();
+        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult!.DebugOtp!));
+        var tokenResult = await verifyResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
+        var accessToken = tokenResult!.AccessToken;
+
+        // Act: Call /me using ONLY Authorization: Bearer <token> (WITHOUT X-User-Id header)
+        var meRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        meRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
+        var meResponse = await _client.SendAsync(meRequest);
+
+        // Assert
+        meResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var userResult = await meResponse.Content.ReadFromJsonAsync<UserDto>(CustomWebApplicationFactory.JsonOptions);
+        userResult.Should().NotBeNull();
+        userResult!.Id.Should().Be(tokenResult.User.Id);
+        userResult.PhoneNumber.Should().Be(phone);
+    }
 }

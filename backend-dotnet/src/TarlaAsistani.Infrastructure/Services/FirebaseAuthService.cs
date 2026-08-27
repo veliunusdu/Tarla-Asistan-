@@ -75,4 +75,40 @@ public class FirebaseAuthService : IFirebaseAuthService
         _logger.LogWarning("FirebaseApp is not configured, and token is not a dev token.");
         return null;
     }
+
+    public async Task RevokeUserSessionsAsync(string firebaseUid, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(firebaseUid)) return;
+
+        if (FirebaseApp.DefaultInstance != null)
+        {
+            try
+            {
+                await FirebaseAuth.DefaultInstance.RevokeRefreshTokensAsync(firebaseUid, cancellationToken);
+                _logger.LogInformation("Revoked Firebase sessions for UID {Uid}", firebaseUid);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to revoke Firebase sessions for UID {Uid}", firebaseUid);
+            }
+        }
+    }
+
+    public async Task DeleteUserAsync(string firebaseUid, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(firebaseUid)) return;
+
+        if (FirebaseApp.DefaultInstance != null)
+        {
+            try
+            {
+                await FirebaseAuth.DefaultInstance.DeleteUserAsync(firebaseUid, cancellationToken);
+                _logger.LogInformation("Deleted Firebase user with UID {Uid}", firebaseUid);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete Firebase user with UID {Uid}", firebaseUid);
+            }
+        }
+    }
 }

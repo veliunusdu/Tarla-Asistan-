@@ -62,12 +62,12 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
 
         if (user == null)
         {
-            // Auto-register user
+            // Auto-register user: new self-registered Firebase users are always Farmer
             user = new User
             {
                 PhoneNumber = tokenInfo.PhoneNumber ?? string.Empty,
                 FirebaseUid = tokenInfo.Uid,
-                Role = request.Role ?? UserRole.Farmer,
+                Role = UserRole.Farmer,
                 AccountStatus = AccountStatus.Active,
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
@@ -99,6 +99,24 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
             // Link Firebase UID if previously unlinked
             if (string.IsNullOrEmpty(user.FirebaseUid))
             {
+                // If user is Agronomist, must have an unconsumed and non-expired approval
+                if (user.Role == UserRole.Agronomist)
+                {
+                    var approval = await _db.FirebaseLinkApprovals
+                        .FirstOrDefaultAsync(a => a.UserId == user.Id &&
+                                                  a.FirebaseUid == tokenInfo.Uid &&
+                                                  a.ConsumedAtUtc == null &&
+                                                  a.ExpiresAtUtc > now,
+                                             cancellationToken);
+
+                    if (approval == null)
+                    {
+                        throw new UnauthorizedAccessException("Ziraat mühendisi / uzman hesabı için yönetici onayı gereklidir.");
+                    }
+
+                    approval.ConsumedAtUtc = now;
+                }
+
                 user.FirebaseUid = tokenInfo.Uid;
             }
 

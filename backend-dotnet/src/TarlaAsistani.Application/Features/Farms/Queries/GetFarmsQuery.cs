@@ -1,7 +1,11 @@
-﻿using MediatR;
+using MediatR;
 using TarlaAsistani.Application.Features.Farms.DTOs;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.Application.Features.Farms.Queries;
 
-// This Query returns a List of FarmDto objects
-public record GetFarmsQuery() : IRequest<List<FarmDto>>;
+public record GetFarmsQuery(
+    Guid? UserId = null,
+    UserRole? Role = null,
+    bool IncludeArchived = false
+) : IRequest<List<FarmDto>>;

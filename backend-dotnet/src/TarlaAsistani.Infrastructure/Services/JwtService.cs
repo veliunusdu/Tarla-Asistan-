@@ -20,10 +20,12 @@ public class JwtService : IJwtService
 
     public string GenerateAccessToken(User user)
     {
-        var secret = _config["Jwt:Secret"] ?? "super_secret_fallback_key_at_least_32_bytes_long!";
+        var secret = _config["Auth:JwtSecret"] ?? _config["Jwt:Secret"] ?? "super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!";
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var expires = DateTime.UtcNow.AddMinutes(_config.GetValue("Auth:AccessTokenExpireMinutes", 15));
+        var expiryMinutes = _config.GetValue<int>("Auth:AccessTokenExpiryMinutes", 
+                            _config.GetValue<int>("Auth:AccessTokenExpireMinutes", 15));
+        var expires = DateTime.UtcNow.AddMinutes(expiryMinutes);
 
         var claims = new[]
         {

@@ -1,0 +1,67 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using TarlaAsistani.Domain.Enums;
+
+namespace TarlaAsistani.API.Common;
+
+public static class CurrentUserExtensions
+{
+    public static Guid? GetUserId(this HttpContext context)
+    {
+        // 1. Try ClaimsPrincipal (from JWT Bearer token)
+        var claimId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                   ?? context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                   ?? context.User.FindFirst("sub")?.Value;
+
+        if (Guid.TryParse(claimId, out var idFromClaim))
+        {
+            return idFromClaim;
+        }
+
+        // 2. Fallback: X-User-Id header (for pilot & testing)
+        if (context.Request.Headers.TryGetValue("X-User-Id", out var headerVal) &&
+            Guid.TryParse(headerVal.ToString(), out var idFromHeader))
+        {
+            return idFromHeader;
+        }
+
+        // 3. Fallback: Query parameter "userId"
+        if (context.Request.Query.TryGetValue("userId", out var queryVal) &&
+            Guid.TryParse(queryVal.ToString(), out var idFromQuery))
+        {
+            return idFromQuery;
+        }
+
+        return null;
+    }
+
+    public static UserRole? GetUserRole(this HttpContext context)
+    {
+        // 1. Try ClaimsPrincipal (from JWT Bearer token)
+        var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value
+                     ?? context.User.FindFirst("role")?.Value;
+
+        if (!string.IsNullOrWhiteSpace(roleClaim) &&
+            Enum.TryParse<UserRole>(roleClaim, ignoreCase: true, out var roleFromClaim))
+        {
+            return roleFromClaim;
+        }
+
+        // 2. Fallback: X-User-Role header
+        if (context.Request.Headers.TryGetValue("X-User-Role", out var headerVal) &&
+            Enum.TryParse<UserRole>(headerVal.ToString(), ignoreCase: true, out var roleFromHeader))
+        {
+            return roleFromHeader;
+        }
+
+        // 3. Fallback: Query parameter "role"
+        if (context.Request.Query.TryGetValue("role", out var queryVal) &&
+            Enum.TryParse<UserRole>(queryVal.ToString(), ignoreCase: true, out var roleFromQuery))
+        {
+            return roleFromQuery;
+        }
+
+        return null;
+    }
+}

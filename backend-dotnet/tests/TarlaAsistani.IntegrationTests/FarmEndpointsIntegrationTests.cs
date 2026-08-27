@@ -70,4 +70,52 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         updatedResult!.Farm.Name.Should().Be("Anadolu Buğday Sahası - Güncellendi");
         updatedResult.Farm.SizeInHectares.Should().Be(15.0);
     }
+
+    [Fact]
+    public async Task ListFarms_WhenFarmerQueries_ShouldOnlyReturnFarmsOwnedByFarmer()
+    {
+        // 1. Create two farms for farmer A, one for farmer B
+        var farmerA = Guid.NewGuid();
+        var farmerB = Guid.NewGuid();
+
+        await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
+            OwnerId: farmerA,
+            Name: "Çiftçi A Tarlası 1",
+            Latitude: 38.0, Longitude: 35.0, SizeInHectares: 2.0,
+            IrrigationMethod: IrrigationMethod.Drip,
+            InitialCropType: CropType.Wheat,
+            InitialPlantedAt: new DateOnly(2026, 3, 1)
+        ));
+
+        await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
+            OwnerId: farmerA,
+            Name: "Çiftçi A Tarlası 2",
+            Latitude: 38.1, Longitude: 35.1, SizeInHectares: 3.0,
+            IrrigationMethod: IrrigationMethod.Drip,
+            InitialCropType: CropType.Corn,
+            InitialPlantedAt: new DateOnly(2026, 4, 1)
+        ));
+
+        await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
+            OwnerId: farmerB,
+            Name: "Çiftçi B Tarlası",
+            Latitude: 39.0, Longitude: 36.0, SizeInHectares: 10.0,
+            IrrigationMethod: IrrigationMethod.Sprinkler,
+            InitialCropType: CropType.Sunflower,
+            InitialPlantedAt: new DateOnly(2026, 5, 1)
+        ));
+
+        // 2. Query as farmer A
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms?userId={farmerA}&role={UserRole.Farmer}");
+        request.Headers.Add("X-User-Id", farmerA.ToString());
+        request.Headers.Add("X-User-Role", "Farmer");
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var list = await response.Content.ReadFromJsonAsync<List<FarmDto>>(CustomWebApplicationFactory.JsonOptions);
+        list.Should().NotBeNull();
+        list!.Should().OnlyContain(f => f.OwnerId == farmerA);
+        list.Should().HaveCount(2);
+    }
 }
