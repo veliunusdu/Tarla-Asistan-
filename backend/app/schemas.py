@@ -65,6 +65,11 @@ class VerifyOtpRequest(BaseModel):
     _normalize = field_validator("phone_number")(normalize_phone)
 
 
+class FirebaseLoginRequest(BaseModel):
+    id_token: str = Field(min_length=1)
+    role: UserRole | None = None
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

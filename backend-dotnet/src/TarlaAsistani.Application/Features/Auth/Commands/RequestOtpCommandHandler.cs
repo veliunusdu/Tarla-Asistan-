@@ -29,7 +29,9 @@ public class RequestOtpCommandHandler : IRequestHandler<RequestOtpCommand, Reque
         var cooldownSeconds = _config.GetValue("Auth:OtpCooldownSeconds", 60);
         var ttlSeconds = _config.GetValue("Auth:OtpTtlSeconds", 180);
         var env = _config.GetValue("Environment", "Production") ?? "Production";
-        var isLocal = env.Equals("local", StringComparison.OrdinalIgnoreCase);
+        var isLocal = env.Equals("local", StringComparison.OrdinalIgnoreCase) ||
+                      env.Equals("testing", StringComparison.OrdinalIgnoreCase) ||
+                      env.Equals("development", StringComparison.OrdinalIgnoreCase);
 
         // Rate-limit check (cooldown)
         var recentOtp = await _db.OtpCodes

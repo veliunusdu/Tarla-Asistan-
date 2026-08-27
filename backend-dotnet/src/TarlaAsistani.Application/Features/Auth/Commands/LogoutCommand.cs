@@ -19,7 +19,7 @@ public class LogoutCommandHandler : IRequestHandler<LogoutCommand, bool>
 
     public async Task<bool> Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
-        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.RefreshToken)));
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.RefreshToken))).ToLowerInvariant();
         var stored = await _db.RefreshTokens.FirstOrDefaultAsync(r => r.TokenHash == tokenHash && r.RevokedAtUtc == null, cancellationToken);
         if (stored != null)
         {

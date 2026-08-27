@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  # ── PostgreSQL with PostGIS ──────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: tarla-asistani-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tarla_asistani
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tarla_asistani"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── .NET 8 Backend API ──────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tarla-asistani-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=tarla_asistani;Username=postgres;Password=postgrespassword
+      - Auth__JwtSecret=super_secret_jwt_key_at_least_32_characters_long_for_hmac_sha256_production!
+      - Auth__AccessTokenExpiryMinutes=15
+      - Auth__RefreshTokenExpiryDays=30
+      - Media__StoragePath=/app/uploads
+      - Weather__OpenMeteoBaseUrl=https://api.open-meteo.com/v1/forecast
+      - Weather__StaleAfterHours=4
+      - AI__Provider=local
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads_data:/app/uploads
+
+volumes:
+  postgres_data:
+  uploads_data:

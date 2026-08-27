@@ -1,3 +1,4 @@
+import base64
 import uuid
 from typing import Literal, Protocol
 
@@ -123,6 +124,94 @@ class DeepSeekAIChatProvider:
         )
 
 
+class GeminiAIChatProvider:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = "gemini-2.0-flash",
+        timeout_seconds: float = 30.0,
+    ):
+        self.api_key = api_key
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+
+    def generate(self, request: AIChatRequest) -> AIChatResponse:
+        contents = []
+        if request.history:
+            for item in request.history:
+                role = "user" if item.role == "user" else "model"
+                contents.append({
+                    "role": role,
+                    "parts": [{"text": item.content}]
+                })
+
+        user_parts = []
+        if request.photo_bytes is not None:
+            mime_type = request.photo_content_type or "image/jpeg"
+            b64_data = base64.b64encode(request.photo_bytes).decode("utf-8")
+            user_parts.append({
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": b64_data,
+                }
+            })
+
+        user_parts.append({"text": request.message})
+        contents.append({"role": "user", "parts": user_parts})
+
+        payload = {
+            "system_instruction": {
+                "parts": [
+                    {
+                        "text": (
+                            "Tarla Asistanı için uzman bir ziraat mühendisisin. "
+                            "Çiftçilere Türkçe, anlaşılır, bilimsel ve pratik tarımsal tavsiyeler ver. "
+                            "Fotoğraf gönderildiyse yaprak, meyve, gövde veya kökteki hastalık, "
+                            "zararlı ya da besin eksikliği belirtilerini teşhis et; "
+                            "kültürel önlemler ve etken madde bazlı çözüm önerilerini maddeler halinde açıkla."
+                        )
+                    }
+                ]
+            },
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.2,
+            },
+        }
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
+        try:
+            response = httpx.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            data = response.json()
+            candidates = data.get("candidates") or []
+            if not candidates:
+                raise AIChatProviderError("Gemini modeli yanıt üretemedi.")
+            parts = candidates[0].get("content", {}).get("parts") or []
+            reply = "".join(part.get("text", "") for part in parts).strip()
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+            raise AIChatProviderError("Gemini AI sağlayıcısına şu anda ulaşılamıyor.") from exc
+
+        if not reply:
+            raise AIChatProviderError("AI sağlayıcısı geçerli bir yanıt döndürmedi.")
+
+        return AIChatResponse(
+            reply=reply,
+            conversation_id=request.conversation_id or str(uuid.uuid4()),
+        )
+
+
 def create_ai_chat_provider(settings: Settings) -> AIChatProvider:
     if settings.ai_chat_provider == "local":
         return LocalAIChatProvider()
@@ -135,4 +224,13 @@ def create_ai_chat_provider(settings: Settings) -> AIChatProvider:
             timeout_seconds=settings.deepseek_timeout_seconds,
             base_url=settings.deepseek_base_url,
         )
-    raise ValueError("AI_CHAT_PROVIDER yalnızca 'local' veya 'deepseek' olabilir.")
+    if settings.ai_chat_provider == "gemini":
+        if not settings.gemini_api_key:
+            raise ValueError("Gemini için GEMINI_API_KEY zorunludur.")
+        return GeminiAIChatProvider(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout_seconds=settings.gemini_timeout_seconds,
+        )
+    raise ValueError("AI_CHAT_PROVIDER yalnızca 'local', 'deepseek' veya 'gemini' olabilir.")
+

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Moq;
 using TarlaAsistani.Application.Features.Tasks.Commands;
 using TarlaAsistani.Application.Features.Tasks.Queries;
 using TarlaAsistani.Application.Features.Tasks.Services;
@@ -43,6 +44,54 @@ public class TaskCommandHandlerTests
         result.Source.Should().Be(TaskSource.Expert);
         result.Priority.Should().Be(TaskPriority.High);
         result.Status.Should().Be(TaskStatus.New);
+    }
+
+    [Fact]
+    public async Task CreateExpertTask_WhenPushServiceProvided_ShouldDispatchPushNotificationToActiveDevices()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var expertId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = farmerId, Name = "Tarla 1" };
+        var device = new DeviceToken
+        {
+            UserId = farmerId,
+            Token = "fcm-device-token-12345",
+            Platform = DevicePlatform.Android,
+            Active = true
+        };
+
+        var pushMock = new Moq.Mock<TarlaAsistani.Application.Common.Interfaces.IPushNotificationService>();
+        pushMock.Setup(p => p.SendNotificationAsync(Moq.It.IsAny<Notification>(), "fcm-device-token-12345", Moq.It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithDeviceTokens(device)
+            .Build();
+
+        var handler = new CreateExpertTaskCommandHandler(db, pushMock.Object);
+        var command = new CreateExpertTaskCommand(
+            FarmId: farmId,
+            CreatedById: expertId,
+            Title: "Sulama Kontrolü",
+            Description: "Damlama hatlarını kontrol edin",
+            Reason: "Yarın sıcaklık 35 derece",
+            Priority: TaskPriority.High,
+            Confidence: TaskConfidence.High,
+            DueDate: new DateOnly(2026, 5, 12)
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        pushMock.Verify(p => p.SendNotificationAsync(
+            Moq.It.Is<Notification>(n => n.UserId == farmerId && n.Title == "Yeni uzman göreviniz var"),
+            "fcm-device-token-12345",
+            Moq.It.IsAny<CancellationToken>()), Moq.Times.Once);
     }
 
     [Fact]

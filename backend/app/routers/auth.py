@@ -8,7 +8,16 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.dependencies import get_current_user, get_otp_store
-from app.firebase_mapping import lock_active_user_for_update
+from app.firebase_auth import (
+    FirebaseAuthUnavailableError,
+    FirebaseIdentity,
+    FirebaseTokenError,
+    verify_firebase_id_token,
+)
+from app.firebase_mapping import (
+    lock_active_user_for_update,
+    resolve_firebase_user,
+)
 from app.models import RefreshToken, User, UserRole
 from app.otp import (
     OtpExpired,
@@ -18,9 +27,10 @@ from app.otp import (
     OtpStore,
 )
 from app.schemas import (
+    FirebaseLoginRequest,
+    RefreshTokenRequest,
     RequestOtpRequest,
     RequestOtpResponse,
-    RefreshTokenRequest,
     TokenResponse,
     UserResponse,
     VerifyOtpRequest,
@@ -116,6 +126,42 @@ def verify_otp(
         db.commit()
         db.refresh(user)
 
+    return issue_session(user, db, settings)
+
+
+@router.post(
+    "/firebase",
+    response_model=TokenResponse,
+    summary="Firebase ID tokenını doğrula ve JWT üret",
+)
+def firebase_login(
+    payload: FirebaseLoginRequest,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> TokenResponse:
+    if not settings.firebase_auth_enabled and settings.environment == "local" and (
+        payload.id_token.startswith("dev_") or payload.id_token.startswith("mock_")
+    ):
+        phone = "+905550000000"
+        identity = FirebaseIdentity(uid=payload.id_token, phone_number=phone)
+        user = resolve_firebase_user(db, identity)
+        return issue_session(user, db, settings)
+
+    try:
+        identity = verify_firebase_id_token(payload.id_token)
+    except FirebaseTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Geçersiz veya süresi dolmuş Firebase kimlik doğrulama belirteci.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    except FirebaseAuthUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Kimlik doğrulama hizmeti kullanılamıyor.",
+        ) from exc
+
+    user = resolve_firebase_user(db, identity)
     return issue_session(user, db, settings)
 
 

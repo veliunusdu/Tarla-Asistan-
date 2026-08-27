@@ -74,23 +74,30 @@ def get_current_user(
             detail="Oturum açmanız gerekiyor.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # 1. Try resolving backend-issued JWT access token
+    try:
+        payload = decode_access_token(credentials.credentials, settings)
+        user_id = uuid.UUID(payload["sub"])
+        user = db.get(User, user_id)
+        if user is not None:
+            return require_active(user)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_403_FORBIDDEN:
+            raise
+    except Exception:
+        pass
+
+    # 2. If token is not an internal JWT and Firebase Auth is enabled, verify Firebase ID token
     if settings.firebase_auth_enabled:
         try:
             identity = verify_firebase_id_token(credentials.credentials)
+            return resolve_firebase_user(db, identity)
         except FirebaseTokenError as exc:
             raise _unauthorized() from exc
         except FirebaseAuthUnavailableError as exc:
             raise _firebase_unavailable() from exc
-        return resolve_firebase_user(db, identity)
-    payload = decode_access_token(credentials.credentials, settings)
-    try:
-        user_id = uuid.UUID(payload["sub"])
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=401, detail="Geçersiz oturum.") from exc
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
-    return require_active(user)
+
+    raise _unauthorized()
 
 
 def get_account_deletion_request_user(
@@ -104,24 +111,30 @@ def get_account_deletion_request_user(
             detail="Oturum açmanız gerekiyor.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if settings.firebase_auth_enabled:
-        try:
-            identity = verify_firebase_id_token(credentials.credentials)
-        except FirebaseTokenError as exc:
-            raise _unauthorized() from exc
-        except FirebaseAuthUnavailableError as exc:
-            raise _firebase_unavailable() from exc
-        existing = db.scalar(select(User).where(User.firebase_uid == identity.uid))
-        user = existing if existing is not None else resolve_firebase_user(db, identity)
-    else:
+    user = None
+    try:
         payload = decode_access_token(credentials.credentials, settings)
-        try:
-            user_id = uuid.UUID(payload["sub"])
-        except (ValueError, TypeError) as exc:
-            raise HTTPException(status_code=401, detail="Geçersiz oturum.") from exc
+        user_id = uuid.UUID(payload["sub"])
         user = db.get(User, user_id)
-        if user is None:
-            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_403_FORBIDDEN:
+            raise
+        user = None
+    except Exception:
+        user = None
+
+    if user is None:
+        if settings.firebase_auth_enabled:
+            try:
+                identity = verify_firebase_id_token(credentials.credentials)
+            except FirebaseTokenError as exc:
+                raise _unauthorized() from exc
+            except FirebaseAuthUnavailableError as exc:
+                raise _firebase_unavailable() from exc
+            existing = db.scalar(select(User).where(User.firebase_uid == identity.uid))
+            user = existing if existing is not None else resolve_firebase_user(db, identity)
+        else:
+            raise _unauthorized()
     if user.account_status not in {
         AccountStatus.ACTIVE,
         AccountStatus.DELETION_PENDING,

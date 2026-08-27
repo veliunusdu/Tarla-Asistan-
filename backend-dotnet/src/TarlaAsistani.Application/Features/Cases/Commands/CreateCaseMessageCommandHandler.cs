@@ -29,6 +29,8 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
         // 2. Fetch accessible case
         var query = _db.SupportCases
             .Include(sc => sc.Farm)
+                .ThenInclude(f => f.Owner)
+                    .ThenInclude(u => u.Profile)
             .Where(sc => sc.Id == request.CaseId && sc.Farm.ArchivedAt == null);
 
         if (request.Role == UserRole.Farmer)
@@ -98,24 +100,51 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
         supportCase.UpdatedAtUtc = now;
         await _db.SaveChangesAsync(cancellationToken);
 
-        // 6. Notify farmer if expert response
-        if (request.MessageType == CaseMessageType.ExpertResponse)
+        // 6. Notify farmer if expert response or additional info request
+        if ((request.MessageType == CaseMessageType.ExpertResponse || request.MessageType == CaseMessageType.AdditionalInfoRequest) &&
+            (supportCase.Farm?.Owner?.Profile?.NotificationsEnabled ?? true))
         {
+            var isExpertResponse = request.MessageType == CaseMessageType.ExpertResponse;
             var notification = new Notification
             {
                 UserId = supportCase.Farm.OwnerId,
                 NotificationType = NotificationType.ExpertResponse,
-                Title = "Uzmanınız vakanızı yanıtladı",
+                Title = isExpertResponse ? "Uzmanınız vakanızı yanıtladı" : "Uzmanınız ek bilgi talep etti",
                 Body = request.Body.Length > 300 ? request.Body[..300] : request.Body,
                 DeepLink = $"tarla-asistani://cases/{supportCase.Id}",
                 Data = $"{{\"case_id\":\"{supportCase.Id}\",\"message_id\":\"{message.Id}\"}}",
-                DedupeKey = $"expert-response:{message.Id}",
+                DedupeKey = $"case-msg:{message.Id}",
+                Status = NotificationStatus.Pending,
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             };
 
             _db.Notifications.Add(notification);
             await _db.SaveChangesAsync(cancellationToken);
+
+            var activeTokens = await _db.DeviceTokens
+                .Where(d => d.UserId == supportCase.Farm.OwnerId && d.Active)
+                .ToListAsync(cancellationToken);
+
+            foreach (var device in activeTokens)
+            {
+                var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
+                if (sent)
+                {
+                    notification.Status = NotificationStatus.Sent;
+                    notification.SentAtUtc = DateTime.UtcNow;
+                }
+                else
+                {
+                    notification.AttemptCount++;
+                }
+                notification.UpdatedAtUtc = DateTime.UtcNow;
+            }
+
+            if (activeTokens.Count > 0)
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
         }
 
         var created = await _db.CaseMessages

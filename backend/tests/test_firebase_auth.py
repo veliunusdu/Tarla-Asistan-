@@ -409,3 +409,32 @@ def test_named_auth_app_recovers_after_another_initializer_wins(monkeypatch):
         resolved = None
 
     assert resolved is known_app
+
+
+def test_firebase_login_endpoint_creates_user_and_issues_session(
+    client: TestClient, monkeypatch
+):
+    def verify_id_token(token: str, *, app: object, check_revoked: bool):
+        assert token == "valid-firebase-token"
+        return {
+            "uid": "fb-uid-login-1",
+            "phone_number": "+905559998877",
+        }
+
+    monkeypatch.setattr("firebase_admin.auth.verify_id_token", verify_id_token)
+    monkeypatch.setattr("app.firebase_auth.get_firebase_auth_app", lambda: object())
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        firebase_auth_enabled=True
+    )
+
+    response = client.post(
+        "/api/v1/auth/firebase",
+        json={"id_token": "valid-firebase-token"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["access_token"]
+    assert data["refresh_token"]
+    assert data["user"]["firebase_uid"] == "fb-uid-login-1"
+    assert data["user"]["phone_number"] == "+905559998877"
+    assert data["user"]["role"] == "FARMER"

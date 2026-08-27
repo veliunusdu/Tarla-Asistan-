@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
     deepseek_timeout_seconds: float = Field(default=20, gt=0, le=60)
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_timeout_seconds: float = Field(default=30, gt=0, le=90)
     push_provider: str = "noop"
     firebase_auth_enabled: bool = False
     firebase_service_account_path: str | None = None

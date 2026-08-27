@@ -4,7 +4,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.ai_chat import AIChatProviderError, AIChatRequest, DeepSeekAIChatProvider
+from app.ai_chat import (
+    AIChatProviderError,
+    AIChatRequest,
+    DeepSeekAIChatProvider,
+    GeminiAIChatProvider,
+)
 from tests.test_auth import login
 
 
@@ -155,3 +160,53 @@ def test_deepseek_provider_rejects_photo_without_network(monkeypatch):
         provider.generate(
             AIChatRequest(message="Fotoğrafı incele.", photo_bytes=b"image")
         )
+
+
+def test_gemini_provider_multimodal_sends_inline_data(monkeypatch):
+    captured = {}
+
+    def mock_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers", {})
+        captured["json"] = kwargs.get("json")
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": "Fotoğraftaki yaprakta külleme hastalığı başlangıcı görülüyor."
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("app.ai_chat.httpx.post", mock_post)
+    provider = GeminiAIChatProvider(
+        api_key="gemini-test-key",
+        model="gemini-2.0-flash",
+        timeout_seconds=15,
+    )
+
+    response = provider.generate(
+        AIChatRequest(
+            message="Bu yapraktaki beyaz toz nedir?",
+            photo_bytes=b"dummy-image-bytes",
+            photo_content_type="image/jpeg",
+        )
+    )
+
+    assert "külleme hastalığı" in response.reply
+    assert captured["headers"].get("x-goog-api-key") == "gemini-test-key"
+    assert "gemini-2.0-flash:generateContent" in captured["url"]
+    assert "?key=" not in captured["url"]
+    user_parts = captured["json"]["contents"][-1]["parts"]
+    assert any("inline_data" in part for part in user_parts)
+    assert any(part.get("text") == "Bu yapraktaki beyaz toz nedir?" for part in user_parts)
+

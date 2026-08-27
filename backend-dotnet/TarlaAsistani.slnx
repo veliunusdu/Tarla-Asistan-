@@ -6,6 +6,7 @@
     <Project Path="src/TarlaAsistani.Infrastructure/TarlaAsistani.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TarlaAsistani.IntegrationTests/TarlaAsistani.IntegrationTests.csproj" />
     <Project Path="tests/TarlaAsistani.UnitTests/TarlaAsistani.UnitTests.csproj" />
   </Folder>
 </Solution>

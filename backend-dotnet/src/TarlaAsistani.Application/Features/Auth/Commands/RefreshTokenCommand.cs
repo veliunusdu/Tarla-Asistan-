@@ -26,7 +26,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, T
 
     public async Task<TokenResponseDto> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
-        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.RefreshToken)));
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(request.RefreshToken))).ToLowerInvariant();
 
         var stored = await _db.RefreshTokens
             .Include(r => r.User)
@@ -48,7 +48,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, T
         stored.RevokedAtUtc = now;
 
         var rawReplacement = _jwtService.GenerateRefreshToken();
-        var newHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawReplacement)));
+        var newHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawReplacement))).ToLowerInvariant();
         var refreshDays = _config.GetValue("Auth:RefreshTokenExpireDays", 30);
 
         var replacement = new RefreshToken

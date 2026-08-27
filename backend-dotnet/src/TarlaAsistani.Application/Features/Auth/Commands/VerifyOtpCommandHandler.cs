@@ -72,7 +72,7 @@ public class VerifyOtpCommandHandler : IRequestHandler<VerifyOtpCommand, TokenRe
         // Issue session tokens
         var accessToken = _jwtService.GenerateAccessToken(user);
         var rawRefreshToken = _jwtService.GenerateRefreshToken();
-        var refreshHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawRefreshToken)));
+        var refreshHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawRefreshToken))).ToLowerInvariant();
         var refreshDays = _config.GetValue("Auth:RefreshTokenExpireDays", 30);
 
         var refreshToken = new RefreshToken
