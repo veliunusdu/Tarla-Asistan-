@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application;
@@ -138,6 +139,30 @@ app.MapTaskEndpoints();
 app.MapCaseEndpoints();
 app.MapPilotEndpoints();
 app.MapAIEndpoints();
+
+// 6. Apply EF Core Migrations automatically on startup (excluding in-memory testing)
+if (app.Environment.EnvironmentName != "Testing")
+{
+    using var scope = app.Services.CreateScope();
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var context = services.GetRequiredService<TarlaAsistani.Infrastructure.Persistence.ApplicationDbContext>();
+
+    try
+    {
+        if (context.Database.IsRelational())
+        {
+            logger.LogInformation("Applying database migrations...");
+            context.Database.Migrate();
+            logger.LogInformation("Database migrations applied successfully.");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred while migrating the database.");
+        throw;
+    }
+}
 
 app.Run();
 

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -20,6 +22,33 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
 
     public async Task<CaseMessageDto> Handle(CreateCaseMessageCommand request, CancellationToken cancellationToken)
     {
+        // 0. Idempotency check
+        var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{request.CaseId}:{request.MessageType}:{request.Body.Trim()}"))).ToLowerInvariant();
+
+        if (request.ClientOperationId.HasValue)
+        {
+            var existingOp = await _db.ClientOperations
+                .FirstOrDefaultAsync(co => co.ActorId == request.SenderId && co.ClientOperationId == request.ClientOperationId.Value, cancellationToken);
+
+            if (existingOp != null)
+            {
+                if (existingOp.Scope != $"case.message:{request.CaseId}" || existingOp.PayloadHash != payloadDigest)
+                {
+                    throw new InvalidOperationException("Bu client_operation_id farklı bir işlem için kullanılmış.");
+                }
+
+                var replayed = await _db.CaseMessages
+                    .Include(m => m.MediaLinks)
+                        .ThenInclude(ml => ml.Media)
+                    .FirstOrDefaultAsync(m => m.Id == existingOp.ResourceId, cancellationToken);
+
+                if (replayed != null)
+                {
+                    return CaseMessageDto.FromEntity(replayed);
+                }
+            }
+        }
+
         // 1. Check farmer message type constraint
         if (request.Role == UserRole.Farmer && request.MessageType != CaseMessageType.Comment)
         {
@@ -99,6 +128,22 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
 
         supportCase.UpdatedAtUtc = now;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // 5.1 Record idempotency operation
+        if (request.ClientOperationId.HasValue)
+        {
+            _db.ClientOperations.Add(new ClientOperation
+            {
+                ActorId = request.SenderId,
+                ClientOperationId = request.ClientOperationId.Value,
+                Scope = $"case.message:{request.CaseId}",
+                PayloadHash = payloadDigest,
+                ResourceType = "case_message",
+                ResourceId = message.Id,
+                CreatedAtUtc = now
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         // 6. Notify farmer if expert response or additional info request
         if ((request.MessageType == CaseMessageType.ExpertResponse || request.MessageType == CaseMessageType.AdditionalInfoRequest) &&

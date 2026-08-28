@@ -2,7 +2,7 @@ name: tarla-asistani
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tarla_asistani}
       POSTGRES_USER: ${POSTGRES_USER:-tarla}
@@ -15,62 +15,39 @@ services:
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   backend:
     build:
-      context: ./backend
+      context: ./backend-dotnet
     environment:
-      ENVIRONMENT: local
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tarla}:${POSTGRES_PASSWORD:-tarla-local}@db:5432/${POSTGRES_DB:-tarla_asistani}
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-deploy}
-      OTP_HASH_SECRET: ${OTP_HASH_SECRET:-local-only-otp-secret-change-before-deploy}
-      OTP_EXPOSE_IN_RESPONSE: ${OTP_EXPOSE_IN_RESPONSE:-true}
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=${POSTGRES_DB:-tarla_asistani};Username=${POSTGRES_USER:-tarla};Password=${POSTGRES_PASSWORD:-tarla-local}
+      Auth__JwtSecret: ${JWT_SECRET:-local-only-jwt-secret-change-before-deploy-at-least-32-chars-long!}
+      Auth__AccessTokenExpiryMinutes: 60
+      Auth__RefreshTokenExpiryDays: 30
+      Auth__OtpCooldownSeconds: 60
+      Auth__OtpTtlSeconds: 180
       AGRONOMIST_PHONE_NUMBERS: ${AGRONOMIST_PHONE_NUMBERS:-+905551112233}
-      CORS_ORIGINS: http://localhost:3000,http://localhost:${WEB_PORT:-3000}
-      MEDIA_STORAGE_PATH: /app/data/media
-      MEDIA_MAX_UPLOAD_MB: ${MEDIA_MAX_UPLOAD_MB:-15}
-      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_BUCKET: ${R2_BUCKET:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      AI_CHAT_PROVIDER: ${AI_CHAT_PROVIDER:-local}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
-      DEEPSEEK_TIMEOUT_SECONDS: ${DEEPSEEK_TIMEOUT_SECONDS:-20}
-      PUSH_PROVIDER: ${PUSH_PROVIDER:-noop}
-      FIREBASE_AUTH_ENABLED: ${FIREBASE_AUTH_ENABLED:-false}
-      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/run/secrets/firebase-service-account.json}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
-      PUSH_GATEWAY_URL: ${PUSH_GATEWAY_URL:-}
-      PUSH_GATEWAY_TOKEN: ${PUSH_GATEWAY_TOKEN:-}
-      PUSH_TIMEOUT_SECONDS: ${PUSH_TIMEOUT_SECONDS:-8}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      Media__Provider: ${MEDIA_STORAGE_PROVIDER:-local}
+      Media__StoragePath: /app/uploads
+      Media__MaxUploadMb: ${MEDIA_MAX_UPLOAD_MB:-15}
+      Weather__OpenMeteoBaseUrl: https://api.open-meteo.com/v1/forecast
+      Weather__StaleAfterHours: 3
+      AI__Provider: ${AI_CHAT_PROVIDER:-local}
+      AI__DeepSeekApiKey: ${DEEPSEEK_API_KEY:-}
+      AI__DeepSeekBaseUrl: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      AI__DeepSeekModel: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      Firebase__CredentialsPath: /run/secrets/firebase-service-account.json
+      Firebase__ProjectId: ${FIREBASE_PROJECT_ID:-}
     volumes:
-      - media_data:/app/data/media
-      - ./backend/secrets:/run/secrets:ro
+      - media_data:/app/uploads
+      - ./backend-dotnet/Secrets:/run/secrets:ro
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_PORT:-8000}:8080"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=2)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -90,5 +67,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   media_data:

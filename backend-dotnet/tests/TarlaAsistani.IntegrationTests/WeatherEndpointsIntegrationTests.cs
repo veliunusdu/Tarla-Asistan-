@@ -36,9 +36,9 @@ public class WeatherEndpointsIntegrationTests : IClassFixture<CustomWebApplicati
             InitialPlantedAt: new DateOnly(2026, 4, 1)
         );
 
-        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest);
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest, CustomWebApplicationFactory.JsonOptions);
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>();
+        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
         var farmId = createResult!["id"];
 
         // 2. Setup mock weather provider with frost data

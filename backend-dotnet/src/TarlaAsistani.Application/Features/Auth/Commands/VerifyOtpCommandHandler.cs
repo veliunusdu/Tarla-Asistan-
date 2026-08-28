@@ -54,7 +54,20 @@ public class VerifyOtpCommandHandler : IRequestHandler<VerifyOtpCommand, TokenRe
 
         if (user == null)
         {
-            var agronomistPhones = _config.GetSection("Auth:AgronomistPhoneNumbers").Get<List<string>>() ?? new();
+            var agronomistConfig = _config["Auth:AgronomistPhoneNumbers"] 
+                                ?? _config["AGRONOMIST_PHONE_NUMBERS"] 
+                                ?? string.Empty;
+
+            var agronomistPhones = agronomistConfig
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .ToList();
+
+            if (!agronomistPhones.Any())
+            {
+                agronomistPhones = _config.GetSection("Auth:AgronomistPhoneNumbers").Get<List<string>>() ?? new();
+            }
+
             var role = agronomistPhones.Contains(phone) ? UserRole.Agronomist : UserRole.Farmer;
 
             user = new User

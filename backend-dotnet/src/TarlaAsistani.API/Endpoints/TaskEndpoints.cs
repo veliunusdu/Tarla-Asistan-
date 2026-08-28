@@ -21,7 +21,7 @@ public static class TaskEndpoints
                        .WithTags("Daily Tasks");
 
         // 1. POST /api/v1/farms/{farmId}/tasks - Create expert task (AGRONOMIST only)
-        farmTasks.MapPost("/", async (
+        farmTasks.MapPost("", async (
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
@@ -80,7 +80,7 @@ public static class TaskEndpoints
         .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/farms/{farmId}/tasks - List daily tasks
-        farmTasks.MapGet("/", async (
+        farmTasks.MapGet("", async (
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,

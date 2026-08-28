@@ -16,7 +16,7 @@ public static class CaseEndpoints
         var group = app.MapGroup("/api/v1/cases").WithTags("Support Cases");
 
         // 1. POST /api/v1/cases - Create support case
-        group.MapPost("/", async (
+        group.MapPost("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateCaseApiRequest req,
@@ -64,7 +64,7 @@ public static class CaseEndpoints
         .Produces(StatusCodes.Status422UnprocessableEntity);
 
         // 2. GET /api/v1/cases - List role-filtered cases
-        group.MapGet("/", async (
+        group.MapGet("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,

@@ -32,10 +32,10 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             InitialPlantedAt: new DateOnly(2026, 3, 15)
         );
 
-        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest);
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest, CustomWebApplicationFactory.JsonOptions);
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>();
+        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
         createResult.Should().NotBeNull();
         var farmId = createResult!["id"];
         farmId.Should().NotBeEmpty();
@@ -62,7 +62,7 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             Note: "Sulama sistemi modernize edildi"
         );
 
-        var updateResponse = await _client.PatchAsJsonAsync($"/api/v1/farms/{farmId}", updateRequest);
+        var updateResponse = await _client.PatchAsJsonAsync($"/api/v1/farms/{farmId}", updateRequest, CustomWebApplicationFactory.JsonOptions);
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var updatedResult = await updateResponse.Content.ReadFromJsonAsync<FarmMutationResultDto>(CustomWebApplicationFactory.JsonOptions);
@@ -85,7 +85,7 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             IrrigationMethod: IrrigationMethod.Drip,
             InitialCropType: CropType.Wheat,
             InitialPlantedAt: new DateOnly(2026, 3, 1)
-        ));
+        ), CustomWebApplicationFactory.JsonOptions);
 
         await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerA,
@@ -94,7 +94,7 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             IrrigationMethod: IrrigationMethod.Drip,
             InitialCropType: CropType.Corn,
             InitialPlantedAt: new DateOnly(2026, 4, 1)
-        ));
+        ), CustomWebApplicationFactory.JsonOptions);
 
         await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerB,
@@ -103,7 +103,7 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             IrrigationMethod: IrrigationMethod.Sprinkler,
             InitialCropType: CropType.Sunflower,
             InitialPlantedAt: new DateOnly(2026, 5, 1)
-        ));
+        ), CustomWebApplicationFactory.JsonOptions);
 
         // 2. Query as farmer A
         var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms?userId={farmerA}&role={UserRole.Farmer}");

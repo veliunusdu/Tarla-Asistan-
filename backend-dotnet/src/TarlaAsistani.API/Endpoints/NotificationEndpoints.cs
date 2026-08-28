@@ -80,7 +80,7 @@ public static class NotificationEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // 3. GET /api/v1/notifications - List user's notifications inbox
-        group.MapGet("/", async (
+        group.MapGet("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromQuery] Guid? userId,

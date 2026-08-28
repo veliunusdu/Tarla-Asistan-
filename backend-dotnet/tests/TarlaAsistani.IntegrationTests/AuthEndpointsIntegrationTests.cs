@@ -25,15 +25,15 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     {
         // 1. Request OTP
         var phone = "+905551112233";
-        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone));
+        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone), CustomWebApplicationFactory.JsonOptions);
         requestOtpResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>();
+        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>(CustomWebApplicationFactory.JsonOptions);
         otpResult.Should().NotBeNull();
         otpResult!.DebugOtp.Should().NotBeNullOrEmpty();
 
         // 2. Verify OTP
-        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult.DebugOtp!));
+        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult.DebugOtp!), CustomWebApplicationFactory.JsonOptions);
         verifyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var tokenResult = await verifyResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
@@ -53,7 +53,7 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         userResult!.Id.Should().Be(tokenResult.User.Id);
 
         // 4. Refresh Token
-        var refreshResponse = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenApiRequest(tokenResult.RefreshToken));
+        var refreshResponse = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenApiRequest(tokenResult.RefreshToken), CustomWebApplicationFactory.JsonOptions);
         refreshResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var refreshedToken = await refreshResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
@@ -74,7 +74,7 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "farmer@test.com", "Hasan Çiftçi"));
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/v1/auth/firebase", new FirebaseLoginApiRequest(firebaseToken, UserRole.Farmer));
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/firebase", new FirebaseLoginApiRequest(firebaseToken, UserRole.Farmer), CustomWebApplicationFactory.JsonOptions);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -89,9 +89,9 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     {
         // Arrange: Log in via OTP to get a valid JWT Bearer token
         var phone = "+905557778899";
-        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone));
-        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>();
-        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult!.DebugOtp!));
+        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone), CustomWebApplicationFactory.JsonOptions);
+        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>(CustomWebApplicationFactory.JsonOptions);
+        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult!.DebugOtp!), CustomWebApplicationFactory.JsonOptions);
         var tokenResult = await verifyResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
         var accessToken = tokenResult!.AccessToken;
 

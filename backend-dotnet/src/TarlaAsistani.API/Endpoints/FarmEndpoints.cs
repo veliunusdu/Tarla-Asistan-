@@ -18,7 +18,7 @@ public static class FarmEndpoints
                        .WithTags("Farms");
 
         // 1. POST /api/v1/farms - Create a new farm
-        group.MapPost("/", async (
+        group.MapPost("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             CreateFarmRequest req,
@@ -52,7 +52,7 @@ public static class FarmEndpoints
         .Produces(StatusCodes.Status401Unauthorized);
 
         // 2. GET /api/v1/farms - List active farms (tenant-isolated for farmers)
-        group.MapGet("/", async (
+        group.MapGet("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromHeader(Name = "X-User-Role")] string? headerRole,

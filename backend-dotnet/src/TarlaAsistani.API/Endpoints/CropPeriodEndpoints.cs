@@ -17,7 +17,7 @@ public static class CropPeriodEndpoints
                        .WithTags("Crop Periods");
 
         // 1. GET /api/v1/farms/{farmId}/production-periods - List crop periods
-        group.MapGet("/", async (
+        group.MapGet("", async (
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
@@ -36,7 +36,7 @@ public static class CropPeriodEndpoints
         .Produces(StatusCodes.Status404NotFound);
 
         // 2. POST /api/v1/farms/{farmId}/production-periods - Create new crop period
-        group.MapPost("/", async (
+        group.MapPost("", async (
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,

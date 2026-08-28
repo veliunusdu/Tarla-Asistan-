@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -18,6 +20,35 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
 
     public async Task<CaseDetailDto> Handle(CreateCaseCommand request, CancellationToken cancellationToken)
     {
+        // 0. Idempotency check
+        var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{request.FarmId}:{request.Category}:{request.Title.Trim()}:{request.Description.Trim()}"))).ToLowerInvariant();
+
+        if (request.ClientOperationId.HasValue)
+        {
+            var existingOp = await _db.ClientOperations
+                .FirstOrDefaultAsync(co => co.ActorId == request.CreatedById && co.ClientOperationId == request.ClientOperationId.Value, cancellationToken);
+
+            if (existingOp != null)
+            {
+                if (existingOp.Scope != "case.create" || existingOp.PayloadHash != payloadDigest)
+                {
+                    throw new InvalidOperationException("Bu client_operation_id farklı bir işlem için kullanılmış.");
+                }
+
+                var replayed = await _db.SupportCases
+                    .Include(sc => sc.Farm)
+                    .Include(sc => sc.MediaLinks)
+                        .ThenInclude(ml => ml.Media)
+                    .Include(sc => sc.Messages)
+                    .FirstOrDefaultAsync(sc => sc.Id == existingOp.ResourceId, cancellationToken);
+
+                if (replayed != null)
+                {
+                    return CaseDetailDto.FromEntity(replayed);
+                }
+            }
+        }
+
         // 1. Verify Farm ownership and not archived
         var farm = await _db.Farms
             .FirstOrDefaultAsync(f => f.Id == request.FarmId && f.OwnerId == request.CreatedById && f.ArchivedAt == null, cancellationToken)
@@ -63,6 +94,22 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // 3.1 Record idempotency operation
+        if (request.ClientOperationId.HasValue)
+        {
+            _db.ClientOperations.Add(new ClientOperation
+            {
+                ActorId = request.CreatedById,
+                ClientOperationId = request.ClientOperationId.Value,
+                Scope = "case.create",
+                PayloadHash = payloadDigest,
+                ResourceType = "case",
+                ResourceId = supportCase.Id,
+                CreatedAtUtc = now
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         // 4. Return full CaseDetailDto with loaded media and farm
         var created = await _db.SupportCases

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -79,6 +81,22 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
 
         _db.Activities.Add(activity);
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (request.ClientOperationId.HasValue)
+        {
+            var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{farm.Id}:{request.ActivityType}:{request.Description.Trim()}"))).ToLowerInvariant();
+            _db.ClientOperations.Add(new ClientOperation
+            {
+                ActorId = request.CreatedById,
+                ClientOperationId = request.ClientOperationId.Value,
+                Scope = $"activity.create:{farm.Id}",
+                PayloadHash = payloadDigest,
+                ResourceType = "activity",
+                ResourceId = activity.Id,
+                CreatedAtUtc = now
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return ActivityDto.FromEntity(activity);
     }

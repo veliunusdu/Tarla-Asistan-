@@ -21,7 +21,19 @@ public class FirebaseAuthService : IFirebaseAuthService
             return null;
         }
 
-        // 1. If FirebaseApp is initialized, verify with Firebase Admin SDK
+        // 1. Dev simulation for local/testing environments (e.g. dev_token, mock_token_farmer1)
+        if (idToken.StartsWith("dev_", StringComparison.OrdinalIgnoreCase) || idToken.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogInformation("Using development Firebase token simulation for {IdToken}", idToken);
+            return new FirebaseTokenInfo(
+                Uid: idToken,
+                PhoneNumber: "+905550000000",
+                Email: $"{idToken}@example.com",
+                DisplayName: "Dev User"
+            );
+        }
+
+        // 2. If FirebaseApp is initialized, verify with Firebase Admin SDK
         if (FirebaseApp.DefaultInstance != null)
         {
             try
@@ -58,18 +70,6 @@ public class FirebaseAuthService : IFirebaseAuthService
                 _logger.LogWarning(ex, "Firebase ID token verification failed for token {TokenSnippet}", idToken[..Math.Min(10, idToken.Length)]);
                 return null;
             }
-        }
-
-        // 2. Dev fallback when Firebase is not configured (e.g. mock_token_farmer1)
-        if (idToken.StartsWith("dev_", StringComparison.OrdinalIgnoreCase) || idToken.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogInformation("Using development Firebase token simulation for {IdToken}", idToken);
-            return new FirebaseTokenInfo(
-                Uid: idToken,
-                PhoneNumber: "+905550000000",
-                Email: $"{idToken}@example.com",
-                DisplayName: "Dev Farmer"
-            );
         }
 
         _logger.LogWarning("FirebaseApp is not configured, and token is not a dev token.");

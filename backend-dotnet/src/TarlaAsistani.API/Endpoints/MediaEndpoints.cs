@@ -16,7 +16,7 @@ public static class MediaEndpoints
         var group = app.MapGroup("/api/v1/media").WithTags("Media");
 
         // 1. POST /api/v1/media - Upload image or audio file
-        group.MapPost("/", async (
+        group.MapPost("", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             [FromForm] Guid? userId,

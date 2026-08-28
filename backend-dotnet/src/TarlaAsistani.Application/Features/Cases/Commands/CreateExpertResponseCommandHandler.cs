@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -21,6 +23,37 @@ public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertRe
         if (request.Role != UserRole.Agronomist)
         {
             throw new UnauthorizedAccessException("Yalnızca uzman cevap oluşturabilir.");
+        }
+
+        // 0. Idempotency check
+        var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{request.CaseId}:{request.Body.Trim()}:{request.CloseCase}"))).ToLowerInvariant();
+
+        if (request.ClientOperationId.HasValue)
+        {
+            var existingOp = await _db.ClientOperations
+                .FirstOrDefaultAsync(co => co.ActorId == request.ExpertId && co.ClientOperationId == request.ClientOperationId.Value, cancellationToken);
+
+            if (existingOp != null)
+            {
+                if (existingOp.Scope != $"case.expert-response:{request.CaseId}" || existingOp.PayloadHash != payloadDigest)
+                {
+                    throw new InvalidOperationException("Bu client_operation_id farklı bir işlem için kullanılmış.");
+                }
+
+                var replayedCase = await _db.SupportCases
+                    .Include(sc => sc.Farm)
+                    .Include(sc => sc.MediaLinks)
+                        .ThenInclude(ml => ml.Media)
+                    .Include(sc => sc.Messages)
+                        .ThenInclude(m => m.MediaLinks)
+                            .ThenInclude(ml => ml.Media)
+                    .FirstOrDefaultAsync(sc => sc.Id == request.CaseId, cancellationToken);
+
+                if (replayedCase != null)
+                {
+                    return CaseDetailDto.FromEntity(replayedCase);
+                }
+            }
         }
 
         var supportCase = await _db.SupportCases
@@ -93,6 +126,22 @@ public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertRe
 
         _db.Notifications.Add(notification);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Record idempotency operation
+        if (request.ClientOperationId.HasValue)
+        {
+            _db.ClientOperations.Add(new ClientOperation
+            {
+                ActorId = request.ExpertId,
+                ClientOperationId = request.ClientOperationId.Value,
+                Scope = $"case.expert-response:{request.CaseId}",
+                PayloadHash = payloadDigest,
+                ResourceType = "case",
+                ResourceId = supportCase.Id,
+                CreatedAtUtc = now
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return CaseDetailDto.FromEntity(supportCase);
     }

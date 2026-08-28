@@ -33,9 +33,9 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             InitialPlantedAt: new DateOnly(2026, 4, 1)
         );
 
-        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest);
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", createRequest, CustomWebApplicationFactory.JsonOptions);
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>();
+        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
         var farmId = createResult!["id"];
 
         // 2. Query Daily Tasks for farm (triggers TaskEngine)
@@ -61,7 +61,7 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             PhotoUrl: null
         );
 
-        var completeResponse = await _client.PostAsJsonAsync($"/api/v1/tasks/{firstTask.Id}/complete", completeRequest);
+        var completeResponse = await _client.PostAsJsonAsync($"/api/v1/tasks/{firstTask.Id}/complete", completeRequest, CustomWebApplicationFactory.JsonOptions);
         completeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var completedTask = await completeResponse.Content.ReadFromJsonAsync<TaskDto>(CustomWebApplicationFactory.JsonOptions);

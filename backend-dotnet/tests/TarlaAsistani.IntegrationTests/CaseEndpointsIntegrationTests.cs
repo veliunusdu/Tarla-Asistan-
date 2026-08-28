@@ -74,9 +74,9 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             InitialPlantedAt: new DateOnly(2026, 4, 15)
         );
 
-        var createFarmResponse = await _client.PostAsJsonAsync("/api/v1/farms", createFarmRequest);
+        var createFarmResponse = await _client.PostAsJsonAsync("/api/v1/farms", createFarmRequest, CustomWebApplicationFactory.JsonOptions);
         createFarmResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var farmResult = await createFarmResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>();
+        var farmResult = await createFarmResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
         var farmId = farmResult!["id"];
 
         // 2. Create Support Case
@@ -90,7 +90,7 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             ClientOperationId: null
         );
 
-        var createCaseResponse = await _client.PostAsJsonAsync("/api/v1/cases", createCaseRequest);
+        var createCaseResponse = await _client.PostAsJsonAsync("/api/v1/cases", createCaseRequest, CustomWebApplicationFactory.JsonOptions);
         createCaseResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseDetailDto>(CustomWebApplicationFactory.JsonOptions);
@@ -108,7 +108,7 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             ClientOperationId: null
         );
 
-        var addMessageResponse = await _client.PostAsJsonAsync($"/api/v1/cases/{createdCase.Id}/messages", addMessageRequest);
+        var addMessageResponse = await _client.PostAsJsonAsync($"/api/v1/cases/{createdCase.Id}/messages", addMessageRequest, CustomWebApplicationFactory.JsonOptions);
         addMessageResponse.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var messageResult = await addMessageResponse.Content.ReadFromJsonAsync<CaseMessageDto>(CustomWebApplicationFactory.JsonOptions);

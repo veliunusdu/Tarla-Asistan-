@@ -101,11 +101,12 @@ public static class DependencyInjection
                     Path.Combine(AppContext.BaseDirectory, credentialsPath),
                     Path.Combine("..", credentialsPath),
                     Path.Combine("..", "..", credentialsPath),
+                    Path.Combine("..", "backend-dotnet", credentialsPath),
+                    Path.Combine("..", "..", "backend-dotnet", credentialsPath),
+                    Path.Combine("backend-dotnet", credentialsPath),
                     Path.Combine("..", "backend", credentialsPath),
-                    Path.Combine("..", "..", "backend", credentialsPath),
-                    Path.Combine("..", "..", "..", "backend", credentialsPath),
                     Path.Combine("backend", credentialsPath),
-                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "backend", credentialsPath))
+                    Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "backend-dotnet", credentialsPath))
                 };
 
                 foundPath = candidatePaths.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p) && File.Exists(p));
