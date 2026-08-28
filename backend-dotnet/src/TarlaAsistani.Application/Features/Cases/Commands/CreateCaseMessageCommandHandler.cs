@@ -171,23 +171,36 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
                 .Where(d => d.UserId == supportCase.Farm!.OwnerId && d.Active)
                 .ToListAsync(cancellationToken);
 
-            foreach (var device in activeTokens)
+            if (activeTokens.Count > 0)
             {
-                var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
-                if (sent)
+                var sendTasks = activeTokens.Select(async device =>
+                {
+                    var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
+                    return (device, sent);
+                });
+
+                var results = await Task.WhenAll(sendTasks);
+
+                var anySent = false;
+                foreach (var (device, sent) in results)
+                {
+                    if (sent)
+                    {
+                        anySent = true;
+                    }
+                    else
+                    {
+                        notification.AttemptCount++;
+                    }
+                }
+
+                if (anySent)
                 {
                     notification.Status = NotificationStatus.Sent;
                     notification.SentAtUtc = DateTime.UtcNow;
                 }
-                else
-                {
-                    notification.AttemptCount++;
-                }
                 notification.UpdatedAtUtc = DateTime.UtcNow;
-            }
 
-            if (activeTokens.Count > 0)
-            {
                 await _db.SaveChangesAsync(cancellationToken);
             }
         }

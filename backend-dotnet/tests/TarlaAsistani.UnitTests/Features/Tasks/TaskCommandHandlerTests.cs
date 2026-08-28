@@ -95,6 +95,108 @@ public class TaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task CreateExpertTask_WhenMultipleDevices_ShouldDispatchPushNotificationInParallel()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var expertId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = farmerId, Name = "Tarla 1" };
+        var device1 = new DeviceToken { UserId = farmerId, Token = "token-1", Platform = DevicePlatform.Android, Active = true };
+        var device2 = new DeviceToken { UserId = farmerId, Token = "token-2", Platform = DevicePlatform.Ios, Active = true };
+        var device3 = new DeviceToken { UserId = farmerId, Token = "token-3", Platform = DevicePlatform.Web, Active = true };
+
+        var pushMock = new Mock<TarlaAsistani.Application.Common.Interfaces.IPushNotificationService>();
+        pushMock.Setup(p => p.SendNotificationAsync(It.IsAny<Notification>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithDeviceTokens(device1, device2, device3)
+            .Build();
+
+        var handler = new CreateExpertTaskCommandHandler(db, pushMock.Object);
+        var command = new CreateExpertTaskCommand(
+            FarmId: farmId,
+            CreatedById: expertId,
+            Title: "İlaçlama Kontrolü",
+            Description: "Hastalık belirtilerini kontrol edin",
+            Reason: "Nem oranı yüksek",
+            Priority: TaskPriority.Medium,
+            Confidence: TaskConfidence.Medium,
+            DueDate: new DateOnly(2026, 6, 1)
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        pushMock.Verify(p => p.SendNotificationAsync(It.IsAny<Notification>(), "token-1", It.IsAny<CancellationToken>()), Times.Once);
+        pushMock.Verify(p => p.SendNotificationAsync(It.IsAny<Notification>(), "token-2", It.IsAny<CancellationToken>()), Times.Once);
+        pushMock.Verify(p => p.SendNotificationAsync(It.IsAny<Notification>(), "token-3", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateExpertTask_WhenFarmNotFound_ShouldThrowFarmNotFoundException()
+    {
+        // Arrange
+        var missingFarmId = Guid.NewGuid();
+        var db = new MockDbContextBuilder().Build();
+        var handler = new CreateExpertTaskCommandHandler(db);
+        var command = new CreateExpertTaskCommand(
+            FarmId: missingFarmId,
+            CreatedById: Guid.NewGuid(),
+            Title: "Test",
+            Description: "Test",
+            Reason: "Test",
+            Priority: TaskPriority.Low,
+            Confidence: TaskConfidence.Low,
+            DueDate: new DateOnly(2026, 6, 1)
+        );
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<TarlaAsistani.Domain.Exceptions.FarmNotFoundException>()
+            .WithMessage($"*{missingFarmId}*");
+    }
+
+    [Fact]
+    public async Task CreateExpertTask_WhenCropPeriodMismatch_ShouldThrowCropPeriodMismatchException()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, Name = "Tarla 1" };
+        var wrongCropPeriodId = Guid.NewGuid();
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new CreateExpertTaskCommandHandler(db);
+        var command = new CreateExpertTaskCommand(
+            FarmId: farmId,
+            CreatedById: Guid.NewGuid(),
+            Title: "Test",
+            Description: "Test",
+            Reason: "Test",
+            Priority: TaskPriority.Low,
+            Confidence: TaskConfidence.Low,
+            DueDate: new DateOnly(2026, 6, 1),
+            CropPeriodId: wrongCropPeriodId
+        );
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<TarlaAsistani.Domain.Exceptions.CropPeriodMismatchException>()
+            .WithMessage($"*{wrongCropPeriodId}*");
+    }
+
+    [Fact]
     public async Task UpdateTaskStatus_WhenCompletedByFarmer_ShouldAutoCreateActivity()
     {
         // Arrange

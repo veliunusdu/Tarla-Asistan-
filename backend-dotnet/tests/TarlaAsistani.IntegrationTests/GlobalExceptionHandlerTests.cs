@@ -112,4 +112,69 @@ public class GlobalExceptionHandlerTests
         detail.Should().NotContain("PostgreSQL");
         detail.Should().Be("Beklenmeyen bir sunucu hatası oluştu. Lütfen daha sonra tekrar deneyiniz.");
     }
+
+    [Fact]
+    public async Task TryHandleAsync_WhenFarmNotFoundException_ShouldReturn404Json()
+    {
+        var handler = new GlobalExceptionHandler(_mockLogger.Object, _mockEnv.Object);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var farmId = Guid.NewGuid();
+        var ex = new TarlaAsistani.Domain.Exceptions.FarmNotFoundException(farmId);
+
+        var handled = await handler.TryHandleAsync(context, ex, CancellationToken.None);
+
+        handled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(context.Response.Body);
+        var json = await reader.ReadToEndAsync();
+        using var doc = JsonDocument.Parse(json);
+
+        doc.RootElement.GetProperty("detail").GetString().Should().Contain(farmId.ToString());
+        doc.RootElement.GetProperty("status").GetInt32().Should().Be(404);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_WhenDuplicateTaskException_ShouldReturn409Json()
+    {
+        var handler = new GlobalExceptionHandler(_mockLogger.Object, _mockEnv.Object);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new TarlaAsistani.Domain.Exceptions.DuplicateTaskException("task-123-abc", isKey: true);
+
+        var handled = await handler.TryHandleAsync(context, ex, CancellationToken.None);
+
+        handled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_WhenCropPeriodMismatchException_ShouldReturn422Json()
+    {
+        var handler = new GlobalExceptionHandler(_mockLogger.Object, _mockEnv.Object);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new TarlaAsistani.Domain.Exceptions.CropPeriodMismatchException("Üretim dönemi bu tarlaya ait değil.");
+
+        var handled = await handler.TryHandleAsync(context, ex, CancellationToken.None);
+
+        handled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status422UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_WhenForbiddenException_ShouldReturn403Json()
+    {
+        var handler = new GlobalExceptionHandler(_mockLogger.Object, _mockEnv.Object);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var ex = new TarlaAsistani.Domain.Exceptions.ForbiddenException("Erişim engellendi.");
+
+        var handled = await handler.TryHandleAsync(context, ex, CancellationToken.None);
+
+        handled.Should().BeTrue();
+        context.Response.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
 }

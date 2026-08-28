@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="..\TarlaAsistani.Domain\Entities\**\*.cs" LinkBase="Domain\Entities" />
     <Compile Include="..\TarlaAsistani.Domain\Enums\**\*.cs" LinkBase="Domain\Enums" />
+    <Compile Include="..\TarlaAsistani.Domain\Exceptions\**\*.cs" LinkBase="Domain\Exceptions" />
   </ItemGroup>
 
   <ItemGroup>
