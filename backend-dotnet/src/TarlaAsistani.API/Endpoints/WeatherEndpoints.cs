@@ -21,30 +21,14 @@ public static class WeatherEndpoints
             IMediator mediator) =>
         {
             var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
-
-            try
-            {
-                var result = await mediator.Send(new GetFarmWeatherQuery(farmId, queryUserId));
-                return Results.Ok(result);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return Results.NotFound(new { detail = ex.Message });
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.UnprocessableEntity(new { detail = ex.Message });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
-            }
+            var result = await mediator.Send(new GetFarmWeatherQuery(farmId, queryUserId));
+            return Results.Ok(result);
         })
         .WithName("GetFarmWeather")
         .Produces<FarmWeatherResponseDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity)
-        .Produces(StatusCodes.Status503ServiceUnavailable);
+        .Produces(StatusCodes.Status409Conflict);
 
         return app;
     }

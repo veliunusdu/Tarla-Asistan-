@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\TarlaAsistani.Domain\TarlaAsistani.Domain.csproj" />
+    <Compile Include="..\TarlaAsistani.Domain\Entities\**\*.cs" LinkBase="Domain\Entities" />
+    <Compile Include="..\TarlaAsistani.Domain\Enums\**\*.cs" LinkBase="Domain\Enums" />
   </ItemGroup>
 
   <ItemGroup>

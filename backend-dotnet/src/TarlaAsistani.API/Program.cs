@@ -8,7 +8,7 @@ using TarlaAsistani.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configure JSON serialization
+// 1. Configure JSON serialization (snake_case lower for keys, SNAKE_CASE UPPER for enums)
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
@@ -16,7 +16,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.SnakeCaseLower;
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper));
 });
-
 
 // 2. CORS Policy for Web & Mobile Clients
 builder.Services.AddCors(options =>
@@ -61,7 +60,7 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// 5. Swagger with Bearer & X-User-Id Security Definitions
+// Swagger / OpenAPI documentation
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -69,7 +68,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Tarla Asistanı API",
         Version = "v1",
-        Description = "Tarla Asistanı Backend - .NET 8 Clean Architecture"
+        Description = "Agricultural Decision Support System API - .NET 8 Re-implementation"
     });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -78,13 +77,13 @@ builder.Services.AddSwaggerGen(c =>
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
+        Scheme = "Bearer",
         BearerFormat = "JWT"
     });
 
     c.AddSecurityDefinition("UserIdHeader", new OpenApiSecurityScheme
     {
-        Description = "Pilot & Testing Header: X-User-Id containing User GUID",
+        Description = "Direct User ID header used in pilot & mobile modes (e.g. X-User-Id: <guid>)",
         Name = "X-User-Id",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey
@@ -109,8 +108,13 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// 2.5 Register Global Exception Handler
+builder.Services.AddExceptionHandler<TarlaAsistani.API.Middleware.GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
+app.UseExceptionHandler();
 app.UseMiddleware<TarlaAsistani.API.Middleware.SecurityHeadersMiddleware>();
 app.UseCors("AllowAll");
 app.UseAuthentication();
@@ -140,8 +144,8 @@ app.MapCaseEndpoints();
 app.MapPilotEndpoints();
 app.MapAIEndpoints();
 
-// 6. Apply EF Core Migrations automatically on startup (excluding in-memory testing)
-if (app.Environment.EnvironmentName != "Testing")
+// 6. Apply EF Core Migrations automatically on startup (in Production container or when AUTO_MIGRATE=true)
+if (app.Environment.IsProduction() || Environment.GetEnvironmentVariable("AUTO_MIGRATE") == "true")
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;

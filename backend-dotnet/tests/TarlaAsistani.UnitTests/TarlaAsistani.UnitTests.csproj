@@ -27,7 +27,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TarlaAsistani.Application\TarlaAsistani.Application.csproj" />
-    <ProjectReference Include="..\..\src\TarlaAsistani.Domain\TarlaAsistani.Domain.csproj" />
     <ProjectReference Include="..\..\src\TarlaAsistani.Infrastructure\TarlaAsistani.Infrastructure.csproj" />
   </ItemGroup>
 

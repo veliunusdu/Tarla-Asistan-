@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TarlaAsistani.Application\TarlaAsistani.Application.csproj" />
-    <ProjectReference Include="..\TarlaAsistani.Domain\TarlaAsistani.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
