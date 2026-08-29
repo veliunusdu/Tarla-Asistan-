@@ -31,6 +31,10 @@ services:
       Media__Provider: ${MEDIA_STORAGE_PROVIDER:-local}
       Media__StoragePath: /app/uploads
       Media__MaxUploadMb: ${MEDIA_MAX_UPLOAD_MB:-15}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       Weather__OpenMeteoBaseUrl: https://api.open-meteo.com/v1/forecast
       Weather__StaleAfterHours: 3
       AI__Provider: ${AI_CHAT_PROVIDER:-local}
@@ -39,6 +43,7 @@ services:
       AI__DeepSeekModel: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
       Firebase__CredentialsPath: /run/secrets/firebase-service-account.json
       Firebase__ProjectId: ${FIREBASE_PROJECT_ID:-}
+      Firebase__AuthEnabled: ${FIREBASE_AUTH_ENABLED:-false}
     volumes:
       - media_data:/app/uploads
       - ./backend/Secrets:/run/secrets:ro
