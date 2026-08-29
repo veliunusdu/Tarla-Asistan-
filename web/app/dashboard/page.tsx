@@ -10,8 +10,8 @@ import {
   fetchMe,
   logoutSession,
   refreshSession,
+  type CaseSummary,
   type CaseStatus,
-  type SupportCase,
 } from "@/lib/api";
 import {
   clearSession,
@@ -41,7 +41,7 @@ const FILTERS: Array<{ value: CaseStatus | ""; label: string }> = [
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [cases, setCases] = useState<SupportCase[]>([]);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
   const [filter, setFilter] = useState<CaseStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -131,12 +131,12 @@ export default function DashboardPage() {
                 </span>
               </div>
               <h2>{item.title}</h2>
-              <p className="case-description">{item.description}</p>
+              <p className="case-description">{item.category}</p>
               <div className="case-context">
-                <span><strong>{item.farmer_name}</strong></span>
                 <span>{item.farm_name}</span>
-                <span>{new Date(item.updated_at).toLocaleString("tr-TR")}</span>
-                {item.media.length > 0 && <span>{item.media.length} medya</span>}
+                <span>{new Date(item.updated_at_utc).toLocaleString("tr-TR")}</span>
+                {item.message_count > 0 && <span>{item.message_count} mesaj</span>}
+                {item.media_count > 0 && <span>{item.media_count} medya</span>}
               </div>
             </Link>
           ))}

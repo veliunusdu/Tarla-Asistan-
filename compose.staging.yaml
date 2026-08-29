@@ -9,6 +9,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
       Auth__JwtSecret: ${JWT_SECRET:?JWT_SECRET is required}
+      Cors__AllowedOrigins__0: ${WEB_ORIGIN:?WEB_ORIGIN is required}
       Media__Provider: ${MEDIA_STORAGE_PROVIDER:-local}
       AI__Provider: ${AI_CHAT_PROVIDER:-local}
       AI__DeepSeekApiKey: ${DEEPSEEK_API_KEY:-}

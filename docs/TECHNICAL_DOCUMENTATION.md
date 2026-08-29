@@ -213,7 +213,7 @@ Database and External Services
 
 ## 5.2 Backend
 
-- **Programming Language:** Node.js (TypeScript) / Python (FastAPI) / Go
+- **Programming Language:** .NET 8 (ASP.NET Core) / TypeScript
 - **Database (Relational):** PostgreSQL
 - **Cache and Queue:** Redis
 - **File Storage:** AWS S3 / MinIO (or similar object storage solutions)

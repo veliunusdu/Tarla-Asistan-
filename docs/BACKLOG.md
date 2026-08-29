@@ -8,7 +8,7 @@ This document details the 5-week Sprint Roadmap for **Tarla Asistanı**, breakin
 **Target:** Çalışan OTP altyapısı, veritabanı şemaları, temel mobil ve web proje iskeletleri.
 
 ### Developer A (Backend & Web)
-- [ ] Dockerize edilmiş Backend ortamını kur (`FastAPI` + `PostgreSQL` + `Redis`)
+- [ ] Dockerize edilmiş Backend ortamını kur (`ASP.NET Core` + `PostgreSQL`)
 - [ ] Alembic migration altyapısını ve core tabloları (`users`, `farms`) oluştur
 - [ ] OTP Gönderme ve Doğrulama API'lerini yaz (`POST /auth/request-otp`, `POST /auth/verify-otp`)
 - [ ] JWT token & Rol bazlı yetkilendirme (RBAC: `FARMER`, `AGRONOMIST`) katmanını ekle

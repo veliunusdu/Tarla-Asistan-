@@ -4,12 +4,12 @@ on:
   push:
     branches: [ "main", "master", "develop", "dev" ]
     paths:
-      - "backend-dotnet/**"
+      - "backend/**"
       - ".github/workflows/backend-dotnet.yml"
   pull_request:
     branches: [ "main", "master", "develop", "dev" ]
     paths:
-      - "backend-dotnet/**"
+      - "backend/**"
       - ".github/workflows/backend-dotnet.yml"
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ env:
   DOTNET_VERSION: "8.0.x"
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  WORKING_DIRECTORY: "./backend-dotnet"
+  WORKING_DIRECTORY: "./backend"
 
 jobs:
   # ─────────────────────────────────────────────────────────────

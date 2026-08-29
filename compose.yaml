@@ -17,11 +17,12 @@ services:
 
   backend:
     build:
-      context: ./backend-dotnet
+      context: ./backend
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=${POSTGRES_DB:-tarla_asistani};Username=${POSTGRES_USER:-tarla};Password=${POSTGRES_PASSWORD:-tarla-local}
       Auth__JwtSecret: ${JWT_SECRET:-local-only-jwt-secret-change-before-deploy-at-least-32-chars-long!}
+      Cors__AllowedOrigins__0: ${WEB_ORIGIN:-http://localhost:3000}
       Auth__AccessTokenExpiryMinutes: 60
       Auth__RefreshTokenExpiryDays: 30
       Auth__OtpCooldownSeconds: 60
@@ -40,7 +41,7 @@ services:
       Firebase__ProjectId: ${FIREBASE_PROJECT_ID:-}
     volumes:
       - media_data:/app/uploads
-      - ./backend-dotnet/Secrets:/run/secrets:ro
+      - ./backend/Secrets:/run/secrets:ro
     ports:
       - "${API_PORT:-8000}:8080"
     depends_on:
