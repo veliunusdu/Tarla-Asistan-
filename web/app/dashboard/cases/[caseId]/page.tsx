@@ -105,11 +105,11 @@ export default function CaseDetailPage() {
               <p className="muted">Henüz mesaj yok.</p>
             ) : (
               item.messages?.map((entry) => (
-                <article className={`message-bubble ${entry.sender_role === "AGRONOMIST" ? "expert" : "farmer"}`} key={entry.id}>
+                <article className={`message-bubble ${entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "expert" : "farmer"}`} key={entry.id}>
                   <div className="message-meta">
-                    <strong>{entry.sender_name}</strong>
+                    <strong>{entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Uzman" : "Çiftçi"}</strong>
                     <span>{entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Ek bilgi isteği" : entry.message_type === "EXPERT_RESPONSE" ? "Uzman yanıtı" : "Mesaj"}</span>
-                    <time>{new Date(entry.created_at).toLocaleString("tr-TR")}</time>
+                    <time>{new Date(entry.created_at_utc).toLocaleString("tr-TR")}</time>
                   </div>
                   <p>{entry.body}</p>
                   {entry.media.map((media) => <ProtectedMedia key={media.id} media={media} compact />)}
@@ -142,10 +142,9 @@ export default function CaseDetailPage() {
         <aside className="case-side-panel">
           <h2>Tarla bağlamı</h2>
           <dl>
-            <div><dt>Çiftçi</dt><dd>{item.farmer_name}</dd></div>
             <div><dt>Tarla</dt><dd>{item.farm_name}</dd></div>
             <div><dt>Kategori</dt><dd>{item.category}</dd></div>
-            <div><dt>Oluşturulma</dt><dd>{new Date(item.created_at).toLocaleString("tr-TR")}</dd></div>
+            <div><dt>Oluşturulma</dt><dd>{new Date(item.created_at_utc).toLocaleString("tr-TR")}</dd></div>
           </dl>
           <label>
             Vaka önceliği

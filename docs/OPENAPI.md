@@ -3,7 +3,7 @@
 ## Authentication contract
 
 When the backend setting `FIREBASE_AUTH_ENABLED=true` is active, protected
-FastAPI routes accept a Firebase Authentication ID token:
+ASP.NET Core API routes accept a Firebase Authentication ID token:
 
 ```http
 Authorization: Bearer <Firebase ID token>
@@ -18,10 +18,9 @@ configuration failures return the backend's generic `503`. During first-time
 local account mapping, a verified-phone collision can return the safe `409`
 response.
 
-Legacy FastAPI OTP routes remain registered for rollback compatibility, but the
-new mobile application no longer uses them. The feature flag determines whether
-protected-route Bearer tokens are interpreted as Firebase ID tokens or legacy
-JWTs; it does not unregister the OTP routes.
+The .NET backend retains the OTP endpoints for compatibility, while the new
+mobile application uses Firebase Phone Authentication. Protected-route Bearer
+tokens are validated by the configured authentication service.
 
 `POST /api/v1/ai/chat` is a protected route and is the staging check for a
 Firebase bearer token. `GET /health/ready` is public and verifies PostgreSQL

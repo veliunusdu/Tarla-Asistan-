@@ -1,7 +1,7 @@
 FROM node:22-alpine AS dependencies
 WORKDIR /app
-COPY package.json ./
-RUN npm install && npm audit --omit=dev --audit-level=moderate
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 WORKDIR /app

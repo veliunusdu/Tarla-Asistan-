@@ -2,7 +2,9 @@
 .env.*
 !.env.example
 .worktrees/
-backend/secrets/*.json
+**/secrets/*.json
+*google-services*.json
+*firebase-service-account*.json
 __pycache__/
 *.py[cod]
 .pytest_cache/

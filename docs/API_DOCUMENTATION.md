@@ -1,6 +1,6 @@
 # Tarla Asistanı API Dokümantasyonu
 
-> Bu dosya `scripts/generate_api_docs.py` ile backend kodundaki gerçek FastAPI OpenAPI şemasından üretilir. Elle düzenlemek yerine üretim aracını çalıştırın.
+> Bu doküman, `backend/` altındaki .NET 8 ASP.NET Core API sözleşmesini açıklar.
 
 ## Genel Bakış
 

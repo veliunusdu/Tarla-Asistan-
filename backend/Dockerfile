@@ -1,19 +1,28 @@
-FROM python:3.13-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
+# Build Stage
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy csproj and restore dependencies
+COPY src/TarlaAsistani.Domain/TarlaAsistani.Domain.csproj src/TarlaAsistani.Domain/
+COPY src/TarlaAsistani.Application/TarlaAsistani.Application.csproj src/TarlaAsistani.Application/
+COPY src/TarlaAsistani.Infrastructure/TarlaAsistani.Infrastructure.csproj src/TarlaAsistani.Infrastructure/
+COPY src/TarlaAsistani.API/TarlaAsistani.API.csproj src/TarlaAsistani.API/
 
-COPY alembic.ini .
-COPY migrations ./migrations
-COPY app ./app
-COPY docker-entrypoint.sh .
+RUN dotnet restore src/TarlaAsistani.API/TarlaAsistani.API.csproj
 
-RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
+# Copy source code and build
+COPY src/ src/
+WORKDIR /app/src/TarlaAsistani.API
+RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
-EXPOSE 8000
-CMD ["./docker-entrypoint.sh"]
+# Runtime Stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "TarlaAsistani.API.dll"]

@@ -92,19 +92,19 @@ export type MediaAsset = {
 
 export type CaseMessage = {
   id: string;
-  sender_name: string;
-  sender_role: "FARMER" | "AGRONOMIST";
+  case_id: string;
+  sender_id: string;
   message_type: "COMMENT" | "ADDITIONAL_INFO_REQUEST" | "EXPERT_RESPONSE";
   body: string;
   media: MediaAsset[];
-  created_at: string;
+  created_at_utc: string;
 };
 
 export type SupportCase = {
   id: string;
   farm_id: string;
   farm_name: string;
-  farmer_name: string;
+  created_by_id: string;
   assigned_expert_id: string | null;
   category: string;
   priority: CasePriority;
@@ -113,9 +113,26 @@ export type SupportCase = {
   description: string;
   media: MediaAsset[];
   messages?: CaseMessage[];
-  closed_at: string | null;
-  created_at: string;
-  updated_at: string;
+  closed_at_utc: string | null;
+  created_at_utc: string;
+  updated_at_utc: string;
+};
+
+export type CaseSummary = {
+  id: string;
+  farm_id: string;
+  farm_name: string;
+  created_by_id: string;
+  assigned_expert_id: string | null;
+  category: string;
+  priority: CasePriority;
+  status: CaseStatus;
+  title: string;
+  created_at_utc: string;
+  updated_at_utc: string;
+  closed_at_utc: string | null;
+  message_count: number;
+  media_count: number;
 };
 
 async function authenticatedRequest<T>(path: string, init: RequestInit): Promise<T> {
@@ -144,7 +161,7 @@ async function authenticatedRequest<T>(path: string, init: RequestInit): Promise
 
 export function fetchCases(status?: CaseStatus) {
   const query = status ? `?status=${status}` : "";
-  return authenticatedRequest<{ items: SupportCase[]; total: number }>(
+  return authenticatedRequest<{ items: CaseSummary[]; total: number }>(
     `/cases${query}`,
     { method: "GET" },
   );

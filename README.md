@@ -41,7 +41,7 @@ Tarla-Asistani/
 │   ├── BACKLOG.md              # Product backlog & sprint breakdowns
 │   └── CHANGELOG.md            # Keep a Changelog tracking file
 │
-├── backend/                    # FastAPI (Python) backend codebase
+├── backend/                    # .NET 8 backend codebase
 ├── mobile/                     # Flutter (Dart) mobile application
 ├── web/                        # React / Next.js (TypeScript) agronomist panel
 └── README.md                   # This overview file
@@ -53,7 +53,7 @@ Tarla-Asistani/
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Backend** | Python, FastAPI, SQLAlchemy, Alembic, PostgreSQL + PostGIS, Redis |
+| **Backend** | .NET 8, ASP.NET Core Minimal API, EF Core, PostgreSQL + PostGIS |
 | **Mobile App** | Flutter, Dart, SQLite/Hive |
 | **Web Panel** | React, Next.js, TypeScript, Tailwind CSS |
 | **AI / Services** | Speech-to-Text (Whisper/GCP), OpenAI API (Analysis), Firebase Cloud Messaging (FCM) |
@@ -70,7 +70,7 @@ cd Tarla-Asistan-
 ```
 
 ### 2. Configure Environment Variables
-Copy the `.env.example` files to `.env` in both the `backend/` and `web/` folders and configure your keys (SMS APIs, database credentials, OpenWeather keys, etc.).
+Copy the `.env.example` file to the root and configure your keys (database credentials, AI, Firebase, and storage settings).
 
 ### 3. Spin up Infrastructure
 Run Docker Compose in the root directory to set up PostgreSQL, PostGIS, and Redis:
