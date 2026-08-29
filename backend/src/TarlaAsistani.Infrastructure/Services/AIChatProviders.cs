@@ -129,7 +129,7 @@ public class GeminiAIChatProvider : IAIChatProvider
         _model = config.GetValue<string>("AI:GeminiModel")
             ?? config.GetValue<string>("GEMINI_MODEL")
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-2.0-flash";
+            ?? "gemini-2.5-flash";
     }
 
     public async Task<AIChatResponseDto> GenerateAsync(AIChatRequestDto request, CancellationToken cancellationToken = default)
