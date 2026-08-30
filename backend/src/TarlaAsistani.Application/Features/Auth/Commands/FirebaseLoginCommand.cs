@@ -65,7 +65,7 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
             // Auto-register user: new self-registered Firebase users are always Farmer
             user = new User
             {
-                PhoneNumber = tokenInfo.PhoneNumber ?? string.Empty,
+                PhoneNumber = GetPhoneNumber(tokenInfo),
                 FirebaseUid = tokenInfo.Uid,
                 Role = UserRole.Farmer,
                 AccountStatus = AccountStatus.Active,
@@ -149,5 +149,18 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
             ExpiresIn: 900,
             User: UserDto.FromEntity(user)
         );
+    }
+
+    private static string GetPhoneNumber(FirebaseTokenInfo tokenInfo)
+    {
+        if (!string.IsNullOrWhiteSpace(tokenInfo.PhoneNumber))
+        {
+            return tokenInfo.PhoneNumber;
+        }
+
+        // The legacy schema requires a unique phone value. Email-only Firebase users
+        // receive a stable internal identifier derived from their Firebase UID.
+        var uidHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(tokenInfo.Uid))).ToLowerInvariant();
+        return $"firebase-{uidHash[..48]}";
     }
 }

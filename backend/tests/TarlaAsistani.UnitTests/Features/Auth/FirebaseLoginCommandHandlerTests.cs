@@ -192,4 +192,31 @@ public class FirebaseLoginCommandHandlerTests
         // Assert - new self-registered users MUST always be created as Farmer
         result.User.Role.Should().Be(UserRole.Farmer);
     }
+
+    [Fact]
+    public async Task Handle_WhenEmailOnlyFirebaseUsersRegister_ShouldAssignDistinctInternalPhoneIdentifiers()
+    {
+        const string firstToken = "firebase_email_user_1";
+        const string secondToken = "firebase_email_user_2";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(firstToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo("email_uid_1", null, "first@example.com", null));
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(secondToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo("email_uid_2", null, "second@example.com", null));
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>())).Returns("fake_jwt");
+        _jwtServiceMock.Setup(j => j.GenerateRefreshToken()).Returns("fake_refresh");
+
+        var handler = new FirebaseLoginCommandHandler(
+            new MockDbContextBuilder().Build(),
+            _firebaseAuthMock.Object,
+            _jwtServiceMock.Object,
+            CreateConfig());
+
+        var first = await handler.Handle(new FirebaseLoginCommand(firstToken), CancellationToken.None);
+        var second = await handler.Handle(new FirebaseLoginCommand(secondToken), CancellationToken.None);
+
+        first.User.PhoneNumber.Should().StartWith("firebase-");
+        second.User.PhoneNumber.Should().StartWith("firebase-");
+        second.User.PhoneNumber.Should().NotBe(first.User.PhoneNumber);
+    }
 }
