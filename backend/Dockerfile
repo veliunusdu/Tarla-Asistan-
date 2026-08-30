@@ -25,4 +25,6 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "TarlaAsistani.API.dll"]
+COPY scripts/start-render.sh /app/start-render.sh
+RUN chmod +x /app/start-render.sh
+ENTRYPOINT ["/app/start-render.sh"]
