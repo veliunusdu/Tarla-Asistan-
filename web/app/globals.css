@@ -109,6 +109,9 @@ button:disabled { cursor: wait; opacity: .65; }
 .notice { background: #eaf3df; color: #315219; }
 .error { background: #fbe9e7; color: var(--danger); }
 .security-note { color: var(--muted); font-size: 12px; margin-top: 28px; text-align: center; }
+.auth-switch { color: var(--muted); font-size: 14px; margin-top: 20px; text-align: center; }
+.auth-switch a { color: var(--leaf); font-weight: 700; }
+.farmer-welcome { background: white; border-radius: 22px; box-shadow: 0 18px 60px rgba(21, 62, 45, .12); padding: 40px; }
 
 .loading-screen { align-items: center; display: flex; justify-content: center; min-height: 100vh; }
 .dashboard { margin: auto; max-width: 1200px; min-height: 100vh; padding: 42px; }
