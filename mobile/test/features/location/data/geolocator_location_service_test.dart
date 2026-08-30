@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart'
     show LocationAccuracy, LocationPermission;
@@ -44,6 +46,17 @@ void main() {
       await expectLater(
         service.getCurrentLocation(),
         throwsA(isA<LocationPermissionPermanentlyDeniedException>()),
+      );
+    });
+
+    test('converts position timeouts to location unavailable errors', () async {
+      final service = GeolocatorLocationService(
+        platform: TimeoutLocationPlatform(),
+      );
+
+      await expectLater(
+        service.getCurrentLocation(),
+        throwsA(isA<LocationUnavailableException>()),
       );
     });
 
@@ -99,4 +112,12 @@ class FakeLocationPlatform implements LocationPlatformAdapter {
     requestedTimeLimit = timeLimit;
     return position;
   }
+}
+
+class TimeoutLocationPlatform extends FakeLocationPlatform {
+  @override
+  Future<PlatformLocation> getCurrentPosition({
+    required LocationAccuracy accuracy,
+    required Duration timeLimit,
+  }) async => throw TimeoutException('Location request timed out');
 }

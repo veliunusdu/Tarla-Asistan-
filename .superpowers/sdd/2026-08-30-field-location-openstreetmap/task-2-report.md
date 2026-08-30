@@ -45,3 +45,12 @@ Covered behavior:
   could not complete because the local Dart analysis server exited while
   parsing a malformed LSP message. This occurred before source analysis and
   was reproduced on retry.
+
+## Fix Round 1: Timeout Safety Coverage
+
+- Added `TimeoutLocationPlatform`, a test adapter fake whose position request
+  throws `TimeoutException`.
+- Added a regression test confirming that `GeolocatorLocationService` converts
+  that timeout to `LocationUnavailableException`.
+- Verified with `flutter test test/features/location/data/geolocator_location_service_test.dart`:
+  5 tests passed, 0 failures.
