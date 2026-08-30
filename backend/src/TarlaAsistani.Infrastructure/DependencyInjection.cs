@@ -3,6 +3,7 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Infrastructure.BackgroundServices;
 using TarlaAsistani.Infrastructure.Persistence;
@@ -17,7 +18,10 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         // 1. PostgreSQL + PostGIS Persistence
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        var connectionString = NormalizeConnectionString(
+            configuration.GetConnectionString("DefaultConnection")
+            ?? configuration["DATABASE_URL"]
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL"));
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {
@@ -77,6 +81,35 @@ public static class DependencyInjection
         services.AddHostedService<AccountDeletionBackgroundService>();
 
         return services;
+    }
+
+    private static string? NormalizeConnectionString(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString) ||
+            (!connectionString.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+             !connectionString.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase)))
+        {
+            return connectionString;
+        }
+
+        var uri = new Uri(connectionString);
+        var userInfo = uri.UserInfo.Split(':', 2);
+        if (userInfo.Length != 2)
+        {
+            throw new InvalidOperationException("PostgreSQL URI must include username and password.");
+        }
+
+        var builder = new NpgsqlConnectionStringBuilder
+        {
+            Host = uri.Host,
+            Port = uri.Port > 0 ? uri.Port : 5432,
+            Database = Uri.UnescapeDataString(uri.AbsolutePath.Trim('/')),
+            Username = Uri.UnescapeDataString(userInfo[0]),
+            Password = Uri.UnescapeDataString(userInfo[1]),
+            SslMode = SslMode.Require
+        };
+
+        return builder.ConnectionString;
     }
 
     private static void InitializeFirebase(IConfiguration configuration)
