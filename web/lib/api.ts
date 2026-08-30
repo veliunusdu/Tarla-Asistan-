@@ -5,8 +5,10 @@ import {
   type AuthSession,
 } from "./auth";
 
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN;
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL ??
+  (API_ORIGIN ? `${API_ORIGIN}/api/v1` : "http://localhost:8000/api/v1");
 
 type ApiErrorBody = { detail?: string };
 

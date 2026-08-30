@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: tarla-asistani-api
+    runtime: docker
+    region: singapore
+    plan: 0.5c-512mb
+    branch: main
+    autoDeploy: true
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /health/ready
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: Cors__AllowedOrigins__0
+        fromService:
+          name: tarla-asistani-web
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: MEDIA_STORAGE_PROVIDER
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: AI_CHAT_PROVIDER
+        value: deepseek
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: FIREBASE_AUTH_ENABLED
+        value: "true"
+      - key: FIREBASE_PROJECT_ID
+        value: demo2-c4265
+      - key: Firebase__CredentialsPath
+        value: /etc/secrets/firebase-service-account.json
+      - key: PUBLIC_API_ORIGIN
+        fromService:
+          name: tarla-asistani-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: tarla-asistani-web
+    runtime: docker
+    region: singapore
+    plan: 0.5c-512mb
+    branch: main
+    autoDeploy: true
+    dockerContext: ./web
+    dockerfilePath: ./web/Dockerfile
+    healthCheckPath: /login
+    envVars:
+      - key: NEXT_PUBLIC_API_ORIGIN
+        fromService:
+          name: tarla-asistani-api
+          type: web
+          envVarKey: PUBLIC_API_ORIGIN
