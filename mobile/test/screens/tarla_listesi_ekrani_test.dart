@@ -28,6 +28,22 @@ class FakeTarlaRepository implements TarlaRepository {
   Future<void> addTarla(Tarla tarla) async {}
 }
 
+class RecordingTarlaRepository implements TarlaRepository {
+  RecordingTarlaRepository([List<Tarla>? initialTarlalar])
+    : _tarlalar = initialTarlalar?.toList() ?? [];
+
+  final List<Tarla> _tarlalar;
+  final List<Tarla> added = [];
+
+  @override
+  Future<List<Tarla>> getTarlalar() async => [..._tarlalar, ...added];
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {
+    added.add(tarla);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -46,6 +62,27 @@ Widget _buildApp(TarlaRepository repository) => MaterialApp(
   theme: AppTheme.light,
   home: TarlaListesiEkrani(repository: repository),
 );
+
+Future<void> completeFarmForm(WidgetTester tester) async {
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Tarla Adı'),
+    'Kuzey Tarla',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
+    '5',
+  );
+  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Buğday').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tarih seçin'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tamam'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Kaydet'));
+  await tester.pumpAndSettle();
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -96,6 +133,20 @@ void main() {
       expect(find.byType(AppErrorView), findsNothing);
     });
 
+    testWidgets('boş durumdan eklenen tarla supplied repositoryye kaydolur', (
+      tester,
+    ) async {
+      final farms = RecordingTarlaRepository();
+      await tester.pumpWidget(_buildApp(farms));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Tarla Ekle'));
+      await tester.pumpAndSettle();
+      await completeFarmForm(tester);
+
+      expect(farms.added.single.name, 'Kuzey Tarla');
+    });
+
     testWidgets('tarla listesi gösterir', (tester) async {
       final completer = Completer<List<Tarla>>();
       await tester.pumpWidget(_buildApp(FakeTarlaRepository(completer)));
@@ -110,6 +161,20 @@ void main() {
       expect(find.text('Güney Tarla'), findsOneWidget);
       expect(find.byType(AppEmptyView), findsNothing);
       expect(find.byType(AppErrorView), findsNothing);
+    });
+
+    testWidgets('FAB ile eklenen tarla supplied repositoryye kaydolur', (
+      tester,
+    ) async {
+      final farms = RecordingTarlaRepository([_tarla('1', 'Mevcut Tarla')]);
+      await tester.pumpWidget(_buildApp(farms));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      await completeFarmForm(tester);
+
+      expect(farms.added.single.name, 'Kuzey Tarla');
     });
 
     testWidgets("Tekrar Dene butonu repository'yi yeniden çağırır", (

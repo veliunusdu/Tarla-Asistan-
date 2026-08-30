@@ -26,6 +26,18 @@ class FakeTarlaRepository implements TarlaRepository {
   Future<void> addTarla(Tarla tarla) async {}
 }
 
+class RecordingTarlaRepository implements TarlaRepository {
+  final List<Tarla> added = [];
+
+  @override
+  Future<List<Tarla>> getTarlalar() async => added;
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {
+    added.add(tarla);
+  }
+}
+
 /// Mutable fake — addFaaliyet kaydeder, getTumFaaliyetler içerir.
 class FakeFaaliyetRepository implements FaaliyetRepository {
   FakeFaaliyetRepository({
@@ -107,6 +119,27 @@ DateTime _today() {
 }
 
 DateTime _tomorrow() => _today().add(const Duration(days: 1));
+
+Future<void> completeFarmForm(WidgetTester tester) async {
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Tarla Adı'),
+    'Kuzey Tarla',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
+    '5',
+  );
+  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Buğday').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tarih seçin'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tamam'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Kaydet'));
+  await tester.pumpAndSettle();
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -686,6 +719,22 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(TarlaEklemeEkrani), findsOneWidget);
+      });
+
+      testWidgets('Günlüğümden eklenen tarla supplied repositoryye kaydolur', (
+        tester,
+      ) async {
+        final farms = RecordingTarlaRepository();
+        await tester.pumpWidget(
+          _wrap(tarlaRepo: farms, faaliyetRepo: FakeFaaliyetRepository()),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Tarla Ekle'));
+        await tester.pumpAndSettle();
+        await completeFarmForm(tester);
+
+        expect(farms.added, hasLength(1));
       });
     });
 

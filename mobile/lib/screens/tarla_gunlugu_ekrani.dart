@@ -315,7 +315,8 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                     final result = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const TarlaEklemeEkrani(),
+                        builder: (_) =>
+                            TarlaEklemeEkrani(repository: widget._tarlaRepo),
                       ),
                     );
                     if (result == true && mounted) _yenile();
