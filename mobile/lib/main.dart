@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'models/notification_target.dart';
+import 'features/ai_assistant/data/backend_ai_assistant_repository.dart';
+import 'features/weather/data/backend_weather_repository.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
@@ -224,7 +226,14 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           ),
                         );
                       }
-                      return const AnaEkran();
+                      return AnaEkran(
+                        weatherRepository: BackendWeatherRepository(
+                          apiClient: _apiClient,
+                        ),
+                        aiRepository: BackendAiAssistantRepository(
+                          apiClient: _apiClient,
+                        ),
+                      );
                     },
                   );
                 }

@@ -14,20 +14,19 @@ import 'weather_repository.dart';
 ///   - risks[]: WeatherRiskResponse (risk_type, severity, starts_at,
 ///              ends_at, message, suggested_action)
 class BackendWeatherRepository implements WeatherRepository {
-  const BackendWeatherRepository({
-    required ApiClient apiClient,
-    required String farmId,
-  }) : _client = apiClient,
-       _farmId = farmId;
+  const BackendWeatherRepository({required ApiClient apiClient, String? farmId})
+    : _client = apiClient,
+      _farmId = farmId;
 
   final ApiClient _client;
-  final String _farmId;
+  final String? _farmId;
 
   @override
   Future<WeatherSummary> getWeather() async {
     final Map<String, dynamic> raw;
     try {
-      raw = await _client.getJson('farms/$_farmId/weather');
+      final farmId = _farmId ?? await _findFirstFarmId();
+      raw = await _client.getJson('farms/$farmId/weather');
     } on ApiException {
       rethrow;
     }
@@ -62,6 +61,19 @@ class BackendWeatherRepository implements WeatherRepository {
     );
 
     return WeatherSummary(temperature: temperature, description: description);
+  }
+
+  Future<String> _findFirstFarmId() async {
+    final farms = await _client.getJson('farms?limit=1&offset=0');
+    final items = farms['items'];
+    if (items is! List || items.isEmpty || items.first is! Map) {
+      throw const ApiException('Hava durumu için önce bir tarla ekleyin.');
+    }
+    final id = (items.first as Map)['id'];
+    if (id is! String || id.isEmpty) {
+      throw const ApiException('Tarla bilgisi geçersiz.');
+    }
+    return id;
   }
 
   static String _descriptionFromWeather({
