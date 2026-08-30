@@ -602,11 +602,13 @@ void main() {
 
           final tarlaRepo = FakeTarlaRepository(Future.value([_tarla('t1')]));
 
+          final faaliyetRepo = FakeFaaliyetRepository();
+
           await tester.pumpWidget(
             _wrap(
               tarlaRepo: tarlaRepo,
               weatherRepo: FakeWeatherRepository(Future.value(_hava)),
-              faaliyetRepo: FakeFaaliyetRepository(),
+              faaliyetRepo: faaliyetRepo,
             ),
           );
           await tester.pumpAndSettle();
@@ -615,6 +617,11 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+          final ekran = tester.widget<FaaliyetEklemeEkrani>(
+            find.byType(FaaliyetEklemeEkrani),
+          );
+          expect(ekran.tarlaId, 't1');
+          expect(identical(ekran.repositoryForTesting, faaliyetRepo), isTrue);
         },
       );
 

@@ -70,6 +70,9 @@ class AnaSayfaEkrani extends StatefulWidget {
   final LocationService? locationService;
   final FieldLocationPicker? locationPicker;
 
+  @visibleForTesting
+  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepo;
+
   /// Tarlalarım sekmesine geçmek için AnaEkran'dan gelen callback.
   final VoidCallback? onTarlalarimSekme;
 
@@ -219,7 +222,10 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => FaaliyetEklemeEkrani(tarlaId: secilen!.id),
+        builder: (_) => FaaliyetEklemeEkrani(
+          tarlaId: secilen!.id,
+          faaliyetRepository: widget._faaliyetRepo,
+        ),
       ),
     );
     if (result == true && mounted) _yenile();

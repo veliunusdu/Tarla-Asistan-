@@ -44,6 +44,9 @@ class TarlaDetayEkrani extends StatefulWidget {
   final Tarla tarla;
   final FaaliyetRepository _faaliyetRepository;
 
+  @visibleForTesting
+  FaaliyetRepository get repositoryForTesting => _faaliyetRepository;
+
   @override
   State<TarlaDetayEkrani> createState() => _TarlaDetayEkraniState();
 }
@@ -107,8 +110,10 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           final result = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  FaaliyetEklemeEkrani(tarlaId: widget.tarla.id),
+              builder: (context) => FaaliyetEklemeEkrani(
+                tarlaId: widget.tarla.id,
+                faaliyetRepository: widget._faaliyetRepository,
+              ),
             ),
           );
           if (result == true) _yenile();

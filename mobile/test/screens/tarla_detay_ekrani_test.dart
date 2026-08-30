@@ -6,6 +6,7 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/screens/faaliyet_ekleme_ekrani.dart';
 import 'package:mobile/screens/tarla_detay_ekrani.dart';
 
 // ---------------------------------------------------------------------------
@@ -235,6 +236,25 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);
+    });
+
+    testWidgets('FAB tıklandığında FaaliyetEklemeEkrani aynı faaliyetRepository ile açılır', (
+      tester,
+    ) async {
+      final repo = FakeFaaliyetRepository(Future.value([]));
+      await tester.pumpWidget(
+        _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+      final eklenenEkran = tester.widget<FaaliyetEklemeEkrani>(
+        find.byType(FaaliyetEklemeEkrani),
+      );
+      expect(identical(eklenenEkran.repositoryForTesting, repo), isTrue);
     });
   });
 }

@@ -47,6 +47,9 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
   final String tarlaId;
   final FaaliyetRepository _repo;
 
+  @visibleForTesting
+  FaaliyetRepository get repositoryForTesting => _repo;
+
   /// Only used in tests to pre-set state and avoid date picker interaction.
   @visibleForTesting
   final bool initialIsCompleted;

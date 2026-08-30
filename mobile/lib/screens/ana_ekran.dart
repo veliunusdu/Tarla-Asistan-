@@ -74,6 +74,7 @@ class _AnaEkranState extends State<AnaEkran> {
       // 2 — Tarlalarım
       TarlaListesiEkrani(
         repository: widget._tarlaRepo,
+        faaliyetRepository: widget._faaliyetRepo,
         onDataChanged: _onDataChanged,
       ),
       // 3 — Asistan

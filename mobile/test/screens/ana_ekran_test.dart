@@ -339,5 +339,39 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'AnaEkran faaliyetRepository nesnesini alt ekranlara iletir',
+      (tester) async {
+        final faaliyetRepo = FakeFaaliyetRepository();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.light,
+            home: AnaEkran(
+              tarlaRepository: FakeTarlaRepository(),
+              faaliyetRepository: faaliyetRepo,
+              weatherRepository: FakeWeatherRepository(),
+              aiRepository: FakeAiAssistantRepository(),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final anaSayfa = tester.widget<AnaSayfaEkrani>(
+          find.byType(AnaSayfaEkrani),
+        );
+        expect(identical(anaSayfa.faaliyetRepositoryForTesting, faaliyetRepo), isTrue);
+
+        final gunluk = tester.widget<TarlaGunluguEkrani>(
+          find.byType(TarlaGunluguEkrani, skipOffstage: false),
+        );
+        expect(identical(gunluk.faaliyetRepositoryForTesting, faaliyetRepo), isTrue);
+
+        final tarlaListesi = tester.widget<TarlaListesiEkrani>(
+          find.byType(TarlaListesiEkrani, skipOffstage: false),
+        );
+        expect(identical(tarlaListesi.faaliyetRepositoryForTesting, faaliyetRepo), isTrue);
+      },
+    );
   });
 }

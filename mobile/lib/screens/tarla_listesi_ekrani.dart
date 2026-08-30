@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../features/activities/data/faaliyet_repository.dart';
+import '../features/activities/data/local_faaliyet_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../models/tarla.dart';
@@ -13,10 +15,17 @@ class TarlaListesiEkrani extends StatefulWidget {
   const TarlaListesiEkrani({
     super.key,
     TarlaRepository? repository,
+    FaaliyetRepository? faaliyetRepository,
     this.onDataChanged,
-  }) : _repository = repository ?? const LocalTarlaRepository();
+  }) : _repository = repository ?? const LocalTarlaRepository(),
+       _faaliyetRepository =
+           faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final TarlaRepository _repository;
+  final FaaliyetRepository _faaliyetRepository;
+
+  @visibleForTesting
+  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepository;
 
   /// Tarla başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
@@ -107,7 +116,10 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => TarlaDetayEkrani(tarla: tarla),
+                        builder: (context) => TarlaDetayEkrani(
+                          tarla: tarla,
+                          faaliyetRepository: widget._faaliyetRepository,
+                        ),
                       ),
                     );
                     _yenile();

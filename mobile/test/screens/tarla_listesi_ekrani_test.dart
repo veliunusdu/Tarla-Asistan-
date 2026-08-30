@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
+import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/fields/data/local_tarla_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
+import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/screens/tarla_detay_ekrani.dart';
 import 'package:mobile/screens/tarla_listesi_ekrani.dart';
 import 'package:mobile/shared/widgets/app_empty_view.dart';
 import 'package:mobile/shared/widgets/app_error_view.dart';
@@ -271,6 +274,17 @@ Widget _buildReadApp(TarlaRepository repository) => MaterialApp(
   home: TarlaListesiEkrani(repository: repository),
 );
 
+class _EmptyFaaliyetRepository implements FaaliyetRepository {
+  @override
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
+
+  @override
+  Future<void> addFaaliyet(Faaliyet faaliyet) async {}
+
+  @override
+  Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+}
+
 Tarla _backendTarla(String id, String name) => Tarla(id: id, name: name);
 
 // ---------------------------------------------------------------------------
@@ -382,6 +396,35 @@ void _backendAdapterTests() {
         matching: find.byType(ListTile),
       );
       expect(tile, findsOneWidget);
+    });
+
+    testWidgets('tarla tıklandığında TarlaDetayEkrani aynı faaliyetRepository ile açılır', (
+      tester,
+    ) async {
+      final tarlaRepo = FakeReadRepository(
+        Future.value([_backendTarla('b1', 'Tarla A')]),
+      );
+      final faaliyetRepo = _EmptyFaaliyetRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: TarlaListesiEkrani(
+            repository: tarlaRepo,
+            faaliyetRepository: faaliyetRepo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tarla A'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+      final detay = tester.widget<TarlaDetayEkrani>(
+        find.byType(TarlaDetayEkrani),
+      );
+      expect(identical(detay.repositoryForTesting, faaliyetRepo), isTrue);
     });
 
     // Test 16

@@ -89,6 +89,9 @@ class TarlaGunluguEkrani extends StatefulWidget {
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
 
+  @visibleForTesting
+  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepo;
+
   /// Görev başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
 
@@ -364,7 +367,10 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                         ? () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => TarlaDetayEkrani(tarla: k.tarla!),
+                              builder: (_) => TarlaDetayEkrani(
+                                tarla: k.tarla!,
+                                faaliyetRepository: widget._faaliyetRepo,
+                              ),
                             ),
                           )
                         : null,

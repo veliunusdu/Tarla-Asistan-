@@ -655,20 +655,22 @@ void main() {
 
         final t = _tarla('t1', name: 'Test Tarlası');
 
+        final repo = FakeFaaliyetRepository(
+          faaliyetler: [
+            _faaliyet(
+              id: 'f1',
+              tarlaId: 't1',
+              type: 'Sulama',
+              isCompleted: true,
+              timestamp: DateTime(2024, 6),
+            ),
+          ],
+        );
+
         await tester.pumpWidget(
           _wrap(
             tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: FakeFaaliyetRepository(
-              faaliyetler: [
-                _faaliyet(
-                  id: 'f1',
-                  tarlaId: 't1',
-                  type: 'Sulama',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
-                ),
-              ],
-            ),
+            faaliyetRepo: repo,
           ),
         );
         await tester.pumpAndSettle();
@@ -680,6 +682,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+        final detay = tester.widget<TarlaDetayEkrani>(
+          find.byType(TarlaDetayEkrani),
+        );
+        expect(identical(detay.repositoryForTesting, repo), isTrue);
       });
     });
 
@@ -912,6 +918,49 @@ void main() {
         await tester.pump(); // render SnackBar
 
         expect(find.text('Görev eklendi.'), findsOneWidget);
+      });
+
+      testWidgets('backend hatası olduğunda hata SnackBar gösterilir ve kayıt başarılı sayılmaz', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final t = _tarla('t1', name: 'Örnek Tarla');
+        final repo = FakeFaaliyetRepository(
+          addFaaliyetHata: Exception('Backend network error'),
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            tarlaRepo: FakeTarlaRepository([t]),
+            faaliyetRepo: repo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Örnek Tarla').last);
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Görev'),
+          'Sulama',
+        );
+
+        await tester.tap(find.text('Görevi Ekle'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.'),
+          findsOneWidget,
+        );
+        expect(repo.eklenenler, isEmpty);
       });
     });
 
