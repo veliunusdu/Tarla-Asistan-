@@ -5,8 +5,8 @@ RUN corepack enable && pnpm install --frozen-lockfile
 
 FROM node:22-alpine AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-ARG NEXT_PUBLIC_API_ORIGIN
+ARG NEXT_PUBLIC_API_URL=https://tarla-asistani-api.onrender.com/api/v1
+ARG NEXT_PUBLIC_API_ORIGIN=https://tarla-asistani-api.onrender.com
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_ORIGIN=$NEXT_PUBLIC_API_ORIGIN
 COPY --from=dependencies /app/node_modules ./node_modules
