@@ -22,8 +22,9 @@ abstract interface class FarmRemoteRepository {
   /// GET /api/v1/farms/{farm_id}
   Future<FarmResponseDto> getFarm(String farmId);
 
-  /// POST /api/v1/farms — returns HTTP 201 with [FarmMutationResponseDto].
-  Future<FarmMutationResponseDto> createFarm(FarmCreateRequestDto request);
+  /// POST /api/v1/farms — returns HTTP 201 with the created farm identifier.
+  /// The field form does not need that identifier until it reloads the list.
+  Future<void> createFarm(FarmCreateRequestDto request);
 
   /// PATCH /api/v1/farms/{farm_id}
   ///

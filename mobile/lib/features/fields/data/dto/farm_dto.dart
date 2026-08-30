@@ -62,7 +62,10 @@ class FarmResponseDto {
   final CropPeriodResponseDto? currentCrop;
 
   factory FarmResponseDto.fromJson(Map<String, dynamic> json) {
-    final rawCrop = json['current_crop'];
+    final rawCrop = json['current_crop'] ?? json['current_crop_period'];
+    final createdAt = DateTime.parse(
+      (json['created_at'] ?? json['created_at_utc']) as String,
+    );
     return FarmResponseDto(
       id: json['id'] as String,
       ownerId: json['owner_id'] as String,
@@ -76,8 +79,12 @@ class FarmResponseDto {
       archivedAt: json['archived_at'] == null
           ? null
           : DateTime.parse(json['archived_at'] as String),
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: createdAt,
+      updatedAt: (json['updated_at'] ?? json['updated_at_utc']) == null
+          ? createdAt
+          : DateTime.parse(
+              (json['updated_at'] ?? json['updated_at_utc']) as String,
+            ),
       currentCrop: rawCrop == null
           ? null
           : CropPeriodResponseDto.fromJson(rawCrop as Map<String, dynamic>),

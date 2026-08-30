@@ -68,9 +68,8 @@ class BackendWeatherRepository implements WeatherRepository {
   }
 
   Future<String> _findFirstFarmId() async {
-    final farms = await _client.getJson('farms?limit=1&offset=0');
-    final items = farms['items'];
-    if (items is! List || items.isEmpty) {
+    final items = await _client.getJsonList('farms?limit=50&offset=0');
+    if (items.isEmpty) {
       throw const WeatherLocationRequiredException();
     }
     for (final item in items) {

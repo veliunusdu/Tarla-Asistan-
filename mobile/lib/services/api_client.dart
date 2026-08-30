@@ -50,6 +50,12 @@ class ApiClient {
     return _decodeObject(response);
   }
 
+  /// Fetches an endpoint whose JSON response is an array.
+  Future<List<dynamic>> getJsonList(String endpoint) async {
+    final response = await _send('GET', endpoint);
+    return _decodeList(response);
+  }
+
   Future<Map<String, dynamic>> postJson(
     String endpoint,
     Map<String, dynamic> body,
@@ -184,6 +190,16 @@ class ApiClient {
     try {
       final value = jsonDecode(response.body);
       if (value is Map<String, dynamic>) return value;
+    } on FormatException {
+      // Fall through to the generic error below.
+    }
+    throw const ApiException('Sunucudan beklenmeyen bir cevap alındı.');
+  }
+
+  List<dynamic> _decodeList(http.Response response) {
+    try {
+      final value = jsonDecode(response.body);
+      if (value is List<dynamic>) return value;
     } on FormatException {
       // Fall through to the generic error below.
     }

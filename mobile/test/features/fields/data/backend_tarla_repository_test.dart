@@ -74,11 +74,10 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   );
 
   @override
-  Future<FarmMutationResponseDto> createFarm(
+  Future<void> createFarm(
     FarmCreateRequestDto request,
   ) async {
     created = request;
-    return FarmMutationResponseDto(farm: _farm, warnings: const []);
   }
 
   @override
