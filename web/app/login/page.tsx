@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { loginWithFirebase } from "@/lib/api";
@@ -82,6 +83,9 @@ export default function LoginPage() {
               {busy ? "Lütfen bekleyin…" : "Güvenli giriş yap"}
             </button>
           </form>
+          <p className="auth-switch">
+            Çiftçi hesabınız yok mu? <Link href="/register">Hesap oluşturun</Link>
+          </p>
           <p className="security-note">Firebase Authentication ile korunan giriş</p>
         </div>
       </section>
