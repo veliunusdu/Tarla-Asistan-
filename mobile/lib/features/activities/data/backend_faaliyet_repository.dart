@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'package:uuid/uuid.dart';
 
 import '../../../models/faaliyet.dart';
 import '../../../models/tarla.dart';
@@ -10,40 +10,69 @@ class BackendFaaliyetRepository implements FaaliyetRepository {
   const BackendFaaliyetRepository({
     required ApiClient apiClient,
     required TarlaRepository tarlaRepository,
+    Uuid uuid = const Uuid(),
   })  : _api = apiClient,
-        _tarlaRepo = tarlaRepository;
+        _tarlaRepo = tarlaRepository,
+        _uuid = uuid;
 
   final ApiClient _api;
   final TarlaRepository _tarlaRepo;
+  final Uuid _uuid;
 
   @override
   Future<void> addFaaliyet(Faaliyet faaliyet) async {
     final activityType = _mapActivityTypeToBackend(faaliyet.type);
     final description = _buildDescription(faaliyet);
     final occurredAt = _formatOccurredAt(faaliyet);
+    final clientOperationId = _resolveClientOperationId(faaliyet.id);
 
     final payload = <String, dynamic>{
       'activity_type': activityType,
       'description': description,
       'occurred_at': occurredAt,
       'input_method': 'Manual',
+      'client_operation_id': clientOperationId,
     };
 
     await _api.postJson('/farms/${faaliyet.tarlaId}/activities', payload);
   }
 
   @override
-  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async {
-    final response = await _api.getJson('/farms/$tarlaId/activities');
-    final items = response['items'] as List<dynamic>? ?? [];
+  Future<List<Faaliyet>> getFaaliyetler(
+    String tarlaId, {
+    int pageSize = 50,
+  }) async {
+    final clampedLimit = pageSize.clamp(1, 100);
+    final allActivities = <Faaliyet>[];
+    int offset = 0;
+    int total = 0;
 
-    final list = items.map((item) {
-      final json = item as Map<String, dynamic>;
-      return _fromBackendJson(json, fallbackTarlaId: tarlaId);
-    }).toList();
+    do {
+      final response = await _api.getJson(
+        '/farms/$tarlaId/activities?limit=$clampedLimit&offset=$offset',
+      );
+      final items = response['items'] as List<dynamic>? ?? [];
+      total = (response['total'] as num?)?.toInt() ?? 0;
 
-    list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return list;
+      if (items.isEmpty) {
+        break;
+      }
+
+      for (final item in items) {
+        allActivities.add(
+          _fromBackendJson(item as Map<String, dynamic>, fallbackTarlaId: tarlaId),
+        );
+      }
+
+      offset += items.length;
+
+      if (items.length < clampedLimit) {
+        break;
+      }
+    } while (allActivities.length < total);
+
+    allActivities.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return allActivities;
   }
 
   @override
@@ -101,25 +130,23 @@ class BackendFaaliyetRepository implements FaaliyetRepository {
   }
 
   static String _buildDescription(Faaliyet faaliyet) {
-    final note = faaliyet.note.trim();
-    if (note.isNotEmpty) {
-      return note;
-    }
-    final type = faaliyet.type.trim();
-    if (type.length >= 2) {
-      return type;
-    }
-    return ' faaliyeti yapıldı';
+    return faaliyet.note.trim();
   }
 
   static String _formatOccurredAt(Faaliyet faaliyet) {
-    final date = faaliyet.timestamp;
-    final now = DateTime.now();
-    // Backend validator: date <= DateTime.UtcNow.AddMinutes(5)
-    final resolvedDate = date.isAfter(now.add(const Duration(minutes: 4)))
-        ? now
-        : date;
-    return resolvedDate.toUtc().toIso8601String();
+    return faaliyet.timestamp.toUtc().toIso8601String();
+  }
+
+  String _resolveClientOperationId(String candidateId) {
+    final trimmed = candidateId.trim();
+    if (Uuid.isValidUUID(fromString: trimmed)) {
+      return trimmed;
+    }
+    // Deterministic UUID v5 derived from candidate ID if it is a local string/epoch, or v4
+    if (trimmed.isNotEmpty) {
+      return _uuid.v5(Namespace.url.value, trimmed);
+    }
+    return _uuid.v4();
   }
 
   static Faaliyet _fromBackendJson(

@@ -145,6 +145,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   }
 
   Future<void> _kaydet() async {
+    if (_kaydediliyor) return;
     if (!_formKey.currentState!.validate()) return;
 
     if (_secilenTarih == null) {
@@ -243,14 +244,14 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // ── Not (isteğe bağlı, sesli giriş destekli) ─────────────────
+              // ── Faaliyet Açıklaması (sesli giriş destekli) ─────────────────
               TextFormField(
                 controller: _noteController,
                 enabled: !_kaydediliyor,
                 maxLength: 200,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Not (isteğe bağlı)',
+                  labelText: 'Faaliyet Açıklaması',
                   prefixIcon: const Icon(Icons.notes),
                   suffixIcon: IconButton(
                     icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
@@ -258,6 +259,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                     onPressed: _kaydediliyor ? null : _listen,
                   ),
                 ),
+                validator: (v) {
+                  final text = v?.trim() ?? '';
+                  if (text.length < 2) {
+                    return 'Faaliyet açıklaması en az 2 karakter olmalıdır.';
+                  }
+                  return null;
+                },
               ),
 
               const SizedBox(height: AppSpacing.md),

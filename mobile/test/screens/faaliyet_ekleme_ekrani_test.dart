@@ -71,6 +71,49 @@ void main() {
         expect(find.text('Lütfen bir faaliyet türü seçin.'), findsOneWidget);
       });
 
+      testWidgets('açıklama boş veya 2 karakterden kısaysa kayıt yapılmaz', (
+        tester,
+      ) async {
+        final repo = FakeFaaliyetRepository();
+        final yarin = DateTime.now().add(const Duration(days: 1));
+
+        await tester.pumpWidget(
+          _wrap(
+            FaaliyetEklemeEkrani(
+              tarlaId: _tarlaId,
+              faaliyetRepository: repo,
+              initialIsCompleted: false,
+              initialSelectedDate: yarin,
+            ),
+          ),
+        );
+
+        await _secilenTur(tester, 'Sulama');
+        // Açıklama girmeden kaydetmeye çalış
+        await tester.tap(find.text('Kaydet'));
+        await tester.pumpAndSettle();
+
+        expect(repo.kayitlar, isEmpty);
+        expect(
+          find.text('Faaliyet açıklaması en az 2 karakter olmalıdır.'),
+          findsOneWidget,
+        );
+
+        // 1 karakter girildiğinde de hata devam etmeli
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'A',
+        );
+        await tester.tap(find.text('Kaydet'));
+        await tester.pumpAndSettle();
+
+        expect(repo.kayitlar, isEmpty);
+        expect(
+          find.text('Faaliyet açıklaması en az 2 karakter olmalıdır.'),
+          findsOneWidget,
+        );
+      });
+
       testWidgets('tarih seçilmeden kayıt yapılmaz', (tester) async {
         final repo = FakeFaaliyetRepository();
         await tester.pumpWidget(
@@ -80,6 +123,10 @@ void main() {
         );
 
         await _secilenTur(tester, 'Sulama');
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'Sulama yapıldı',
+        );
         await tester.tap(find.text('Kaydet'));
         await tester.pumpAndSettle();
 
@@ -105,6 +152,10 @@ void main() {
         );
 
         await _secilenTur(tester, 'Sulama');
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'Sulama yapıldı',
+        );
         await tester.tap(find.text('Kaydet'));
         await tester.pumpAndSettle();
 
@@ -133,6 +184,10 @@ void main() {
         );
 
         await _secilenTur(tester, 'Sulama');
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'Sulama yapıldı',
+        );
         await tester.tap(find.text('Kaydet'));
         await tester.pumpAndSettle();
 
@@ -164,6 +219,10 @@ void main() {
           );
 
           await _secilenTur(tester, 'Sulama');
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+            'Planlanan sulama',
+          );
           await tester.tap(find.text('Kaydet'));
           await tester.pumpAndSettle();
 
@@ -172,6 +231,7 @@ void main() {
           expect(f.isCompleted, isFalse);
           expect(f.dueDate, beklenenGun);
           expect(f.type, 'Sulama');
+          expect(f.note, 'Planlanan sulama');
         },
       );
 
@@ -197,6 +257,10 @@ void main() {
           );
 
           await _secilenTur(tester, 'Gübreleme');
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+            'Azot gübresi atıldı',
+          );
           await tester.tap(find.text('Kaydet'));
           await tester.pumpAndSettle();
 
@@ -205,6 +269,7 @@ void main() {
           expect(f.isCompleted, isTrue);
           expect(f.dueDate, isNull);
           expect(f.type, 'Gübreleme');
+          expect(f.note, 'Azot gübresi atıldı');
         },
       );
 
@@ -225,12 +290,19 @@ void main() {
         );
 
         await _secilenTur(tester, 'Sulama');
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'Sulama yapıldı',
+        );
         await tester.tap(find.text('Kaydet'));
         await tester.pump();
 
         // Kaydediliyor — buton pasif olmalı
         final btn = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
         expect(btn.onPressed, isNull);
+
+        // İkinci kez tap yapılmaya çalışılsa dahi çağrı sayısı 1 kalmalı
+        expect(slowRepo.callCount, 1);
 
         completer.complete();
         await tester.pumpAndSettle();
@@ -255,6 +327,10 @@ void main() {
         );
 
         await _secilenTur(tester, 'Sulama');
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
+          'Sulama yapıldı',
+        );
         await tester.tap(find.text('Kaydet'));
         await tester.pumpAndSettle();
 
@@ -274,12 +350,16 @@ void main() {
 class _SlowFaaliyetRepository implements FaaliyetRepository {
   _SlowFaaliyetRepository(this._future);
   final Future<void> _future;
+  int callCount = 0;
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
 
   @override
-  Future<void> addFaaliyet(Faaliyet faaliyet) => _future;
+  Future<void> addFaaliyet(Faaliyet faaliyet) {
+    callCount++;
+    return _future;
+  }
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
