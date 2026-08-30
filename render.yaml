@@ -45,12 +45,6 @@ services:
         value: demo2-c4265
       - key: Firebase__CredentialsPath
         value: /etc/secrets/firebase-service-account.json
-      - key: PUBLIC_API_ORIGIN
-        fromService:
-          name: tarla-asistani-api
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
-
   - type: web
     name: tarla-asistani-web
     runtime: docker
@@ -66,4 +60,4 @@ services:
         fromService:
           name: tarla-asistani-api
           type: web
-          envVarKey: PUBLIC_API_ORIGIN
+          envVarKey: RENDER_EXTERNAL_URL
