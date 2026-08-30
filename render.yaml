@@ -59,7 +59,4 @@ services:
     healthCheckPath: /login
     envVars:
       - key: NEXT_PUBLIC_API_ORIGIN
-        fromService:
-          name: tarla-asistani-api
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+        value: https://tarla-asistani-api.onrender.com
