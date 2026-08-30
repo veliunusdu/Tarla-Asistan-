@@ -9,6 +9,7 @@ void main() {
 
     expect(manifest, contains('android.permission.ACCESS_FINE_LOCATION'));
     expect(manifest, contains('android.permission.ACCESS_COARSE_LOCATION'));
+    expect(manifest, isNot(contains('android.permission.ACCESS_BACKGROUND_LOCATION')));
   });
 
   test('pubspec declares location and OpenStreetMap packages', () {
