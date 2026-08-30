@@ -137,6 +137,8 @@ Future<void> completeFarmForm(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('Tamam'));
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Kaydet'));
+  await tester.pumpAndSettle();
   await tester.tap(find.text('Kaydet'));
   await tester.pumpAndSettle();
 }

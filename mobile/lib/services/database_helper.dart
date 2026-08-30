@@ -111,6 +111,20 @@ class DatabaseHelper implements SyncOperationStore {
     return result.map((json) => Tarla.fromJson(json)).toList();
   }
 
+  Future<int> updateTarlaLocation(
+    String id,
+    double latitude,
+    double longitude,
+  ) async {
+    final db = await instance.database;
+    return await db.update(
+      'tarlalar',
+      {'latitude': latitude, 'longitude': longitude},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> upsertTarlalar(List<Tarla> tarlalar) async {
     final db = await instance.database;
     await db.transaction((txn) async {

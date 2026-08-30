@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
+import 'package:mobile/features/location/data/location_service.dart';
+import 'package:mobile/features/location/domain/tarla_location.dart';
 import 'package:mobile/features/weather/data/weather_repository.dart';
 import 'package:mobile/features/weather/data/backend_weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
@@ -13,21 +15,31 @@ import 'package:mobile/models/tarla.dart';
 import 'package:mobile/screens/faaliyet_ekleme_ekrani.dart';
 import 'package:mobile/screens/ana_sayfa_ekrani.dart';
 import 'package:mobile/screens/tarla_ekleme_ekrani.dart';
+import 'package:mobile/screens/tarla_konum_duzenleme_ekrani.dart';
 import 'package:mobile/screens/tarla_listesi_ekrani.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
 
-class FakeTarlaRepository implements TarlaRepository {
+class FakeTarlaRepository implements TarlaRepository, TarlaLocationRepository {
   FakeTarlaRepository(this._future);
   final Future<List<Tarla>> _future;
+
+  String? lastUpdatedId;
+  TarlaLocation? lastUpdatedLocation;
 
   @override
   Future<List<Tarla>> getTarlalar() => _future;
 
   @override
   Future<void> addTarla(Tarla tarla) async {}
+
+  @override
+  Future<void> updateTarlaLocation(String id, TarlaLocation location) async {
+    lastUpdatedId = id;
+    lastUpdatedLocation = location;
+  }
 }
 
 class FakeWeatherRepository implements WeatherRepository {
@@ -36,6 +48,20 @@ class FakeWeatherRepository implements WeatherRepository {
 
   @override
   Future<WeatherSummary> getWeather() => _future;
+}
+
+class FakeLocationService implements LocationService {
+  FakeLocationService({this.location, this.error});
+
+  final TarlaLocation? location;
+  final Object? error;
+
+  @override
+  Future<TarlaLocation> getCurrentLocation() async {
+    if (error != null) throw error!;
+    return location ??
+        const TarlaLocation(latitude: 38.4237, longitude: 27.1428);
+  }
 }
 
 class FakeFaaliyetRepository implements FaaliyetRepository {
@@ -62,6 +88,8 @@ Widget _wrap({
   required TarlaRepository tarlaRepo,
   required WeatherRepository weatherRepo,
   FaaliyetRepository? faaliyetRepo,
+  LocationService? locationService,
+  FieldLocationPicker? locationPicker,
   VoidCallback? onTarlalarimSekme,
   VoidCallback? onGunlukSekme,
   ValueNotifier<int>? refreshNotifier,
@@ -71,6 +99,8 @@ Widget _wrap({
     tarlaRepository: tarlaRepo,
     faaliyetRepository: faaliyetRepo ?? FakeFaaliyetRepository(),
     weatherRepository: weatherRepo,
+    locationService: locationService,
+    locationPicker: locationPicker,
     onTarlalarimSekme: onTarlalarimSekme,
     onGunlukSekme: onGunlukSekme,
     refreshNotifier: refreshNotifier,
@@ -242,20 +272,113 @@ void main() {
         tester,
       ) async {
         final weather = Completer<WeatherSummary>();
+        final field = Tarla(
+          id: 'farm-123',
+          name: 'Konumsuz Tarla',
+          latitude: null,
+          longitude: null,
+          size: 15,
+          cropType: 'Buğday',
+          plantingDate: DateTime(2026, 1, 1),
+        );
+        final tarlaRepo = FakeTarlaRepository(Future.value([field]));
+
         await tester.pumpWidget(
           _wrap(
-            tarlaRepo: FakeTarlaRepository(Future.value([])),
+            tarlaRepo: tarlaRepo,
             weatherRepo: FakeWeatherRepository(weather.future),
           ),
         );
         weather.completeError(const WeatherLocationRequiredException());
         await tester.pumpAndSettle();
 
+        final weatherCard = find.ancestor(
+          of: find.text('Hava durumu için tarla konumu ekleyin'),
+          matching: find.byType(Card),
+        );
         expect(
-          find.text('Hava durumu için tarla konumu ekleyin'),
+          find.descendant(of: weatherCard, matching: find.text('Konum ekle')),
           findsOneWidget,
         );
+        expect(
+          find.descendant(of: weatherCard, matching: find.text('Tarla Ekle')),
+          findsNothing,
+        );
+
+        await tester.tap(find.text('Konum ekle'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(TarlaKonumDuzenlemeEkrani), findsOneWidget);
       });
+
+      testWidgets(
+        'konum ekleme ekranı başarılı kapandığında hava durumu ve tarlalar yeniden istenir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          int weatherCalls = 0;
+          int tarlaCalls = 0;
+
+          final fieldWithoutLoc = Tarla(
+            id: 'f-1',
+            name: 'Mısır Tarlası',
+            latitude: null,
+            longitude: null,
+            size: 20,
+            cropType: 'Mısır',
+            plantingDate: DateTime(2026, 2, 1),
+          );
+
+          final weatherRepo = _CountingWeatherRepo(() async {
+            weatherCalls++;
+            if (weatherCalls == 1) {
+              throw const WeatherLocationRequiredException();
+            }
+            return const WeatherSummary(temperature: 24, description: 'Güneşli');
+          });
+
+          final tarlaRepo = _CountingTarlaLocationRepo(() async {
+            tarlaCalls++;
+            return [fieldWithoutLoc];
+          });
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: tarlaRepo,
+              weatherRepo: weatherRepo,
+              locationService: FakeLocationService(
+                location: const TarlaLocation(latitude: 39.9, longitude: 32.8),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(weatherCalls, 1);
+          expect(tarlaCalls, 1);
+          expect(find.text('Konum ekle'), findsOneWidget);
+
+          await tester.tap(find.text('Konum ekle'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(TarlaKonumDuzenlemeEkrani), findsOneWidget);
+
+          // Konumumu kullan'a bas ve Kaydet
+          await tester.tap(find.text('Konumumu kullan'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.widgetWithText(ElevatedButton, 'Kaydet'));
+          await tester.pumpAndSettle();
+
+          // Ekran kapandı, ana sayfa yenilendi
+          expect(find.byType(TarlaKonumDuzenlemeEkrani), findsNothing);
+          expect(weatherCalls, 2);
+          expect(tarlaCalls, 2);
+          expect(find.textContaining('24°C'), findsOneWidget);
+        },
+      );
 
       testWidgets('hava hatası tarla istatistiklerini gizlemez', (
         tester,
@@ -679,6 +802,21 @@ class _CountingTarlaRepo implements TarlaRepository {
 
   @override
   Future<void> addTarla(Tarla tarla) async {}
+}
+
+class _CountingTarlaLocationRepo
+    implements TarlaRepository, TarlaLocationRepository {
+  _CountingTarlaLocationRepo(this._fn);
+  final Future<List<Tarla>> Function() _fn;
+
+  @override
+  Future<List<Tarla>> getTarlalar() => _fn();
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
+
+  @override
+  Future<void> updateTarlaLocation(String id, TarlaLocation location) async {}
 }
 
 class _CountingWeatherRepo implements WeatherRepository {

@@ -3,6 +3,7 @@ import 'package:mobile/features/fields/data/backend_tarla_repository.dart';
 import 'package:mobile/features/fields/data/dto/crop_period_dto.dart';
 import 'package:mobile/features/fields/data/dto/farm_dto.dart';
 import 'package:mobile/features/fields/data/farm_remote_repository.dart';
+import 'package:mobile/features/location/domain/tarla_location.dart';
 import 'package:mobile/models/tarla.dart';
 
 void main() {
@@ -42,10 +43,26 @@ void main() {
     expect(fields.single.size, 25);
     expect(fields.single.latitude, 38.4237);
   });
+
+  test('updates farm location with latitude and longitude', () async {
+    final remote = _FakeFarmRemoteRepository();
+    final repository = BackendTarlaRepository(remote: remote);
+
+    await repository.updateTarlaLocation(
+      'farm-1',
+      const TarlaLocation(latitude: 38.5, longitude: 27.2),
+    );
+
+    expect(remote.updatedFarmId, 'farm-1');
+    expect(remote.updatedRequest?.latitude, 38.5);
+    expect(remote.updatedRequest?.longitude, 27.2);
+  });
 }
 
 class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   FarmCreateRequestDto? created;
+  String? updatedFarmId;
+  FarmUpdateRequestDto? updatedRequest;
 
   final _farm = FarmResponseDto(
     id: 'farm-1',
@@ -97,7 +114,11 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   Future<FarmMutationResponseDto> updateFarm(
     String farmId,
     FarmUpdateRequestDto request,
-  ) async => FarmMutationResponseDto(farm: _farm, warnings: const []);
+  ) async {
+    updatedFarmId = farmId;
+    updatedRequest = request;
+    return FarmMutationResponseDto(farm: _farm, warnings: const []);
+  }
 
   @override
   Future<void> archiveFarm(String farmId) async {}
