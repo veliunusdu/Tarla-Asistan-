@@ -237,6 +237,67 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
+                // Tarla konumu
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Tarla konumu',
+                    prefixIcon: Icon(Icons.location_on),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedLocation == null
+                            ? 'Konum seçilmedi'
+                            : '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: _selectedLocation == null
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs,
+                        children: [
+                          OutlinedButton(
+                            onPressed: _konumAliniyor || _kaydediliyor
+                                ? null
+                                : _konumumuKullan,
+                            child: Text(
+                              _konumAliniyor
+                                  ? 'Konum alınıyor...'
+                                  : 'Konumumu kullan',
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: _kaydediliyor ? null : _haritadaSec,
+                            child: Text(
+                              _selectedLocation == null
+                                  ? 'Haritada seç'
+                                  : 'Haritada değiştir',
+                            ),
+                          ),
+                          if (_selectedLocation != null)
+                            TextButton(
+                              onPressed: _kaydediliyor
+                                  ? null
+                                  : () => setState(() => _selectedLocation = null),
+                              child: const Text('Konumu kaldır'),
+                            ),
+                          if (_selectedLocation == null)
+                            TextButton(
+                              onPressed: _kaydediliyor ? null : _kaydet,
+                              child: const Text('Konumsuz devam et'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
                 // Büyüklük
                 TextFormField(
                   controller: _sizeController,
@@ -291,43 +352,6 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-
-                Text(
-                  _selectedLocation == null
-                      ? 'Konum seçilmedi'
-                      : '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _konumAliniyor || _kaydediliyor
-                          ? null
-                          : _konumumuKullan,
-                      child: Text(
-                        _konumAliniyor
-                            ? 'Konum alınıyor...'
-                            : 'Konumumu kullan',
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: _kaydediliyor ? null : _haritadaSec,
-                      child: Text(
-                        _selectedLocation == null
-                            ? 'Haritada seç'
-                            : 'Haritada değiştir',
-                      ),
-                    ),
-                    if (_selectedLocation != null)
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _selectedLocation = null),
-                        child: const Text('Konumu kaldır'),
-                      ),
-                  ],
                 ),
                 const SizedBox(height: AppSpacing.xl),
 
