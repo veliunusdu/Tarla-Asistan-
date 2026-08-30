@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
+      ConnectionStrings__DefaultConnection: ${DATABASE_URL:?DATABASE_URL is required}
       Auth__JwtSecret: ${JWT_SECRET:?JWT_SECRET is required}
       Cors__AllowedOrigins__0: ${WEB_ORIGIN:?WEB_ORIGIN is required}
       Media__Provider: ${MEDIA_STORAGE_PROVIDER:?MEDIA_STORAGE_PROVIDER is required}

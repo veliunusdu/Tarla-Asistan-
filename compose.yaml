@@ -20,7 +20,8 @@ services:
       context: ./backend
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=${POSTGRES_DB:-tarla_asistani};Username=${POSTGRES_USER:-tarla};Password=${POSTGRES_PASSWORD:-tarla-local}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-false}
+      ConnectionStrings__DefaultConnection: ${DATABASE_URL:-Host=db;Port=5432;Database=${POSTGRES_DB:-tarla_asistani};Username=${POSTGRES_USER:-tarla};Password=${POSTGRES_PASSWORD:-tarla-local}}
       Auth__JwtSecret: ${JWT_SECRET:-local-only-jwt-secret-change-before-deploy-at-least-32-chars-long!}
       Cors__AllowedOrigins__0: ${WEB_ORIGIN:-http://localhost:3000}
       Auth__AccessTokenExpiryMinutes: 60
