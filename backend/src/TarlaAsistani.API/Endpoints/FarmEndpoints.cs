@@ -141,8 +141,8 @@ public static class FarmEndpoints
 public record CreateFarmRequest(
     Guid? OwnerId,
     string Name,
-    double Latitude,
-    double Longitude,
+    double? Latitude,
+    double? Longitude,
     double? SizeInHectares,
     IrrigationMethod? IrrigationMethod,
     CropType InitialCropType,

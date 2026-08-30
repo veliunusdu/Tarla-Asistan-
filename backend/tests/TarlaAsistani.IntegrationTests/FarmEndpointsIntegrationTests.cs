@@ -72,6 +72,41 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     }
 
     [Fact]
+    public async Task CreateAndQueryFarm_WithoutLocation_ShouldPersistNullCoordinates()
+    {
+        var ownerId = Guid.NewGuid();
+        var createRequest = new CreateFarmRequest(
+            OwnerId: ownerId,
+            Name: "Konumsuz Tarla",
+            Latitude: null,
+            Longitude: null,
+            SizeInHectares: 2.5,
+            IrrigationMethod: null,
+            InitialCropType: CropType.Wheat,
+            InitialPlantedAt: new DateOnly(2026, 3, 15)
+        );
+
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/v1/farms",
+            createRequest,
+            CustomWebApplicationFactory.JsonOptions);
+
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var createResult = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(
+            CustomWebApplicationFactory.JsonOptions);
+        createResult.Should().NotBeNull();
+
+        var getResponse = await _client.GetAsync($"/api/v1/farms/{createResult!["id"]}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var farm = await getResponse.Content.ReadFromJsonAsync<FarmDto>(
+            CustomWebApplicationFactory.JsonOptions);
+
+        farm.Should().NotBeNull();
+        farm!.Latitude.Should().BeNull();
+        farm.Longitude.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ListFarms_WhenFarmerQueries_ShouldOnlyReturnFarmsOwnedByFarmer()
     {
         // 1. Create two farms for farmer A, one for farmer B

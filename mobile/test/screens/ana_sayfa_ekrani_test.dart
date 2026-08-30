@@ -6,6 +6,7 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/features/weather/data/weather_repository.dart';
+import 'package:mobile/features/weather/data/backend_weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
 import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
@@ -235,6 +236,25 @@ void main() {
         await tester.pump();
 
         expect(find.textContaining('Hava durumu alınamadı'), findsOneWidget);
+      });
+
+      testWidgets('konum eksikliğinde tarla konumu yönlendirmesi gösterilir', (
+        tester,
+      ) async {
+        final weather = Completer<WeatherSummary>();
+        await tester.pumpWidget(
+          _wrap(
+            tarlaRepo: FakeTarlaRepository(Future.value([])),
+            weatherRepo: FakeWeatherRepository(weather.future),
+          ),
+        );
+        weather.completeError(const WeatherLocationRequiredException());
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Hava durumu için tarla konumu ekleyin'),
+          findsOneWidget,
+        );
       });
 
       testWidgets('hava hatası tarla istatistiklerini gizlemez', (

@@ -50,6 +50,8 @@
 	<!-- Kamera ve fotoğraf kütüphanesi erişimi (image_picker) -->
 	<key>NSCameraUsageDescription</key>
 	<string>Tarla fotoğrafı çekmek için kamera erişimi gerekiyor.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Tarla konumunuzu kaydetmek ve yerel hava durumunu göstermek için konumunuza erişiyoruz.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Tarla fotoğrafı seçmek için fotoğraf kütüphanesi erişimi gerekiyor.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

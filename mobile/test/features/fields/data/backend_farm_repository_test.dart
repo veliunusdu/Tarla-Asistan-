@@ -38,12 +38,9 @@ const _fullFarmJson = <String, dynamic>{
   },
 };
 
-const _farmListJson = <String, dynamic>{
-  'items': [_fullFarmJson],
-  'total': 1,
-  'limit': 50,
-  'offset': 0,
-};
+const _farmListJson = <dynamic>[_fullFarmJson];
+
+const _createJson = <String, dynamic>{'id': 'farm-uuid-1'};
 
 const _mutationJson = <String, dynamic>{
   'farm': _fullFarmJson,
@@ -166,7 +163,7 @@ void main() {
       late Map<String, dynamic> capturedBody;
       final client = _clientWith((request) async {
         capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-        return _json(_mutationJson, 201);
+        return _json(_createJson, 201);
       });
       final repo = BackendFarmRepository(apiClient: client);
 
@@ -192,11 +189,11 @@ void main() {
       client.close();
     });
 
-    test('returns FarmMutationResponseDto on success', () async {
-      final client = _clientWith((_) async => _json(_mutationJson, 201));
+    test('accepts the backend created-id response', () async {
+      final client = _clientWith((_) async => _json(_createJson, 201));
       final repo = BackendFarmRepository(apiClient: client);
 
-      final result = await repo.createFarm(
+      final result = repo.createFarm(
         const FarmCreateRequestDto(
           name: 'Tarla',
           latitude: 38.0,
@@ -206,8 +203,7 @@ void main() {
         ),
       );
 
-      expect(result.farm.id, 'farm-uuid-1');
-      expect(result.warnings, isEmpty);
+      await expectLater(result, completes);
       client.close();
     });
   });

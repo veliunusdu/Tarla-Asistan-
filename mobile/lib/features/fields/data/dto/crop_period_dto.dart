@@ -56,8 +56,12 @@ class CropPeriodResponseDto {
           ? null
           : DateTime.parse(json['harvested_at'] as String),
       status: json['status'] as String,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: DateTime.parse(
+        (json['created_at'] ?? json['created_at_utc']) as String,
+      ),
+      updatedAt: DateTime.parse(
+        (json['updated_at'] ?? json['updated_at_utc']) as String,
+      ),
     );
   }
 }

@@ -173,5 +173,18 @@ void main() {
       await expectLater(repo.getWeather(), throwsA(isA<ApiException>()));
       failClient.close();
     });
+
+    test('throws a typed outcome when no farm has coordinates', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(jsonEncode(<dynamic>[]), 200),
+      );
+      final repo = BackendWeatherRepository(apiClient: client);
+
+      await expectLater(
+        repo.getWeather(),
+        throwsA(isA<WeatherLocationRequiredException>()),
+      );
+      client.close();
+    });
   });
 }

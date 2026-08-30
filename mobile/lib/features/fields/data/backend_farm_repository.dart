@@ -27,8 +27,19 @@ class BackendFarmRepository implements FarmRemoteRepository {
   }) async {
     final endpoint =
         '$_base?include_archived=$includeArchived&limit=$limit&offset=$offset';
-    final json = await _client.getJson(endpoint);
-    return FarmListResponseDto.fromJson(json);
+    final json = await _client.getJsonList(endpoint);
+    final items = json
+        .whereType<Map>()
+        .map(
+          (item) => FarmResponseDto.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+    return FarmListResponseDto(
+      items: items,
+      total: items.length,
+      limit: limit,
+      offset: offset,
+    );
   }
 
   @override
@@ -38,11 +49,8 @@ class BackendFarmRepository implements FarmRemoteRepository {
   }
 
   @override
-  Future<FarmMutationResponseDto> createFarm(
-    FarmCreateRequestDto request,
-  ) async {
-    final json = await _client.postJson(_base, request.toJson());
-    return FarmMutationResponseDto.fromJson(json);
+  Future<void> createFarm(FarmCreateRequestDto request) async {
+    await _client.postJson(_base, request.toJson());
   }
 
   @override

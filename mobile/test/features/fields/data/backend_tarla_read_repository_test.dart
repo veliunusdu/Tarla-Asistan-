@@ -45,7 +45,7 @@ class FakeFarmRemoteRepository implements FarmRemoteRepository {
   Future<FarmResponseDto> getFarm(String farmId) => throw UnimplementedError();
 
   @override
-  Future<FarmMutationResponseDto> createFarm(FarmCreateRequestDto request) =>
+  Future<void> createFarm(FarmCreateRequestDto request) =>
       throw UnimplementedError();
 
   @override

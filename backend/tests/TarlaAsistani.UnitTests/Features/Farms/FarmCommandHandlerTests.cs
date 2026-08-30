@@ -34,6 +34,27 @@ public class CreateFarmCommandHandlerTests
         // Assert
         farmId.Should().NotBeEmpty();
     }
+
+    [Fact]
+    public async Task Handle_WithoutLocation_ShouldCreateFarm()
+    {
+        var db = new MockDbContextBuilder().Build();
+        var handler = new CreateFarmCommandHandler(db);
+
+        var farmId = await handler.Handle(
+            new CreateFarmCommand(
+                OwnerId: Guid.NewGuid(),
+                Name: "Konumsuz Tarla",
+                Latitude: null,
+                Longitude: null,
+                SizeInHectares: null,
+                IrrigationMethod: null,
+                InitialCropType: CropType.Wheat,
+                InitialPlantedAt: new DateOnly(2026, 3, 1)),
+            CancellationToken.None);
+
+        farmId.Should().NotBeEmpty();
+    }
 }
 
 [Trait("Category", "Farms")]

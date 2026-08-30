@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_read_repository.dart';
+import '../features/fields/data/tarla_repository.dart';
 import '../models/tarla.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
@@ -71,7 +72,11 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                 final result = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const TarlaEklemeEkrani(),
+                    builder: (context) => TarlaEklemeEkrani(
+                      repository: widget._repository is TarlaRepository
+                          ? widget._repository as TarlaRepository
+                          : null,
+                    ),
                   ),
                 );
                 if (result == true) {
@@ -122,7 +127,13 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
         onPressed: () async {
           final result = await Navigator.push<bool>(
             context,
-            MaterialPageRoute(builder: (context) => const TarlaEklemeEkrani()),
+            MaterialPageRoute(
+              builder: (context) => TarlaEklemeEkrani(
+                repository: widget._repository is TarlaRepository
+                    ? widget._repository as TarlaRepository
+                    : null,
+              ),
+            ),
           );
           if (result == true) {
             _yenile();
