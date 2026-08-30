@@ -2,7 +2,11 @@
 
 ## Status
 
-Completed and committed as `fix: persist farms from every mobile route`.
+Completed. Task implementation commit: `5bec455 fix: persist farms from every mobile route`.
+
+The final focused test run completed after the implementation commit. The
+working tree's generated desktop plugin registrants and `progress.md` remain
+uncommitted and are not part of Task 1.
 
 ## Scope Delivered
 
@@ -22,9 +26,9 @@ Completed and committed as `fix: persist farms from every mobile route`.
 ## Verification
 
 - `dart format lib/screens/tarla_gunlugu_ekrani.dart test/screens/tarla_gunlugu_ekrani_test.dart test/screens/tarla_listesi_ekrani_test.dart`
-- `flutter test test/screens/tarla_gunlugu_ekrani_test.dart test/screens/tarla_listesi_ekrani_test.dart` passed: 42 tests, 0 failures.
+- `flutter test test/screens/tarla_gunlugu_ekrani_test.dart test/screens/tarla_listesi_ekrani_test.dart` passed after commit: 42 tests, 0 failures.
 - `git diff --check` passed with no whitespace errors.
-- `flutter analyze` was attempted twice but could not run: Dart's analysis server terminated with `FormatException: Unexpected end of input` while parsing an LSP transport message. This was a tooling failure before diagnostics were produced.
+- `flutter analyze` was attempted twice but could not run. Exact blocker: Dart's analysis server terminated with `FormatException: Unexpected end of input` while parsing an LSP transport message, ending with exit code 255 before diagnostics were produced. This is a tooling failure, not an analyzer finding.
 
 ## Concerns
 
