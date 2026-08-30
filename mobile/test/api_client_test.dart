@@ -22,6 +22,23 @@ void main() {
   // ---------------------------------------------------------------------------
 
   group('token behaviour', () {
+    test('normalizes the API base URL and endpoint with one slash', () async {
+      Uri? capturedUri;
+      final api = ApiClient(
+        httpClient: MockClient((request) async {
+          capturedUri = request.url;
+          return http.Response(jsonEncode({'ok': true}), 200);
+        }),
+        idTokenProvider: () async => 'test-token',
+        forceRefreshTokenProvider: () async => 'test-token',
+      );
+
+      await api.getJson('/farms');
+
+      expect(capturedUri?.path, '/api/v1/farms');
+      api.close();
+    });
+
     test('Firebase ID token is added to Authorization header', () async {
       String? capturedHeader;
       final api = ApiClient(

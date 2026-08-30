@@ -142,7 +142,9 @@ class ApiClient {
     required String token,
     Map<String, dynamic>? body,
   }) async {
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}$endpoint');
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
+    final uri = Uri.parse('$baseUrl/$normalizedEndpoint');
     final request = http.Request(method, uri)
       ..headers.addAll({
         'Accept': 'application/json',
