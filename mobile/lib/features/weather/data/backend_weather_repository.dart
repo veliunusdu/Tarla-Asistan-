@@ -3,6 +3,10 @@ import '../../../services/api_client.dart';
 import '../domain/weather_summary.dart';
 import 'weather_repository.dart';
 
+class WeatherLocationRequiredException implements Exception {
+  const WeatherLocationRequiredException();
+}
+
 /// Backend `/api/v1/farms/{farmId}/weather` endpoint'ini kullanan implementasyon.
 ///
 /// Endpoint: GET /api/v1/farms/{farm_id}/weather
@@ -66,14 +70,20 @@ class BackendWeatherRepository implements WeatherRepository {
   Future<String> _findFirstFarmId() async {
     final farms = await _client.getJson('farms?limit=1&offset=0');
     final items = farms['items'];
-    if (items is! List || items.isEmpty || items.first is! Map) {
-      throw const ApiException('Hava durumu için önce bir tarla ekleyin.');
+    if (items is! List || items.isEmpty) {
+      throw const WeatherLocationRequiredException();
     }
-    final id = (items.first as Map)['id'];
-    if (id is! String || id.isEmpty) {
-      throw const ApiException('Tarla bilgisi geçersiz.');
+    for (final item in items) {
+      if (item is! Map) continue;
+      final id = item['id'];
+      if (id is String &&
+          id.isNotEmpty &&
+          item['latitude'] != null &&
+          item['longitude'] != null) {
+        return id;
+      }
     }
-    return id;
+    throw const WeatherLocationRequiredException();
   }
 
   static String _descriptionFromWeather({

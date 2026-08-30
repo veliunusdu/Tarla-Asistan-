@@ -5,6 +5,10 @@ import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/location/data/geolocator_location_service.dart';
+import '../features/location/data/location_service.dart';
+import '../features/location/domain/tarla_location.dart';
+import '../features/location/presentation/field_location_picker_screen.dart';
 import '../models/tarla.dart';
 
 const List<String> _trAylar = [
@@ -34,11 +38,21 @@ const List<String> _desteklenenUrunler = [
   'Domates',
 ];
 
+typedef FieldLocationPicker =
+    Future<TarlaLocation?> Function(BuildContext, TarlaLocation?);
+
 class TarlaEklemeEkrani extends StatefulWidget {
-  const TarlaEklemeEkrani({super.key, TarlaRepository? repository})
-    : _repository = repository ?? const LocalTarlaRepository();
+  const TarlaEklemeEkrani({
+    super.key,
+    TarlaRepository? repository,
+    LocationService? locationService,
+    this.locationPicker,
+  }) : _repository = repository ?? const LocalTarlaRepository(),
+       _locationService = locationService;
 
   final TarlaRepository _repository;
+  final LocationService? _locationService;
+  final FieldLocationPicker? locationPicker;
 
   @override
   State<TarlaEklemeEkrani> createState() => _TarlaEklemeEkraniState();
@@ -52,6 +66,8 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
   String? _secilenUrun;
   DateTime? _secilenTarih;
   bool _kaydediliyor = false;
+  bool _konumAliniyor = false;
+  TarlaLocation? _selectedLocation;
 
   @override
   void dispose() {
@@ -136,8 +152,8 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
       name: _nameController.text.trim(),
       // TODO(location): Koordinatlar şu an 0.0 — harita/GPS desteği
       // bir sonraki adımda eklenecek.
-      latitude: 0.0,
-      longitude: 0.0,
+      latitude: _selectedLocation?.latitude,
+      longitude: _selectedLocation?.longitude,
       size: boyut,
       cropType: _secilenUrun!,
       plantingDate: _secilenTarih!,
@@ -156,6 +172,41 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
 
   void _snackBar(String mesaj) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mesaj)));
+  }
+
+  Future<void> _konumumuKullan() async {
+    setState(() => _konumAliniyor = true);
+    try {
+      final location =
+          await (widget._locationService ?? GeolocatorLocationService())
+              .getCurrentLocation();
+      if (mounted) setState(() => _selectedLocation = location);
+    } on LocationServiceDisabledException {
+      _snackBar('Konum servislerini açıp tekrar deneyin.');
+    } on LocationPermissionPermanentlyDeniedException {
+      _snackBar('Konum iznini ayarlardan açın veya haritadan seçin.');
+    } on LocationPermissionDeniedException {
+      _snackBar('Konum izni verilmedi. Haritadan konum seçebilirsiniz.');
+    } on LocationUnavailableException {
+      _snackBar('Konum alınamadı. Haritadan konum seçebilirsiniz.');
+    } finally {
+      if (mounted) setState(() => _konumAliniyor = false);
+    }
+  }
+
+  Future<void> _haritadaSec() async {
+    final picker =
+        widget.locationPicker ??
+        (BuildContext context, TarlaLocation? initial) =>
+            Navigator.of(context).push<TarlaLocation>(
+              MaterialPageRoute(
+                builder: (_) =>
+                    FieldLocationPickerScreen(initialLocation: initial),
+              ),
+            );
+    final location = await picker(context, _selectedLocation);
+    if (location != null && mounted)
+      setState(() => _selectedLocation = location);
   }
 
   // ---------------------------------------------------------------------------
@@ -245,32 +296,40 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
 
-                // Konum bilgisi (PRD §7.3 — sonraki adım)
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 18,
-                        color: AppColors.primary,
+                Text(
+                  _selectedLocation == null
+                      ? 'Konum seçilmedi'
+                      : '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  children: [
+                    OutlinedButton(
+                      onPressed: _konumAliniyor || _kaydediliyor
+                          ? null
+                          : _konumumuKullan,
+                      child: Text(
+                        _konumAliniyor
+                            ? 'Konum alınıyor...'
+                            : 'Konumumu kullan',
                       ),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          'Konum seçimi sonraki adımda eklenecek.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: AppColors.primary,
-                            fontSize: 14,
-                          ),
-                        ),
+                    ),
+                    OutlinedButton(
+                      onPressed: _kaydediliyor ? null : _haritadaSec,
+                      child: Text(
+                        _selectedLocation == null
+                            ? 'Haritada seç'
+                            : 'Haritada değiştir',
                       ),
-                    ],
-                  ),
+                    ),
+                    if (_selectedLocation != null)
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _selectedLocation = null),
+                        child: const Text('Konumu kaldır'),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: AppSpacing.xl),
 

@@ -158,8 +158,8 @@ class FarmCreateRequestDto {
   });
 
   final String name;
-  final double latitude;
-  final double longitude;
+  final double? latitude;
+  final double? longitude;
 
   /// Raw CropType enum value (e.g. 'WHEAT').
   final String cropType;

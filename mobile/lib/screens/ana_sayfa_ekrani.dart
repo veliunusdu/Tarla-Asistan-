@@ -7,6 +7,7 @@ import '../features/activities/data/local_faaliyet_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/weather/data/unavailable_weather_repository.dart';
+import '../features/weather/data/backend_weather_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import '../features/weather/domain/weather_summary.dart';
 import '../models/faaliyet.dart';
@@ -144,7 +145,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   Future<void> _tarlaEkle() async {
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const TarlaEklemeEkrani()),
+      MaterialPageRoute(
+        builder: (_) => TarlaEklemeEkrani(repository: widget._tarlaRepo),
+      ),
     );
     if (result == true && mounted) _yenile();
   }
@@ -208,7 +211,11 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
               const SizedBox(height: AppSpacing.lg),
 
               // ── Hava durumu ───────────────────────────────────────────────
-              _HavaDurumuSection(future: _weather, onRetry: _yenileHava),
+              _HavaDurumuSection(
+                future: _weather,
+                onRetry: _yenileHava,
+                onTarlaEkle: _tarlaEkle,
+              ),
               const SizedBox(height: AppSpacing.lg),
 
               // ── Tarla istatistikleri ──────────────────────────────────────
@@ -236,7 +243,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                     () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const TarlaListesiEkrani(),
+                        builder: (_) =>
+                            TarlaListesiEkrani(repository: widget._tarlaRepo),
                       ),
                     ),
                 onTumFaaliyetler: widget.onGunlukSekme,
@@ -295,10 +303,15 @@ class _TarlaSecimSayfasi extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _HavaDurumuSection extends StatelessWidget {
-  const _HavaDurumuSection({required this.future, required this.onRetry});
+  const _HavaDurumuSection({
+    required this.future,
+    required this.onRetry,
+    required this.onTarlaEkle,
+  });
 
   final Future<WeatherSummary> future;
   final VoidCallback onRetry;
+  final VoidCallback onTarlaEkle;
 
   @override
   Widget build(BuildContext context) {
@@ -316,6 +329,24 @@ class _HavaDurumuSection extends StatelessWidget {
               return const AppLoadingView(message: 'Hava durumu yükleniyor…');
             }
             if (snapshot.hasError) {
+              if (snapshot.error is WeatherLocationRequiredException) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Hava durumu için tarla konumu ekleyin'),
+                        const SizedBox(height: AppSpacing.sm),
+                        OutlinedButton(
+                          onPressed: onTarlaEkle,
+                          child: const Text('Tarla Ekle'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
               return AppErrorView(
                 title: 'Hava durumu alınamadı',
                 description:
