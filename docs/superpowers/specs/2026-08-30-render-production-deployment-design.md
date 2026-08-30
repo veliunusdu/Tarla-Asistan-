@@ -43,8 +43,9 @@ secret-file features:
 
 The API configuration uses the secret-file path above. Production sets
 `ASPNETCORE_ENVIRONMENT=Production`, `FIREBASE_AUTH_ENABLED=true`,
-`AI_CHAT_PROVIDER=deepseek`, `MEDIA_STORAGE_PROVIDER=r2`, and
-`PUSH_PROVIDER=firebase`.
+`AI_CHAT_PROVIDER=deepseek`, and `MEDIA_STORAGE_PROVIDER=r2`. Push delivery is
+wired directly to Firebase Admin in the backend, so it is enabled only when the
+Firebase service-account file initializes successfully.
 
 The web service gets only the non-secret public API URL at build time. Its URL
 is registered as `WEB_ORIGIN` for API CORS. A custom domain can replace the
