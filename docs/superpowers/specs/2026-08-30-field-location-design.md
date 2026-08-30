@@ -1,8 +1,8 @@
-# Tarla Konumu ve Google Maps Tasarımı
+# Tarla Konumu ve OpenStreetMap Tasarımı
 
 ## Amaç
 
-Kullanıcı tarla eklerken konumunu tek seferlik izinle GPS'ten alabilmeli. Konum iznini reddederse veya GPS kullanmak istemezse Google Maps üzerinde nokta seçebilmeli. Koordinat backend'de tarlaya kaydedilmeli; hava durumu bu koordinattan alınmalı.
+Kullanıcı tarla eklerken konumunu tek seferlik izinle GPS'ten alabilmeli. Konum iznini reddederse veya GPS kullanmak istemezse OpenStreetMap üzerinde nokta seçebilmeli. Koordinat backend'de tarlaya kaydedilmeli; hava durumu bu koordinattan alınmalı.
 
 Arka planda konum takibi yapılmayacak. Konum yalnızca kullanıcı "Konumumu kullan" seçeneğine bastığında alınacak.
 
@@ -15,7 +15,7 @@ Arka planda konum takibi yapılmayacak. Konum yalnızca kullanıcı "Konumumu ku
    - Konum alınamadı: neden ve güvenli bir tekrar deneme seçeneği gösterilir.
 3. "Konumumu kullan" yalnızca uygulama açıkken konum izni ister ve mevcut konumu alır.
 4. İzin reddedilirse kullanıcıya haritada seçim sunulur; tarla konumsuz da kaydedilebilir.
-5. "Haritada seç" Google Maps ekranını açar. Kullanıcı haritaya dokunur, işaretçiyi görür ve "Bu konumu kullan" ile onaylar.
+5. "Haritada seç" OpenStreetMap ekranını açar. Kullanıcı haritaya dokunur, işaretçiyi görür ve "Bu konumu kullan" ile onaylar.
 6. Tarla backend'e koordinatla birlikte kaydedilir. Konum yoksa tarla yine kaydedilir, ancak ana sayfadaki hava kartı "Hava durumu için tarla konumu ekleyin" durumunu gösterir.
 
 ## Mimari
@@ -23,7 +23,7 @@ Arka planda konum takibi yapılmayacak. Konum yalnızca kullanıcı "Konumumu ku
 ### Mobil
 
 - `geolocator` konum servisi için eklenecek.
-- `google_maps_flutter` yalnızca tarla konumu seçme ekranında kullanılacak.
+- `flutter_map` yalnızca tarla konumu seçme ekranında kullanılacak.
 - `LocationService` izin durumunu, GPS'in açık/kapalı oluşunu ve mevcut koordinatı tek bir arayüzden sağlayacak.
 - `FieldLocationPickerScreen` harita, işaretçi ve onay işlemini kapsayacak.
 - `TarlaEklemeEkrani` seçilen koordinatı form durumunda tutacak; koordinat alanlarını 0.0 ile doldurmayacak.
@@ -31,9 +31,9 @@ Arka planda konum takibi yapılmayacak. Konum yalnızca kullanıcı "Konumumu ku
 
 ### Platform Yapılandırması
 
-- Android: hassas ve yaklaşık konum izinleri eklenecek; Google Maps Android API anahtarı Android manifestte metadata olarak tanımlanacak.
-- iOS: kullanım sırasında konum açıklaması eklenecek; Google Maps iOS API anahtarı uygulama başlangıcında yapılandırılacak.
-- API anahtarları kaynak koduna ya da Git'e yazılmayacak. Yerel geliştirme ve CI/CD için gizli değişkenler kullanılacak.
+- Android: hassas ve yaklaşık konum izinleri eklenecek.
+- iOS: kullanım sırasında konum açıklaması eklenecek.
+- Harita için API anahtarı veya faturalandırma hesabı gerekmeyecek.
 
 ### Backend
 
@@ -45,7 +45,8 @@ Hava endpointi, koordinatı olan ilk aktif tarlanın hava tahminini kullanmaya d
 
 - Konum izni açıklaması yalnızca tarla konumunu kaydetmek ve yerel hava tahmini sağlamak amacıyla yazılacak.
 - Arka plan konumu, konum geçmişi ve sürekli takip olmayacak.
-- Google Maps API anahtarları paket/uygulama kimliği ile sınırlandırılacak; Android ve iOS için ayrı anahtar kullanılacak.
+- Harita üzerinde görünür `© OpenStreetMap contributors` atfı yer alacak ve uygulama tanımlı User-Agent gönderilecek.
+- Kamuya açık OpenStreetMap tile sunucusu yalnızca düşük trafikli pilot kullanım için kullanılacak; büyüyen kullanımda tile sağlayıcısı değiştirilebilir yapılandırma üzerinden seçilecek.
 - Konum verisi sadece kullanıcının kendi tarla kaydına yazılacak; mevcut JWT tabanlı sahiplik kontrolü korunacak.
 
 ## Hata Davranışları
@@ -67,4 +68,4 @@ Hava endpointi, koordinatı olan ilk aktif tarlanın hava tahminini kullanmaya d
 
 ## Gerekli Kullanıcı İşlemleri
 
-Kod uygulamasından önce veya sırasında Google Cloud Console'da Google Maps Platform etkinleştirilecek. Android için Maps SDK for Android, iOS için Maps SDK for iOS açılacak; faturalandırma hesabı bağlanacak ve iki ayrı, kısıtlanmış API anahtarı oluşturulacak.
+Kullanıcının harita sağlayıcısı için hesap, API anahtarı veya faturalandırma hesabı oluşturması gerekmez. Yayına çıkarken uygulamanın destek e-posta adresi ve OpenStreetMap atfı mobil mağaza sayfalarında da görünür olmalıdır.
