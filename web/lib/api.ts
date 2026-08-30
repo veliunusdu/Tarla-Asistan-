@@ -53,6 +53,13 @@ export function verifyOtp(phoneNumber: string, otpCode: string) {
   });
 }
 
+export function loginWithFirebase(idToken: string) {
+  return request<AuthSession>("/auth/firebase", {
+    method: "POST",
+    body: JSON.stringify({ id_token: idToken }),
+  });
+}
+
 export function fetchMe(token: string) {
   return request<AuthSession["user"]>("/auth/me", {
     method: "GET",

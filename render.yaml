@@ -60,3 +60,15 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_ORIGIN
         value: https://tarla-asistani-api.onrender.com
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        value: AIzaSyAToJG7BcMnxmO8TOdrmgcXiuxnvS0zx3Q
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        value: demo2-c4265.firebaseapp.com
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        value: demo2-c4265
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        value: demo2-c4265.firebasestorage.app
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        value: "167065176851"
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        value: 1:167065176851:web:411672d2ad0d552a2ca8e6
