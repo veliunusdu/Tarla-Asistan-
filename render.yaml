@@ -3,7 +3,7 @@ services:
     name: tarla-asistani-api
     runtime: docker
     region: singapore
-    plan: 0.5c-512mb
+    plan: free
     branch: main
     autoDeploy: true
     dockerContext: ./backend
@@ -55,7 +55,7 @@ services:
     name: tarla-asistani-web
     runtime: docker
     region: singapore
-    plan: 0.5c-512mb
+    plan: free
     branch: main
     autoDeploy: true
     dockerContext: ./web
