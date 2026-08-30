@@ -60,9 +60,10 @@ public static class DependencyInjection
         // 4. HTTP Integrations (Weather & AI)
         services.AddHttpClient<IWeatherProvider, OpenMeteoWeatherProvider>();
 
-        var aiProvider = configuration["AI:Provider"]
-            ?? configuration["AI_CHAT_PROVIDER"]
-            ?? Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER")
+        var aiProvider = FirstConfiguredValue(
+            configuration["AI_CHAT_PROVIDER"],
+            Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER"),
+            configuration["AI:Provider"])
             ?? "local";
 
         if (aiProvider.Equals("gemini", StringComparison.OrdinalIgnoreCase))
@@ -83,6 +84,9 @@ public static class DependencyInjection
 
         return services;
     }
+
+    private static string? FirstConfiguredValue(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     private static string? NormalizeConnectionString(string? connectionString)
     {
