@@ -31,9 +31,18 @@ public class DeepSeekAIChatProvider : IAIChatProvider
     public DeepSeekAIChatProvider(HttpClient httpClient, IConfiguration config)
     {
         _httpClient = httpClient;
-        _apiKey = config.GetValue<string>("AI:DeepSeekApiKey") ?? string.Empty;
-        _model = config.GetValue<string>("AI:DeepSeekModel") ?? "deepseek-chat";
-        _baseUrl = (config.GetValue<string>("AI:DeepSeekBaseUrl") ?? "https://api.deepseek.com").TrimEnd('/');
+        _apiKey = config.GetValue<string>("AI:DeepSeekApiKey")
+            ?? config.GetValue<string>("DEEPSEEK_API_KEY")
+            ?? Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY")
+            ?? string.Empty;
+        _model = config.GetValue<string>("AI:DeepSeekModel")
+            ?? config.GetValue<string>("DEEPSEEK_MODEL")
+            ?? Environment.GetEnvironmentVariable("DEEPSEEK_MODEL")
+            ?? "deepseek-chat";
+        _baseUrl = (config.GetValue<string>("AI:DeepSeekBaseUrl")
+            ?? config.GetValue<string>("DEEPSEEK_BASE_URL")
+            ?? Environment.GetEnvironmentVariable("DEEPSEEK_BASE_URL")
+            ?? "https://api.deepseek.com").TrimEnd('/');
     }
 
     public async Task<AIChatResponseDto> GenerateAsync(AIChatRequestDto request, CancellationToken cancellationToken = default)
