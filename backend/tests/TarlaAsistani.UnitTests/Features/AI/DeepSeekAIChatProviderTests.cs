@@ -35,6 +35,7 @@ public class DeepSeekAIChatProviderTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["DEEPSEEK_API_KEY"] = "render-deepseek-key",
+                ["AI:DeepSeekApiKey"] = "",
                 ["DEEPSEEK_MODEL"] = "deepseek-chat",
                 ["DEEPSEEK_BASE_URL"] = "https://api.deepseek.com"
             })
