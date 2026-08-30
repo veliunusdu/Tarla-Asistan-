@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/fields/data/local_tarla_repository.dart';
-import 'package:mobile/features/fields/data/tarla_read_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/models/tarla.dart';
 import 'package:mobile/screens/tarla_listesi_ekrani.dart';
@@ -233,20 +232,21 @@ class _CountingFakeRepository implements TarlaRepository {
 }
 
 // ---------------------------------------------------------------------------
-// TarlaReadRepository fake — sadece okuma arayüzünü test etmek için
+// Backend-capable repository fakes
 // ---------------------------------------------------------------------------
 
-/// Implements [TarlaReadRepository] directly (no write path), suitable for
-/// testing [TarlaListesiEkrani] with a backend-style adapter.
-class FakeReadRepository implements TarlaReadRepository {
+class FakeReadRepository implements TarlaRepository {
   FakeReadRepository(this._future);
   final Future<List<Tarla>> _future;
 
   @override
   Future<List<Tarla>> getTarlalar() => _future;
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
 }
 
-class _CountingReadRepository implements TarlaReadRepository {
+class _CountingReadRepository implements TarlaRepository {
   _CountingReadRepository({required this.onCall});
 
   final Completer<List<Tarla>> Function() onCall;
@@ -257,13 +257,16 @@ class _CountingReadRepository implements TarlaReadRepository {
     callCount++;
     return onCall().future;
   }
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
 }
 
 // ---------------------------------------------------------------------------
-// Helpers for read-repository tests
+// Helpers for backend-capable repository tests
 // ---------------------------------------------------------------------------
 
-Widget _buildReadApp(TarlaReadRepository repository) => MaterialApp(
+Widget _buildReadApp(TarlaRepository repository) => MaterialApp(
   theme: AppTheme.light,
   home: TarlaListesiEkrani(repository: repository),
 );
@@ -271,11 +274,11 @@ Widget _buildReadApp(TarlaReadRepository repository) => MaterialApp(
 Tarla _backendTarla(String id, String name) => Tarla(id: id, name: name);
 
 // ---------------------------------------------------------------------------
-// Tests 11–16: TarlaListesiEkrani with backend read adapter DI
+// Tests 11–16: TarlaListesiEkrani with backend-capable repository DI
 // ---------------------------------------------------------------------------
 
 void _backendAdapterTests() {
-  group('TarlaListesiEkrani — backend read adapter DI', () {
+  group('TarlaListesiEkrani — backend-capable repository DI', () {
     // Test 11
     testWidgets(
       '11. backend read adapter inject edilince tarla listesi gösterir',
@@ -352,9 +355,9 @@ void _backendAdapterTests() {
         const screen = TarlaListesiEkrani();
         expect(screen, isA<TarlaListesiEkrani>());
 
-        // Additionally verify LocalTarlaRepository implements TarlaReadRepository,
-        // confirming it is a valid fallback without breaking the interface.
-        expect(const LocalTarlaRepository(), isA<TarlaReadRepository>());
+        // The fallback must remain write-capable because this screen owns
+        // field-creation routes as well as field reads.
+        expect(const LocalTarlaRepository(), isA<TarlaRepository>());
       },
     );
 

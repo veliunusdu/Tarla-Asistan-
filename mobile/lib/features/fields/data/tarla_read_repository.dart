@@ -1,6 +1,6 @@
 import '../../../models/tarla.dart';
 
-/// Minimal read-only farm interface used by [TarlaListesiEkrani].
+/// Minimal read-only farm interface for read-only farm consumers.
 ///
 /// [TarlaRepository] extends this interface, so [LocalTarlaRepository]
 /// satisfies it without any changes.  [BackendTarlaReadRepository] provides

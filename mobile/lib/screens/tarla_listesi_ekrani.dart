@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../features/fields/data/local_tarla_repository.dart';
-import '../features/fields/data/tarla_read_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../models/tarla.dart';
 import '../shared/widgets/app_empty_view.dart';
@@ -13,11 +12,11 @@ import 'tarla_ekleme_ekrani.dart';
 class TarlaListesiEkrani extends StatefulWidget {
   const TarlaListesiEkrani({
     super.key,
-    TarlaReadRepository? repository,
+    TarlaRepository? repository,
     this.onDataChanged,
   }) : _repository = repository ?? const LocalTarlaRepository();
 
-  final TarlaReadRepository _repository;
+  final TarlaRepository _repository;
 
   /// Tarla başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
@@ -72,11 +71,8 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                 final result = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TarlaEklemeEkrani(
-                      repository: widget._repository is TarlaRepository
-                          ? widget._repository as TarlaRepository
-                          : null,
-                    ),
+                    builder: (context) =>
+                        TarlaEklemeEkrani(repository: widget._repository),
                   ),
                 );
                 if (result == true) {
@@ -128,11 +124,8 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
           final result = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
-              builder: (context) => TarlaEklemeEkrani(
-                repository: widget._repository is TarlaRepository
-                    ? widget._repository as TarlaRepository
-                    : null,
-              ),
+              builder: (context) =>
+                  TarlaEklemeEkrani(repository: widget._repository),
             ),
           );
           if (result == true) {
