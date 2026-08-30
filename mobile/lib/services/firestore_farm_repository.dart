@@ -26,7 +26,7 @@ class FirestoreWriteFailure {
 }
 
 abstract final class FirestoreFarmContract {
-  static const databaseId = 'tarla-asistani';
+  static const databaseId = '(default)';
   static const farmFields = {
     'ownerId',
     'name',

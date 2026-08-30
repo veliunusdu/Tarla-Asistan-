@@ -40,6 +40,22 @@ class AuthService {
       'phone_number': phoneNumber,
       'otp_code': otpCode,
     });
+    await _saveSession(response);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('phone_number', phoneNumber);
+  }
+
+  Future<String> authenticateWithFirebase(String idToken) async {
+    final response = await _post('/auth/firebase', {'id_token': idToken});
+    return _saveSession(response);
+  }
+
+  Future<String?> currentAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('access_token');
+  }
+
+  Future<String> _saveSession(Map<String, dynamic> response) async {
     final accessToken = response['access_token']?.toString();
     final refreshToken = response['refresh_token']?.toString();
     if (accessToken == null || refreshToken == null) {
@@ -48,7 +64,7 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
-    await prefs.setString('phone_number', phoneNumber);
+    return accessToken;
   }
 
   Future<void> logout() async {

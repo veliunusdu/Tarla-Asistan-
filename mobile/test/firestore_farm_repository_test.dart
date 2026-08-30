@@ -95,7 +95,7 @@ void main() {
   });
 
   test('declares the named database and no client deletion operations', () {
-    expect(FirestoreFarmContract.databaseId, 'tarla-asistani');
+    expect(FirestoreFarmContract.databaseId, '(default)');
     expect(FirestoreFarmContract.farmFields, contains('ownerId'));
     expect(
       FirestoreFarmContract.activityFields,
@@ -118,7 +118,7 @@ void main() {
       final store = FirebaseFirestoreFarmStore(instanceFactory: factory);
       final documents = await store.watchFarms('uid-1').first;
 
-      expect(factory.databaseId, 'tarla-asistani');
+      expect(factory.databaseId, '(default)');
       expect(documents, hasLength(1));
       expect(documents.single.id, 'owned-farm');
       expect(documents.single.data, _farmData());

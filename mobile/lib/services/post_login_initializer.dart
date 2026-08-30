@@ -15,24 +15,38 @@ class PostLoginInitializer {
   String? _inFlightUid;
   Future<void>? _inFlight;
 
-  Future<void> initialize({required String uid, required String? phoneNumber}) {
+  Future<void> initialize({
+    required String uid,
+    required String? phoneNumber,
+    String? email,
+  }) {
     final inFlight = _inFlight;
     if (inFlight != null && _inFlightUid == uid) return inFlight;
 
     late final Future<void> start;
-    start = _run(uid: uid, phoneNumber: phoneNumber).whenComplete(() {
-      if (identical(_inFlight, start)) {
-        _inFlight = null;
-        _inFlightUid = null;
-      }
-    });
+    start = _run(uid: uid, phoneNumber: phoneNumber, email: email).whenComplete(
+      () {
+        if (identical(_inFlight, start)) {
+          _inFlight = null;
+          _inFlightUid = null;
+        }
+      },
+    );
     _inFlightUid = uid;
     _inFlight = start;
     return start;
   }
 
-  Future<void> _run({required String uid, required String? phoneNumber}) async {
-    await _profileProvisioner.ensureProfile(uid: uid, phoneNumber: phoneNumber);
+  Future<void> _run({
+    required String uid,
+    required String? phoneNumber,
+    String? email,
+  }) async {
+    await _profileProvisioner.ensureProfile(
+      uid: uid,
+      phoneNumber: phoneNumber,
+      email: email,
+    );
     await _initializeSync();
     await _initializeNotifications();
   }

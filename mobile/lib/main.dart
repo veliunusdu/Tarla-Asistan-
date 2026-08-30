@@ -10,6 +10,7 @@ import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
 import 'screens/ana_ekran.dart';
 import 'services/api_client.dart';
+import 'services/auth_service.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/firestore_user_profile_service.dart';
 import 'services/notification_service.dart';
@@ -55,6 +56,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();
   late final ApiClient _apiClient;
   late final FirebaseAuthService _authService;
+  late final AuthService _backendAuthService;
   late final SyncService _syncService;
   late final NotificationService _notificationService;
   late final PostLoginInitializer _postLoginInitializer;
@@ -66,8 +68,12 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   void initState() {
     super.initState();
     _isFirstRun = widget.isFirstRun;
-    _apiClient = ApiClient();
     _authService = FirebaseAuthService();
+    _backendAuthService = AuthService();
+    _apiClient = ApiClient(
+      idTokenProvider: _backendAuthService.currentAccessToken,
+      forceRefreshTokenProvider: _refreshBackendSession,
+    );
     _syncService = SyncService(_apiClient);
     _notificationService = NotificationService(
       _apiClient,
@@ -88,12 +94,32 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   Future<void> _initializationFor(User user) {
     if (_postLoginUid != user.uid || _postLoginFuture == null) {
       _postLoginUid = user.uid;
-      _postLoginFuture = _postLoginInitializer.initialize(
-        uid: user.uid,
-        phoneNumber: user.phoneNumber,
-      );
+      _postLoginFuture = _initializeAuthenticatedUser(user);
     }
     return _postLoginFuture!;
+  }
+
+  Future<void> _initializeAuthenticatedUser(User user) async {
+    final idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw StateError(
+        'Firebase oturumu doğrulanamadı. Lütfen tekrar giriş yapın.',
+      );
+    }
+    await _backendAuthService.authenticateWithFirebase(idToken);
+    await _postLoginInitializer.initialize(
+      uid: user.uid,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+    );
+  }
+
+  Future<String?> _refreshBackendSession() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    final idToken = await user.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) return null;
+    return _backendAuthService.authenticateWithFirebase(idToken);
   }
 
   Future<void> _finishOnboarding() async {
@@ -107,6 +133,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     _notificationService.dispose();
     _syncService.dispose();
     _apiClient.close();
+    _backendAuthService.close();
     super.dispose();
   }
 

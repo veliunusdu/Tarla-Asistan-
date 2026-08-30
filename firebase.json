@@ -2,14 +2,13 @@
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json",
-    "edition": "enterprise",
-    "database": "tarla-asistani",
-    "location": "europe-west3"
+    "database": "(default)",
+    "location": "nam5"
   },
   "emulators": {
     "firestore": {
       "port": 8081,
-      "edition": "enterprise"
+      "host": "127.0.0.1"
     },
     "auth": {
       "port": 9099

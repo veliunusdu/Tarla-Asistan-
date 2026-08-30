@@ -1,7 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../services/firebase_auth_service.dart';
+
+enum _AuthMode { signIn, register }
 
 class GirisEkrani extends StatefulWidget {
   const GirisEkrani({super.key, required this.authService});
@@ -14,16 +16,18 @@ class GirisEkrani extends StatefulWidget {
 
 class _GirisEkraniState extends State<GirisEkrani> {
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController(text: '+90');
-  final _otpController = TextEditingController();
-  bool _otpSent = false;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  _AuthMode _mode = _AuthMode.signIn;
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _phoneController.dispose();
-    _otpController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -33,41 +37,54 @@ class _GirisEkraniState extends State<GirisEkrani> {
       _loading = true;
       _error = null;
     });
+
     try {
-      final phone = _normalizedPhone;
-      if (!_otpSent) {
-        await widget.authService.sendCode(phone);
-        if (!mounted) return;
-        setState(() {
-          _otpSent = true;
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Kod gönderildi.')));
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      if (_mode == _AuthMode.register) {
+        await widget.authService.register(email: email, password: password);
       } else {
-        await widget.authService.confirmCode(
-          widget.authService.verificationId ?? '',
-          _otpController.text.trim(),
-        );
+        await widget.authService.signIn(email: email, password: password);
       }
-    } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+    } on FirebaseAuthException catch (error) {
+      if (mounted) setState(() => _error = _firebaseErrorMessage(error.code));
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Giriş işlemi tamamlanamadı.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  String get _normalizedPhone {
-    final raw = _phoneController.text.trim();
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (raw.startsWith('+')) return '+$digits';
-    if (digits.length == 10) return '+90$digits';
-    if (digits.startsWith('0')) return '+9$digits';
-    return '+$digits';
+  String _firebaseErrorMessage(String code) {
+    switch (code) {
+      case 'invalid-credential':
+      case 'user-not-found':
+      case 'wrong-password':
+        return 'E-posta veya şifre hatalı.';
+      case 'email-already-in-use':
+        return 'Bu e-posta adresi zaten kayıtlı.';
+      case 'weak-password':
+        return 'Şifre en az 6 karakter olmalı.';
+      case 'invalid-email':
+        return 'Geçerli bir e-posta adresi girin.';
+      case 'too-many-requests':
+        return 'Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.';
+      default:
+        return 'Kimlik doğrulama işlemi tamamlanamadı.';
+    }
+  }
+
+  void _setMode(_AuthMode mode) {
+    setState(() {
+      _mode = mode;
+      _error = null;
+      _confirmPasswordController.clear();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isRegister = _mode == _AuthMode.register;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -91,45 +108,81 @@ class _GirisEkraniState extends State<GirisEkrani> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _otpSent
-                            ? 'Telefonunuza gelen 6 haneli kodu girin.'
-                            : 'Telefon numaranızla güvenli giriş yapın.',
+                        isRegister
+                            ? 'Hesabını oluştur ve tarlanı yönetmeye başla.'
+                            : 'Hesabınla güvenli şekilde giriş yap.',
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 32),
-                      TextFormField(
-                        controller: _phoneController,
-                        enabled: !_otpSent && !_loading,
-                        keyboardType: TextInputType.phone,
-                        autofillHints: const [AutofillHints.telephoneNumber],
-                        decoration: const InputDecoration(
-                          labelText: 'Telefon numarası',
-                          hintText: '+905551234567',
-                          prefixIcon: Icon(Icons.phone_outlined),
-                        ),
-                        validator: (_) =>
-                            RegExp(r'^\+90\d{10}$').hasMatch(_normalizedPhone)
+                      SegmentedButton<_AuthMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: _AuthMode.signIn,
+                            label: Text('Giriş yap'),
+                            icon: Icon(Icons.login),
+                          ),
+                          ButtonSegment(
+                            value: _AuthMode.register,
+                            label: Text('Kayıt ol'),
+                            icon: Icon(Icons.person_add_outlined),
+                          ),
+                        ],
+                        selected: {_mode},
+                        onSelectionChanged: _loading
                             ? null
-                            : 'Numarayı +905551234567 biçiminde girin.',
+                            : (selection) => _setMode(selection.first),
                       ),
-                      if (_otpSent) ...[
+                      const SizedBox(height: 24),
+                      TextFormField(
+                        controller: _emailController,
+                        enabled: !_loading,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: const InputDecoration(
+                          labelText: 'E-posta adresi',
+                          hintText: 'ornek@email.com',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        validator: (value) =>
+                            RegExp(
+                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                            ).hasMatch((value ?? '').trim())
+                            ? null
+                            : 'Geçerli bir e-posta adresi girin.',
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _passwordController,
+                        enabled: !_loading,
+                        obscureText: true,
+                        autofillHints: [
+                          isRegister
+                              ? AutofillHints.newPassword
+                              : AutofillHints.password,
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'Şifre',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (value) => (value ?? '').length >= 6
+                            ? null
+                            : 'Şifre en az 6 karakter olmalı.',
+                      ),
+                      if (isRegister) ...[
                         const SizedBox(height: 16),
                         TextFormField(
-                          controller: _otpController,
+                          controller: _confirmPasswordController,
                           enabled: !_loading,
-                          keyboardType: TextInputType.number,
-                          autofillHints: const [AutofillHints.oneTimeCode],
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(6),
-                          ],
+                          obscureText: true,
+                          autofillHints: const [AutofillHints.newPassword],
                           decoration: const InputDecoration(
-                            labelText: 'Doğrulama kodu',
-                            prefixIcon: Icon(Icons.password_outlined),
+                            labelText: 'Şifre tekrarı',
+                            prefixIcon: Icon(Icons.lock_outline),
                           ),
-                          validator: (value) => (value ?? '').length == 6
+                          validator: (value) =>
+                              value == _passwordController.text
                               ? null
-                              : '6 haneli doğrulama kodunu girin.',
+                              : 'Şifreler aynı değil.',
                         ),
                       ],
                       if (_error != null) ...[
@@ -154,20 +207,9 @@ class _GirisEkraniState extends State<GirisEkrani> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : Icon(_otpSent ? Icons.login : Icons.sms_outlined),
-                        label: Text(_otpSent ? 'Giriş yap' : 'Kod gönder'),
+                            : Icon(isRegister ? Icons.person_add : Icons.login),
+                        label: Text(isRegister ? 'Hesap oluştur' : 'Giriş yap'),
                       ),
-                      if (_otpSent)
-                        TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () => setState(() {
-                                  _otpSent = false;
-                                  _otpController.clear();
-                                  _error = null;
-                                }),
-                          child: const Text('Telefon numarasını değiştir'),
-                        ),
                     ],
                   ),
                 ),

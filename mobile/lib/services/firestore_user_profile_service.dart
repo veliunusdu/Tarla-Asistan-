@@ -6,6 +6,7 @@ abstract interface class UserProfileProvisioner {
   Future<void> ensureProfile({
     required String uid,
     required String? phoneNumber,
+    String? email,
   });
 }
 
@@ -14,9 +15,10 @@ abstract class FirestoreUserProfileStore {
 }
 
 abstract final class FirestoreUserProfileContract {
-  static const databaseId = 'tarla-asistani';
+  static const databaseId = '(default)';
   static const profileFields = {
     'phoneNumber',
+    'email',
     'role',
     'notificationsEnabled',
     'createdAt',
@@ -37,14 +39,20 @@ class FirestoreUserProfileService implements UserProfileProvisioner {
   Future<void> ensureProfile({
     required String uid,
     required String? phoneNumber,
+    String? email,
   }) async {
-    if (phoneNumber == null ||
-        !RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(phoneNumber)) {
+    final hasPhone =
+        phoneNumber != null &&
+        RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(phoneNumber);
+    final hasEmail =
+        email != null && RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+    if (!hasPhone && !hasEmail) {
       throw const UserProfileInitializationException();
     }
     try {
       await _profileStore.createIfAbsent('users/$uid', {
         'phoneNumber': phoneNumber,
+        'email': email,
         'role': 'FARMER',
         'notificationsEnabled': true,
         'createdAt': const FirestoreServerTimestamp(),

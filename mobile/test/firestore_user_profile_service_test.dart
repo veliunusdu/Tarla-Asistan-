@@ -19,11 +19,31 @@ void main() {
       unorderedEquals(FirestoreUserProfileContract.profileFields),
     );
     expect(store.data['phoneNumber'], '+905551112233');
+    expect(store.data['email'], isNull);
     expect(store.data['role'], 'FARMER');
     expect(store.data['notificationsEnabled'], isTrue);
     expect(store.data['createdAt'], isA<FirestoreServerTimestamp>());
     expect(store.data['updatedAt'], isA<FirestoreServerTimestamp>());
   });
+
+  test(
+    'provisions an email-authenticated farmer without a phone number',
+    () async {
+      final store = _RecordingUserProfileStore();
+      final service = FirestoreUserProfileService(store: store);
+
+      await service.ensureProfile(
+        uid: 'uid-email',
+        phoneNumber: null,
+        email: 'farmer@example.com',
+      );
+
+      expect(store.path, 'users/uid-email');
+      expect(store.data['phoneNumber'], isNull);
+      expect(store.data['email'], 'farmer@example.com');
+      expect(store.data['role'], 'FARMER');
+    },
+  );
 
   test(
     'production adapter selects the named database and preserves an existing profile',
@@ -44,7 +64,7 @@ void main() {
 
       await service.ensureProfile(uid: 'uid-1', phoneNumber: '+905559999999');
 
-      expect(factory.databaseId, 'tarla-asistani');
+      expect(factory.databaseId, '(default)');
       expect((await firestore.doc('users/uid-1').get()).data(), existing);
     },
   );

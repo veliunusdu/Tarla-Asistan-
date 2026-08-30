@@ -26,8 +26,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Telefon numarası'), findsOneWidget);
-    expect(find.text('Kod gönder'), findsOneWidget);
+    expect(find.text('E-posta adresi'), findsOneWidget);
+    expect(find.text('Giriş yap'), findsWidgets);
     expect(
       tester.getSize(find.byType(FilledButton)).height,
       greaterThanOrEqualTo(48),

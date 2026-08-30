@@ -49,6 +49,7 @@ class _FakeProfileProvisioner implements UserProfileProvisioner {
   Future<void> ensureProfile({
     required String uid,
     required String? phoneNumber,
+    String? email,
   }) async {
     calls += 1;
     await callback();

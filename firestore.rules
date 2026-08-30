@@ -1,11 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   // ===============================================================
-  // Assumed data model — Firestore Enterprise Native database
-  // `tarla-asistani` in `europe-west3`
+  // Assumed data model -- Firestore Standard database `(default)` in `nam5`
   //
   // users/{uid} (private, owner only)
-  //   phoneNumber: E.164 string (required; must equal auth token claim)
+  //   phoneNumber: E.164 string or null; email: verified Firebase email or null.
+  //   Exactly one identity must match the Firebase authentication token.
   //   role: "FARMER" (required, immutable)
   //   notificationsEnabled: bool (required)
   //   createdAt, updatedAt: server timestamps (required)
@@ -54,12 +54,30 @@ service cloud.firestore {
       return value is string && value.matches('^\\+[1-9][0-9]{7,14}$');
     }
 
+    function isValidEmail(value) {
+      return value is string && value.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$');
+    }
+
     function isValidUser(data) {
-      return hasExactKeys(data, [
-          'phoneNumber', 'role', 'notificationsEnabled', 'createdAt', 'updatedAt'
-        ]) &&
-        isValidPhoneNumber(data.phoneNumber) &&
-        data.phoneNumber == request.auth.token.phone_number &&
+      return (
+          // Existing phone-auth profiles remain valid while users upgrade.
+          (hasExactKeys(data, [
+              'phoneNumber', 'role', 'notificationsEnabled', 'createdAt', 'updatedAt'
+            ]) &&
+            isValidPhoneNumber(data.phoneNumber) &&
+            data.phoneNumber == request.auth.token.phone_number) ||
+          (hasExactKeys(data, [
+              'phoneNumber', 'email', 'role', 'notificationsEnabled', 'createdAt', 'updatedAt'
+            ]) &&
+        (
+          (isValidPhoneNumber(data.phoneNumber) &&
+            data.phoneNumber == request.auth.token.phone_number &&
+            data.email == null) ||
+          (isValidEmail(data.email) &&
+            data.email == request.auth.token.email &&
+            data.phoneNumber == null)
+        ))
+        ) &&
         data.role == 'FARMER' &&
         data.notificationsEnabled is bool &&
         data.createdAt is timestamp &&
@@ -68,7 +86,7 @@ service cloud.firestore {
 
     function userImmutableFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-        'phoneNumber', 'role', 'createdAt'
+        'phoneNumber', 'email', 'role', 'createdAt'
       ]);
     }
 
