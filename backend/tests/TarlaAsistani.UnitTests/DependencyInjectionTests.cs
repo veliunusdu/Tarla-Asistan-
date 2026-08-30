@@ -29,4 +29,27 @@ public class DependencyInjectionTests
         Assert.Contains("Host=db.example.com", connectionString);
         Assert.Contains("Database=tarla", connectionString);
     }
+
+    [Fact]
+    public void AddInfrastructure_PrefersDatabaseUrlOverLocalDefaultConnection()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Port=5432;Database=local;Username=postgres;Password=postgres",
+                ["DATABASE_URL"] = "postgresql://tarla:secret@cloud.example.com:5432/production"
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        services.AddInfrastructure(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var connectionString = db.Database.GetConnectionString();
+        Assert.Contains("Host=cloud.example.com", connectionString);
+        Assert.Contains("Database=production", connectionString);
+    }
 }

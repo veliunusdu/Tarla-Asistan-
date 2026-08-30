@@ -19,9 +19,10 @@ public static class DependencyInjection
     {
         // 1. PostgreSQL + PostGIS Persistence
         var connectionString = NormalizeConnectionString(
-            configuration.GetConnectionString("DefaultConnection")
-            ?? configuration["DATABASE_URL"]
-            ?? Environment.GetEnvironmentVariable("DATABASE_URL"));
+            configuration["DATABASE_URL"]
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL")
+            ?? configuration.GetConnectionString("DefaultConnection")
+        );
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {
