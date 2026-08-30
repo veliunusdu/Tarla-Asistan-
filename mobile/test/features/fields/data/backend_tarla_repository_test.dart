@@ -74,9 +74,7 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   );
 
   @override
-  Future<void> createFarm(
-    FarmCreateRequestDto request,
-  ) async {
+  Future<void> createFarm(FarmCreateRequestDto request) async {
     created = request;
   }
 

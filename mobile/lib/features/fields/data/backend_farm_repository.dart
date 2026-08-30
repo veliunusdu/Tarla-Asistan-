@@ -30,7 +30,9 @@ class BackendFarmRepository implements FarmRemoteRepository {
     final json = await _client.getJsonList(endpoint);
     final items = json
         .whereType<Map>()
-        .map((item) => FarmResponseDto.fromJson(Map<String, dynamic>.from(item)))
+        .map(
+          (item) => FarmResponseDto.fromJson(Map<String, dynamic>.from(item)),
+        )
         .toList();
     return FarmListResponseDto(
       items: items,
