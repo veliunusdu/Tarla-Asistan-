@@ -150,8 +150,6 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
     final yeniTarla = Tarla(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: _nameController.text.trim(),
-      // TODO(location): Koordinatlar şu an 0.0 — harita/GPS desteği
-      // bir sonraki adımda eklenecek.
       latitude: _selectedLocation?.latitude,
       longitude: _selectedLocation?.longitude,
       size: boyut,
