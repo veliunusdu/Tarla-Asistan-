@@ -15,57 +15,7 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/api/v1/auth").WithTags("Authentication");
 
-        // 1. POST /api/v1/auth/request-otp
-        group.MapPost("/request-otp", async (
-            RequestOtpApiRequest req,
-            IMediator mediator,
-            IValidator<RequestOtpCommand> validator) =>
-        {
-            var command = new RequestOtpCommand(req.PhoneNumber);
-            var validation = await validator.ValidateAsync(command);
-            if (!validation.IsValid) return Results.ValidationProblem(validation.ToDictionary());
-
-            try
-            {
-                var result = await mediator.Send(command);
-                return Results.Ok(result);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status429TooManyRequests);
-            }
-        })
-        .WithName("RequestOtp")
-        .Produces<RequestOtpResponseDto>(StatusCodes.Status200OK)
-        .ProducesValidationProblem()
-        .Produces(StatusCodes.Status429TooManyRequests);
-
-        // 2. POST /api/v1/auth/verify-otp
-        group.MapPost("/verify-otp", async (
-            VerifyOtpApiRequest req,
-            IMediator mediator,
-            IValidator<VerifyOtpCommand> validator) =>
-        {
-            var command = new VerifyOtpCommand(req.PhoneNumber, req.OtpCode);
-            var validation = await validator.ValidateAsync(command);
-            if (!validation.IsValid) return Results.ValidationProblem(validation.ToDictionary());
-
-            try
-            {
-                var result = await mediator.Send(command);
-                return Results.Ok(result);
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { detail = ex.Message });
-            }
-        })
-        .WithName("VerifyOtp")
-        .Produces<TokenResponseDto>(StatusCodes.Status200OK)
-        .ProducesValidationProblem()
-        .Produces(StatusCodes.Status400BadRequest);
-
-        // 3. POST /api/v1/auth/firebase
+        // POST /api/v1/auth/firebase
         group.MapPost("/firebase", async (
             FirebaseLoginApiRequest req,
             IMediator mediator,
@@ -183,8 +133,6 @@ public static class AuthEndpoints
     }
 }
 
-public record RequestOtpApiRequest(string PhoneNumber);
-public record VerifyOtpApiRequest(string PhoneNumber, string OtpCode);
 public record FirebaseLoginApiRequest(string IdToken, UserRole? Role = null);
 public record RefreshTokenApiRequest(string RefreshToken);
 public record ApproveFirebaseLinkApiRequest(Guid UserId, string FirebaseUid, string OperatorName);

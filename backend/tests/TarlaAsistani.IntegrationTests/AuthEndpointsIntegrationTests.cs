@@ -21,47 +21,6 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     }
 
     [Fact]
-    public async Task FullOtpAuthFlow_ShouldSucceed()
-    {
-        // 1. Request OTP
-        var phone = "+905551112233";
-        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone), CustomWebApplicationFactory.JsonOptions);
-        requestOtpResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>(CustomWebApplicationFactory.JsonOptions);
-        otpResult.Should().NotBeNull();
-        otpResult!.DebugOtp.Should().NotBeNullOrEmpty();
-
-        // 2. Verify OTP
-        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult.DebugOtp!), CustomWebApplicationFactory.JsonOptions);
-        verifyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var tokenResult = await verifyResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
-        tokenResult.Should().NotBeNull();
-        tokenResult!.AccessToken.Should().NotBeNullOrEmpty();
-        tokenResult.RefreshToken.Should().NotBeNullOrEmpty();
-        tokenResult.User.PhoneNumber.Should().Be(phone);
-
-        // 3. Query /me
-        var meRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
-        meRequest.Headers.Add("X-User-Id", tokenResult.User.Id.ToString());
-        var meResponse = await _client.SendAsync(meRequest);
-        meResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var userResult = await meResponse.Content.ReadFromJsonAsync<UserDto>(CustomWebApplicationFactory.JsonOptions);
-        userResult.Should().NotBeNull();
-        userResult!.Id.Should().Be(tokenResult.User.Id);
-
-        // 4. Refresh Token
-        var refreshResponse = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenApiRequest(tokenResult.RefreshToken), CustomWebApplicationFactory.JsonOptions);
-        refreshResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var refreshedToken = await refreshResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
-        refreshedToken.Should().NotBeNull();
-        refreshedToken!.AccessToken.Should().NotBeNullOrEmpty();
-    }
-
-    [Fact]
     public async Task FirebaseLogin_WhenValidToken_ShouldCreateAndAuthenticateUser()
     {
         // Arrange
@@ -87,12 +46,20 @@ public class AuthEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     [Fact]
     public async Task JwtBearerAuth_WhenValidBearerToken_ShouldResolveUserOnMeEndpoint()
     {
-        // Arrange: Log in via OTP to get a valid JWT Bearer token
-        var phone = "+905557778899";
-        var requestOtpResponse = await _client.PostAsJsonAsync("/api/v1/auth/request-otp", new RequestOtpApiRequest(phone), CustomWebApplicationFactory.JsonOptions);
-        var otpResult = await requestOtpResponse.Content.ReadFromJsonAsync<RequestOtpResponseDto>(CustomWebApplicationFactory.JsonOptions);
-        var verifyResponse = await _client.PostAsJsonAsync("/api/v1/auth/verify-otp", new VerifyOtpApiRequest(phone, otpResult!.DebugOtp!), CustomWebApplicationFactory.JsonOptions);
-        var tokenResult = await verifyResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
+        // Arrange: Exchange a verified Firebase token for a backend JWT.
+        const string firebaseToken = "firebase_bearer_test_token";
+        const string uid = "firebase_bearer_test_uid";
+        const string phone = "+905557778899";
+        _factory.MockFirebaseAuthService
+            .Setup(f => f.VerifyIdTokenAsync(firebaseToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "bearer@test.com", "Bearer Test Farmer"));
+
+        var firebaseResponse = await _client.PostAsJsonAsync(
+            "/api/v1/auth/firebase",
+            new FirebaseLoginApiRequest(firebaseToken, UserRole.Farmer),
+            CustomWebApplicationFactory.JsonOptions);
+        firebaseResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var tokenResult = await firebaseResponse.Content.ReadFromJsonAsync<TokenResponseDto>(CustomWebApplicationFactory.JsonOptions);
         var accessToken = tokenResult!.AccessToken;
 
         // Act: Call /me using ONLY Authorization: Bearer <token> (WITHOUT X-User-Id header)

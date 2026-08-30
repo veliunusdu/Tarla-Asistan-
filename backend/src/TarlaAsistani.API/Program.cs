@@ -141,9 +141,7 @@ if (app.Environment.IsProduction())
     app.Use(async (context, next) =>
     {
         var isApiRequest = context.Request.Path.StartsWithSegments("/api/v1");
-        var isPublicAuthRequest = context.Request.Path.StartsWithSegments("/api/v1/auth/request-otp") ||
-                                  context.Request.Path.StartsWithSegments("/api/v1/auth/verify-otp") ||
-                                  context.Request.Path.StartsWithSegments("/api/v1/auth/firebase") ||
+        var isPublicAuthRequest = context.Request.Path.StartsWithSegments("/api/v1/auth/firebase") ||
                                   context.Request.Path.StartsWithSegments("/api/v1/auth/refresh") ||
                                   context.Request.Path.StartsWithSegments("/api/v1/auth/logout");
 
