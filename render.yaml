@@ -61,7 +61,7 @@ services:
       - key: NEXT_PUBLIC_API_ORIGIN
         value: https://tarla-asistani-api.onrender.com
       - key: NEXT_PUBLIC_FIREBASE_API_KEY
-        value: AIzaSyAToJG7BcMnxmO8TOdrmgcXiuxnvS0zx3Q
+        value: AIzaSyCMCDJZK4092UiGQ1580ozh-_yGOzJ059g
       - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
         value: demo2-c4265.firebaseapp.com
       - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
