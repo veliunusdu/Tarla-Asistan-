@@ -42,8 +42,8 @@ void main() {
       plantedAt: '2026-03-15',
     );
 
-    expect(request.toJson()['initialCropType'], 'WHEAT');
-    expect(request.toJson()['initialPlantedAt'], '2026-03-15');
+    expect(request.toJson()['initial_crop_type'], 'WHEAT');
+    expect(request.toJson()['initial_planted_at'], '2026-03-15');
     expect(request.toJson().containsKey('crop_type'), isFalse);
     expect(request.toJson().containsKey('planted_at'), isFalse);
   });
