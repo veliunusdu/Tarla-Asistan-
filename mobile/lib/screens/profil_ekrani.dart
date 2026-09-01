@@ -97,6 +97,38 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                     ? 'Bildirimler açık'
                     : 'Bildirimler kapalı',
               ),
+              trailing: profile == null || widget.repository == null
+                  ? null
+                  : Switch(
+                      value: profile.notificationsEnabled,
+                      onChanged: (enabled) async {
+                        try {
+                          final updated = await widget.repository!
+                              .updateProfile(
+                                UserProfileUpdate(
+                                  fullName: profile.fullName ?? '',
+                                  province: profile.province ?? '',
+                                  district: profile.district ?? '',
+                                  termsAccepted: profile.termsAccepted,
+                                  notificationsEnabled: enabled,
+                                ),
+                              );
+                          if (mounted) {
+                            setState(() => _profile = Future.value(updated));
+                          }
+                        } catch (_) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Bildirim tercihi kaydedilemedi.',
+                                ),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
             ),
             const SizedBox(height: 24),
             FilledButton.tonalIcon(

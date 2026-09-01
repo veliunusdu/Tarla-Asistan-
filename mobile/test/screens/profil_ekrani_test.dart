@@ -5,6 +5,7 @@ import 'package:mobile/features/profile/domain/user_profile.dart';
 import 'package:mobile/screens/profil_ekrani.dart';
 
 class _ProfileRepository implements ProfileRepository {
+  UserProfileUpdate? update;
   @override
   Future<UserProfile> getCurrentProfile() async => const UserProfile(
     id: 'user-1',
@@ -21,8 +22,19 @@ class _ProfileRepository implements ProfileRepository {
   Future<void> requestDeletion(String confirmation) async {}
 
   @override
-  Future<UserProfile> updateProfile(UserProfileUpdate update) =>
-      getCurrentProfile();
+  Future<UserProfile> updateProfile(UserProfileUpdate update) async {
+    this.update = update;
+    return UserProfile(
+      id: 'user-1',
+      phoneNumber: '+905551112233',
+      role: 'FARMER',
+      termsAccepted: true,
+      notificationsEnabled: update.notificationsEnabled,
+      fullName: 'Ayşe Demir',
+      province: 'Ankara',
+      district: 'Çankaya',
+    );
+  }
 }
 
 void main() {
@@ -51,5 +63,19 @@ void main() {
     expect(find.text('Ayşe Demir'), findsOneWidget);
     expect(find.text('+905551112233'), findsOneWidget);
     expect(find.text('Ankara, Çankaya'), findsOneWidget);
+  });
+
+  testWidgets('saves notification preference to the backend', (tester) async {
+    final repository = _ProfileRepository();
+    await tester.pumpWidget(
+      MaterialApp(home: ProfilEkrani(repository: repository)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(Switch));
+    await tester.pump();
+    await tester.pump();
+
+    expect(repository.update?.notificationsEnabled, isFalse);
   });
 }
