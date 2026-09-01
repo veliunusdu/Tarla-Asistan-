@@ -6,6 +6,7 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/ai_assistant/data/ai_assistant_repository.dart';
 import 'package:mobile/features/ai_assistant/domain/ai_chat_message.dart';
+import 'package:mobile/features/ai_assistant/domain/ai_chat_response.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/features/weather/data/weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
@@ -45,11 +46,15 @@ class FakeWeatherRepository implements WeatherRepository {
 
 class FakeAiAssistantRepository implements AiAssistantRepository {
   @override
-  Future<String> sendMessage({
+  Future<AiChatResponse> sendMessage({
     required String message,
     Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
     List<AiChatMessage> history = const [],
-  }) async => 'Test cevap';
+  }) async => const AiChatResponse(reply: 'Test cevap', conversationId: 'conv-1');
 }
 
 // ---------------------------------------------------------------------------
