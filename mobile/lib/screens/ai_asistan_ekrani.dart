@@ -7,6 +7,7 @@ import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/ai_assistant/data/unavailable_ai_assistant_repository.dart';
+import '../features/ai_assistant/domain/ai_chat_history.dart';
 import '../features/ai_assistant/domain/ai_chat_message.dart';
 
 // ---------------------------------------------------------------------------
@@ -126,7 +127,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
       final cevap = await widget._repo.sendMessage(
         message: metinKopya,
         photo: fotoKopya,
-        history: List.unmodifiable(_mesajlar),
+        history: limitAiChatHistory(_mesajlar),
       );
 
       if (!mounted) return;
@@ -135,6 +136,9 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
         _mesajlar.add(
           AiChatMessage(text: cevap, isUser: false, timestamp: DateTime.now()),
         );
+        if (_mesajlar.length > maxAiChatMessages) {
+          _mesajlar.removeRange(0, _mesajlar.length - maxAiChatMessages);
+        }
       });
 
       _scrollToBottom();

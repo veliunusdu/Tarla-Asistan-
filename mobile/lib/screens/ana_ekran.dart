@@ -50,14 +50,9 @@ class _AnaEkranState extends State<AnaEkran> {
   void _gotoTarlalarim() => setState(() => _secilen = _Sekme.tarlalarim);
   void _onDataChanged() => _refreshNotifier.value++;
 
-  late final List<Widget> _sayfalar;
-
-  @override
-  void initState() {
-    super.initState();
-    _sayfalar = [
-      // 0 — Ana Sayfa
-      AnaSayfaEkrani(
+  Widget _seciliSayfa() {
+    return switch (_secilen) {
+      _Sekme.anaSayfa => AnaSayfaEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         weatherRepository: widget._weatherRepo,
@@ -65,20 +60,17 @@ class _AnaEkranState extends State<AnaEkran> {
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,
       ),
-      // 1 — Günlüğüm
-      TarlaGunluguEkrani(
+      _Sekme.gunlugum => TarlaGunluguEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         onDataChanged: _onDataChanged,
       ),
-      // 2 — Tarlalarım
-      TarlaListesiEkrani(
+      _Sekme.tarlalarim => TarlaListesiEkrani(
         repository: widget._tarlaRepo,
         onDataChanged: _onDataChanged,
       ),
-      // 3 — Asistan
-      AiAsistanEkrani(repository: widget._aiRepo),
-    ];
+      _Sekme.asistan => AiAsistanEkrani(repository: widget._aiRepo),
+    };
   }
 
   @override
@@ -98,7 +90,7 @@ class _AnaEkranState extends State<AnaEkran> {
         }
       },
       child: Scaffold(
-        body: IndexedStack(index: _secilen.index, children: _sayfalar),
+        body: _seciliSayfa(),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _secilen.index,
           onDestinationSelected: (i) =>
