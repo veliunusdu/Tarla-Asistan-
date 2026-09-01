@@ -6,6 +6,7 @@ import '../features/fields/data/tarla_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import 'ai_asistan_ekrani.dart';
 import 'ana_sayfa_ekrani.dart';
+import 'profil_ekrani.dart';
 import 'tarla_gunlugu_ekrani.dart';
 import 'tarla_listesi_ekrani.dart';
 
@@ -13,7 +14,7 @@ import 'tarla_listesi_ekrani.dart';
 // Sekme tanımları — raw indeks yerine tip güvenli enum
 // ---------------------------------------------------------------------------
 
-enum _Sekme { anaSayfa, gunlugum, tarlalarim, asistan }
+enum _Sekme { anaSayfa, gunlugum, tarlalarim, asistan, profil }
 
 // ---------------------------------------------------------------------------
 // AnaEkran
@@ -79,6 +80,8 @@ class _AnaEkranState extends State<AnaEkran> {
       ),
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),
+      // 4 — Profil
+      const ProfilEkrani(),
     ];
   }
 
@@ -124,6 +127,11 @@ class _AnaEkranState extends State<AnaEkran> {
               icon: Icon(Icons.smart_toy_outlined),
               selectedIcon: Icon(Icons.smart_toy),
               label: 'Asistan',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Profil',
             ),
           ],
         ),
