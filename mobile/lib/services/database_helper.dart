@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -14,7 +15,28 @@ class DatabaseHelper implements SyncOperationStore {
 
   DatabaseHelper._init();
 
+  DatabaseHelper.withDatabase(
+    Database db, {
+    String? Function()? userIdProvider,
+  })  : _providedDatabase = db,
+        currentUserIdProvider = userIdProvider;
+
+  Database? _providedDatabase;
+  String? Function()? currentUserIdProvider;
+
+  String? get currentUserId {
+    if (currentUserIdProvider != null) {
+      return currentUserIdProvider!();
+    }
+    try {
+      return FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Database> get database async {
+    if (_providedDatabase != null) return _providedDatabase!;
     if (_database != null) return _database!;
     _database = await _initDB('tarla_asistani.db');
     return _database!;
@@ -26,7 +48,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -42,8 +64,13 @@ class DatabaseHelper implements SyncOperationStore {
         longitude REAL,
         size REAL,
         cropType TEXT,
-        plantingDate TEXT
+        plantingDate TEXT,
+        userId TEXT
       )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS ix_tarlalar_user_id
+      ON tarlalar(userId)
     ''');
 
     await db.execute('''
@@ -56,8 +83,13 @@ class DatabaseHelper implements SyncOperationStore {
         photos TEXT,
         timestamp TEXT NOT NULL,
         dueDate TEXT,
-        isCompleted INTEGER NOT NULL DEFAULT 1
+        isCompleted INTEGER NOT NULL DEFAULT 1,
+        userId TEXT
       )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS ix_faaliyetler_user_id
+      ON faaliyetler(userId)
     ''');
 
     await _createSyncOperationsTable(db);
@@ -73,6 +105,9 @@ class DatabaseHelper implements SyncOperationStore {
     if (oldVersion < 4) {
       await Migrations.v3ToV4(db);
     }
+    if (oldVersion < 5) {
+      await Migrations.v4ToV5(db);
+    }
   }
 
   Future<void> _createSyncOperationsTable(Database db) async {
@@ -85,58 +120,93 @@ class DatabaseHelper implements SyncOperationStore {
         attempts INTEGER NOT NULL DEFAULT 0,
         lastError TEXT,
         createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        updatedAt TEXT NOT NULL,
+        userId TEXT
       )
     ''');
     await db.execute('''
       CREATE INDEX IF NOT EXISTS ix_sync_operations_created
       ON sync_operations(createdAt)
     ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS ix_sync_operations_user_id
+      ON sync_operations(userId)
+    ''');
   }
 
   // --- TARLA METODLARI ---
 
-  Future<int> insertTarla(Tarla tarla) async {
-    final db = await instance.database;
+  Future<int> insertTarla(Tarla tarla, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final map = Map<String, dynamic>.from(tarla.toJson());
+    if (activeUserId != null) {
+      map['userId'] = activeUserId;
+    }
     return await db.insert(
       'tarlalar',
-      tarla.toJson(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<Tarla>> getTarlalar() async {
-    final db = await instance.database;
-    final List<Map<String, dynamic>> result = await db.query('tarlalar');
+  Future<List<Tarla>> getTarlalar({String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, dynamic>> result;
+    if (activeUserId != null) {
+      result = await db.query(
+        'tarlalar',
+        where: 'userId = ?',
+        whereArgs: [activeUserId],
+      );
+    } else {
+      result = await db.query(
+        'tarlalar',
+        where: 'userId IS NULL',
+      );
+    }
     return result.map((json) => Tarla.fromJson(json)).toList();
   }
 
   Future<int> updateTarlaLocation(
     String id,
     double latitude,
-    double longitude,
-  ) async {
-    final db = await instance.database;
+    double longitude, {
+    String? userId,
+  }) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
     return await db.update(
       'tarlalar',
       {'latitude': latitude, 'longitude': longitude},
-      where: 'id = ?',
-      whereArgs: [id],
+      where: activeUserId != null ? 'id = ? AND userId = ?' : 'id = ?',
+      whereArgs: activeUserId != null ? [id, activeUserId] : [id],
     );
   }
 
-  Future<int> deleteTarla(String id) async {
-    final db = await instance.database;
-    return db.delete('tarlalar', where: 'id = ?', whereArgs: [id]);
+  Future<int> deleteTarla(String id, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    return db.delete(
+      'tarlalar',
+      where: activeUserId != null ? 'id = ? AND userId = ?' : 'id = ?',
+      whereArgs: activeUserId != null ? [id, activeUserId] : [id],
+    );
   }
 
-  Future<void> upsertTarlalar(List<Tarla> tarlalar) async {
-    final db = await instance.database;
+  Future<void> upsertTarlalar(List<Tarla> tarlalar, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
     await db.transaction((txn) async {
       for (final tarla in tarlalar) {
+        final map = Map<String, dynamic>.from(tarla.toJson());
+        if (activeUserId != null) {
+          map['userId'] = activeUserId;
+        }
         await txn.insert(
           'tarlalar',
-          tarla.toJson(),
+          map,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
@@ -145,18 +215,28 @@ class DatabaseHelper implements SyncOperationStore {
 
   // --- FAALİYET METODLARI ---
 
-  Future<int> insertFaaliyet(Faaliyet faaliyet) async {
-    final db = await instance.database;
-    return await db.insert('faaliyetler', faaliyet.toJson());
+  Future<int> insertFaaliyet(Faaliyet faaliyet, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final map = Map<String, dynamic>.from(faaliyet.toJson());
+    if (activeUserId != null) {
+      map['userId'] = activeUserId;
+    }
+    return await db.insert('faaliyetler', map);
   }
 
-  Future<void> insertFaaliyetWithSync(Faaliyet faaliyet) async {
-    final db = await instance.database;
+  Future<void> insertFaaliyetWithSync(Faaliyet faaliyet, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
     final now = DateTime.now().toUtc().toIso8601String();
     await db.transaction((txn) async {
+      final faaliyetMap = Map<String, dynamic>.from(faaliyet.toJson());
+      if (activeUserId != null) {
+        faaliyetMap['userId'] = activeUserId;
+      }
       await txn.insert(
         'faaliyetler',
-        faaliyet.toJson(),
+        faaliyetMap,
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
       await txn.insert('sync_operations', {
@@ -173,56 +253,108 @@ class DatabaseHelper implements SyncOperationStore {
         'attempts': 0,
         'createdAt': now,
         'updatedAt': now,
+        'userId': activeUserId,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     });
   }
 
-  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async {
-    final db = await instance.database;
-    final List<Map<String, dynamic>> result = await db.query(
-      'faaliyetler',
-      where: 'tarlaId = ?',
-      whereArgs: [tarlaId],
-      orderBy: 'timestamp DESC',
-    );
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, dynamic>> result;
+    if (activeUserId != null) {
+      result = await db.query(
+        'faaliyetler',
+        where: 'tarlaId = ? AND userId = ?',
+        whereArgs: [tarlaId, activeUserId],
+        orderBy: 'timestamp DESC',
+      );
+    } else {
+      result = await db.query(
+        'faaliyetler',
+        where: 'tarlaId = ? AND userId IS NULL',
+        whereArgs: [tarlaId],
+        orderBy: 'timestamp DESC',
+      );
+    }
     return result.map((json) => Faaliyet.fromJson(json)).toList();
   }
 
-  Future<List<Faaliyet>> getTumFaaliyetler() async {
-    final db = await instance.database;
-    final List<Map<String, dynamic>> result = await db.query('faaliyetler');
+  Future<List<Faaliyet>> getTumFaaliyetler({String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, dynamic>> result;
+    if (activeUserId != null) {
+      result = await db.query(
+        'faaliyetler',
+        where: 'userId = ?',
+        whereArgs: [activeUserId],
+      );
+    } else {
+      result = await db.query(
+        'faaliyetler',
+        where: 'userId IS NULL',
+      );
+    }
     return result.map((json) => Faaliyet.fromJson(json)).toList();
   }
 
   // --- SyncOperationStore ---
 
   @override
-  Future<List<SyncOperation>> getPendingSyncOperations({int limit = 20}) async {
-    final db = await instance.database;
-    final rows = await db.query(
-      'sync_operations',
-      orderBy: 'createdAt ASC',
-      limit: limit,
-    );
+  Future<List<SyncOperation>> getPendingSyncOperations({
+    int limit = 20,
+    String? userId,
+  }) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, dynamic>> rows;
+    if (activeUserId != null) {
+      rows = await db.query(
+        'sync_operations',
+        where: 'userId = ?',
+        whereArgs: [activeUserId],
+        orderBy: 'createdAt ASC',
+        limit: limit,
+      );
+    } else {
+      rows = await db.query(
+        'sync_operations',
+        where: 'userId IS NULL',
+        orderBy: 'createdAt ASC',
+        limit: limit,
+      );
+    }
     return rows.map(SyncOperation.fromJson).toList();
   }
 
   @override
-  Future<int> getPendingSyncCount() async {
-    final db = await instance.database;
-    final result = await db.rawQuery('SELECT COUNT(*) FROM sync_operations');
+  Future<int> getPendingSyncCount({String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, Object?>> result;
+    if (activeUserId != null) {
+      result = await db.rawQuery(
+        'SELECT COUNT(*) FROM sync_operations WHERE userId = ?',
+        [activeUserId],
+      );
+    } else {
+      result = await db.rawQuery(
+        'SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL',
+      );
+    }
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
   @override
   Future<void> markSyncCompleted(String id) async {
-    final db = await instance.database;
+    final db = await database;
     await db.delete('sync_operations', where: 'id = ?', whereArgs: [id]);
   }
 
   @override
   Future<void> markSyncFailed(String id, String error) async {
-    final db = await instance.database;
+    final db = await database;
     await db.rawUpdate(
       '''
       UPDATE sync_operations
@@ -239,32 +371,132 @@ class DatabaseHelper implements SyncOperationStore {
 
   // --- İSTATİSTİK SORGULARI ---
 
-  Future<int> getTarlaSayisi() async {
-    final db = await instance.database;
-    final result = await db.rawQuery('SELECT COUNT(*) FROM tarlalar');
+  Future<int> getTarlaSayisi({String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, Object?>> result;
+    if (activeUserId != null) {
+      result = await db.rawQuery(
+        'SELECT COUNT(*) FROM tarlalar WHERE userId = ?',
+        [activeUserId],
+      );
+    } else {
+      result = await db.rawQuery(
+        'SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL',
+      );
+    }
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  Future<double> getToplamDonum() async {
-    final db = await instance.database;
-    final result = await db.rawQuery('SELECT SUM(size) as total FROM tarlalar');
+  Future<double> getToplamDonum({String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    final List<Map<String, Object?>> result;
+    if (activeUserId != null) {
+      result = await db.rawQuery(
+        'SELECT SUM(size) as total FROM tarlalar WHERE userId = ?',
+        [activeUserId],
+      );
+    } else {
+      result = await db.rawQuery(
+        'SELECT SUM(size) as total FROM tarlalar WHERE userId IS NULL',
+      );
+    }
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
 
-  // --- SİLME İŞLEMLERİ ---
+  // --- SİLME VE TEMİZLEME İŞLEMLERİ ---
 
-  Future<int> deleteFaaliyet(String id) async {
-    final db = await instance.database;
-    return await db.delete('faaliyetler', where: 'id = ?', whereArgs: [id]);
+  Future<int> deleteFaaliyet(String id, {String? userId}) async {
+    final db = await database;
+    final activeUserId = userId ?? currentUserId;
+    return await db.delete(
+      'faaliyetler',
+      where: activeUserId != null ? 'id = ? AND userId = ?' : 'id = ?',
+      whereArgs: activeUserId != null ? [id, activeUserId] : [id],
+    );
   }
 
-  Future<int> completePlanliGorev(String id) async {
+  Future<int> completePlanliGorev(String id, {String? userId}) async {
     final db = await database;
+    final activeUserId = userId ?? currentUserId;
     return db.update(
       'faaliyetler',
       {'isCompleted': 1, 'timestamp': DateTime.now().toIso8601String()},
-      where: 'id = ?',
-      whereArgs: [id],
+      where: activeUserId != null ? 'id = ? AND userId = ?' : 'id = ?',
+      whereArgs: activeUserId != null ? [id, activeUserId] : [id],
     );
   }
+
+  /// Sahipsiz (userId IS NULL) kayıtların özetini döner.
+  Future<OrphanedDataSummary> getOrphanedDataSummary() async {
+    final db = await database;
+    final farmRows = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL'),
+    ) ?? 0;
+    final activityRows = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM faaliyetler WHERE userId IS NULL'),
+    ) ?? 0;
+    final syncRows = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL'),
+    ) ?? 0;
+
+    return OrphanedDataSummary(
+      farmCount: farmRows,
+      activityCount: activityRows,
+      syncCount: syncRows,
+    );
+  }
+
+  /// Sahipsiz (userId IS NULL) kayıtları kontrollü şekilde siler.
+  ///
+  /// Güvenlik Politikası: Cihazda önceki kullanıcıdan kalan veya doğrulanmamış
+  /// kayıtlar başka kullanıcıların hesaplarına aktarılamaz (anti-hijacking).
+  /// Yalnızca cihazdan güvenle temizlenebilir.
+  Future<int> clearOrphanedRecords() async {
+    final db = await database;
+    var deleted = 0;
+    await db.transaction((txn) async {
+      deleted += await txn.delete('tarlalar', where: 'userId IS NULL');
+      deleted += await txn.delete('faaliyetler', where: 'userId IS NULL');
+      deleted += await txn.delete('sync_operations', where: 'userId IS NULL');
+    });
+    return deleted;
+  }
+
+  /// Kullanıcı oturumu kapattığında yerel verilerini, bekleyen sync işlemlerini
+  /// ve cihazda kalmış sahipsiz karantina verilerini tamamen temizler.
+  Future<void> clearUserData({String? userId}) async {
+    final activeUserId = userId ?? currentUserId;
+    final db = await database;
+    await db.transaction((txn) async {
+      if (activeUserId != null) {
+        await txn.delete('tarlalar', where: 'userId = ?', whereArgs: [activeUserId]);
+        await txn.delete('faaliyetler', where: 'userId = ?', whereArgs: [activeUserId]);
+        await txn.delete('sync_operations', where: 'userId = ?', whereArgs: [activeUserId]);
+      } else {
+        await txn.delete('tarlalar');
+        await txn.delete('faaliyetler');
+        await txn.delete('sync_operations');
+      }
+      // Sahipsiz karantina verilerini de temizle (at-rest güvenlik)
+      await txn.delete('tarlalar', where: 'userId IS NULL');
+      await txn.delete('faaliyetler', where: 'userId IS NULL');
+      await txn.delete('sync_operations', where: 'userId IS NULL');
+    });
+  }
+}
+
+class OrphanedDataSummary {
+  const OrphanedDataSummary({
+    required this.farmCount,
+    required this.activityCount,
+    required this.syncCount,
+  });
+
+  final int farmCount;
+  final int activityCount;
+  final int syncCount;
+
+  bool get hasOrphanedData => farmCount > 0 || activityCount > 0 || syncCount > 0;
 }

@@ -16,7 +16,7 @@ public class ActivityCommandHandlerTests
         // Arrange
         var farmId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var farm = new Farm { Id = farmId, Name = "Tarla 1" };
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
 
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
@@ -32,7 +32,8 @@ public class ActivityCommandHandlerTests
             InputMethod: ActivitySource.Manual,
             DurationMinutes: 120,
             Amount: 500,
-            Unit: "Litre"
+            Unit: "Litre",
+            CreatedByRole: UserRole.Farmer
         );
 
         // Act
@@ -50,7 +51,7 @@ public class ActivityCommandHandlerTests
         // Arrange
         var farmId = Guid.NewGuid();
         var userId = Guid.NewGuid();
-        var farm = new Farm { Id = farmId, Name = "Tarla 1" };
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
 
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
@@ -64,7 +65,8 @@ public class ActivityCommandHandlerTests
             Description: "Üre gübresi atıldı",
             OccurredAt: DateTime.UtcNow,
             InputMethod: ActivitySource.Voice,
-            VoiceTranscript: "Bugün üre gübresi attık"
+            VoiceTranscript: "Bugün üre gübresi attık",
+            CreatedByRole: UserRole.Farmer
         );
 
         // Act
@@ -74,6 +76,98 @@ public class ActivityCommandHandlerTests
         result.Should().NotBeNull();
         result.Status.Should().Be(ActivityStatus.Draft);
         result.ConfirmedAtUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateActivity_WhenFarmerCreatesActivityOnAnotherFarmersFarm_ShouldThrowUnauthorizedAccessException()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farmer1Id = Guid.NewGuid();
+        var farmer2Id = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = farmer1Id, Name = "Çiftçi 1 Tarlası" };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: farmer2Id,
+            ActivityType: ActivityType.Irrigation,
+            Description: "İzinsiz sulama",
+            OccurredAt: DateTime.UtcNow,
+            CreatedByRole: UserRole.Farmer
+        );
+
+        // Act
+        var act = async () => await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*kendi tarlanıza*");
+    }
+
+    [Fact]
+    public async Task CreateActivity_WhenAgronomistCreatesActivityOnAnyFarm_ShouldSucceed()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var agronomistId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = farmerId, Name = "Çiftçi Tarlası" };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: agronomistId,
+            ActivityType: ActivityType.Spraying,
+            Description: "Mühendis ilaçlaması",
+            OccurredAt: DateTime.UtcNow,
+            CreatedByRole: UserRole.Agronomist
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.FarmId.Should().Be(farmId);
+        result.CreatedById.Should().Be(agronomistId);
+    }
+
+    [Fact]
+    public async Task CreateActivity_WhenFarmIsArchived_ShouldThrowKeyNotFoundException()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = farmerId, Name = "Arşivli Tarla", ArchivedAt = DateTime.UtcNow };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: farmerId,
+            ActivityType: ActivityType.Irrigation,
+            Description: "Sulama",
+            OccurredAt: DateTime.UtcNow,
+            CreatedByRole: UserRole.Farmer
+        );
+
+        // Act
+        var act = async () => await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<KeyNotFoundException>();
     }
 
     [Fact]

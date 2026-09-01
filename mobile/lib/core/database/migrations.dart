@@ -83,6 +83,34 @@ abstract final class Migrations {
     await db.execute('ALTER TABLE tarlalar_new RENAME TO tarlalar');
   }
 
+  /// Version 4 → 5: tarlalar, faaliyetler ve sync_operations tablolarına
+  /// kullanıcı izolasyonu için [userId] kolonu ve indeksleri ekler.
+  static Future<void> v4ToV5(Database db) async {
+    final tarlalarCols = await _columnNames(db, 'tarlalar');
+    if (!tarlalarCols.contains('userId')) {
+      await db.execute('ALTER TABLE tarlalar ADD COLUMN userId TEXT');
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS ix_tarlalar_user_id ON tarlalar(userId)',
+    );
+
+    final faaliyetlerCols = await _columnNames(db, 'faaliyetler');
+    if (!faaliyetlerCols.contains('userId')) {
+      await db.execute('ALTER TABLE faaliyetler ADD COLUMN userId TEXT');
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS ix_faaliyetler_user_id ON faaliyetler(userId)',
+    );
+
+    final syncCols = await _columnNames(db, 'sync_operations');
+    if (!syncCols.contains('userId')) {
+      await db.execute('ALTER TABLE sync_operations ADD COLUMN userId TEXT');
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS ix_sync_operations_user_id ON sync_operations(userId)',
+    );
+  }
+
   /// [table] tablosundaki mevcut kolon adlarını döndürür.
   static Future<Set<String>> _columnNames(Database db, String table) async {
     final rows = await db.rawQuery('PRAGMA table_info($table)');

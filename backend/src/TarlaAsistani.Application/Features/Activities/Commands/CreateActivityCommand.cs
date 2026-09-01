@@ -20,5 +20,6 @@ public record CreateActivityCommand(
     string? VoiceTranscript = null,
     string? PerformedBy = null,
     float? Cost = null,
-    Guid? ClientOperationId = null
+    Guid? ClientOperationId = null,
+    UserRole CreatedByRole = UserRole.Farmer
 ) : IRequest<ActivityDto>;

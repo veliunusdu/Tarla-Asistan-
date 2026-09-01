@@ -72,9 +72,20 @@ public static class FarmEndpoints
         .Produces<List<FarmDto>>(StatusCodes.Status200OK);
 
         // 3. GET /api/v1/farms/{id} - Get farm by ID
-        group.MapGet("/{id:guid}", async (Guid id, IMediator mediator) =>
+        group.MapGet("/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] Guid? userId,
+            [FromQuery] UserRole? role,
+            IMediator mediator) =>
         {
-            var farm = await mediator.Send(new GetFarmByIdQuery(id));
+            var resolvedUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var resolvedRole = httpContext.ResolveUserRole(role, headerRole);
+
+            var query = new GetFarmByIdQuery(id, resolvedUserId, resolvedRole);
+            var farm = await mediator.Send(query);
             return farm is not null ? Results.Ok(farm) : Results.NotFound();
         })
         .WithName("GetFarmById")
@@ -124,15 +135,31 @@ public static class FarmEndpoints
         .ProducesValidationProblem();
 
         // 5. DELETE /api/v1/farms/{id} - Archive (Soft Delete) farm
-        group.MapDelete("/{id:guid}", async (Guid id, IMediator mediator) =>
+        group.MapDelete("/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] Guid? userId,
+            [FromQuery] UserRole? role,
+            IMediator mediator) =>
         {
-            var command = new ArchiveFarmCommand(id);
+            var resolvedUserId = httpContext.ResolveUserId(userId, headerUserId);
+            if (resolvedUserId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var resolvedRole = httpContext.ResolveUserRole(role, headerRole);
+
+            var command = new ArchiveFarmCommand(id, resolvedUserId, resolvedRole);
             var isArchived = await mediator.Send(command);
             return isArchived ? Results.NoContent() : Results.NotFound();
         })
         .WithName("ArchiveFarm")
         .Produces(StatusCodes.Status204NoContent)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         return app;
     }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mobile/features/profile/data/backend_profile_repository.dart';
+import 'package:mobile/features/profile/domain/user_profile.dart';
 import 'package:mobile/services/api_client.dart';
 
 void main() {
@@ -38,5 +39,90 @@ void main() {
 
     expect(path, '/api/v1/auth/me');
     expect(profile.fullName, 'Ayşe Demir');
+  });
+
+  test('updates profile via PUT to users/me', () async {
+    late String method;
+    late String path;
+    late Map<String, dynamic> requestBody;
+
+    final repository = BackendProfileRepository(
+      ApiClient(
+        httpClient: MockClient((request) async {
+          method = request.method;
+          path = request.url.path;
+          requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'id': 'user-1',
+                'phone_number': 'firebase-user',
+                'role': 'FARMER',
+                'terms_accepted': true,
+                'notifications_enabled': false,
+                'full_name': 'Mehmet Öz',
+                'province': 'İzmir',
+                'district': 'Ödemiş',
+              }),
+            ),
+            200,
+            headers: const {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        idTokenProvider: () async => 'backend-token',
+      ),
+    );
+
+    final updated = await repository.updateProfile(
+      const UserProfileUpdate(
+        fullName: 'Mehmet Öz',
+        province: 'İzmir',
+        district: 'Ödemiş',
+        termsAccepted: true,
+        notificationsEnabled: false,
+      ),
+    );
+
+    expect(method, 'PUT');
+    expect(path, '/api/v1/users/me');
+    expect(requestBody['full_name'], 'Mehmet Öz');
+    expect(requestBody['province'], 'İzmir');
+    expect(requestBody['district'], 'Ödemiş');
+    expect(requestBody['notifications_enabled'], false);
+    expect(updated.fullName, 'Mehmet Öz');
+    expect(updated.notificationsEnabled, false);
+  });
+
+  test('sends account deletion request via POST to users/me/deletion-request', () async {
+    late String method;
+    late String path;
+    late Map<String, dynamic> requestBody;
+
+    final repository = BackendProfileRepository(
+      ApiClient(
+        httpClient: MockClient((request) async {
+          method = request.method;
+          path = request.url.path;
+          requestBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'request_id': 'del-123',
+                'status': 'PENDING',
+              }),
+            ),
+            202,
+            headers: const {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        idTokenProvider: () async => 'backend-token',
+      ),
+    );
+
+    await repository.requestDeletion('HESABIMI SIL');
+
+    expect(method, 'POST');
+    expect(path, '/api/v1/users/me/deletion-request');
+    expect(requestBody['confirmation'], 'HESABIMI SIL');
   });
 }

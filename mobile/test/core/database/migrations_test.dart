@@ -104,11 +104,12 @@ Future<Map<String, Map<String, Object?>>> _tarlaColumnInfo(Database db) async {
 }
 
 /// Applies the same upgrade chain that DatabaseHelper._upgradeDB does,
-/// upgrading from [from] to the current target version (4).
+/// upgrading from [from] to the current target version (5).
 Future<void> _applyUpgrades(Database db, {required int from}) async {
   if (from < 2) await Migrations.v1ToV2(db);
   if (from < 3) await _createSyncOperations(db);
   if (from < 4) await Migrations.v3ToV4(db);
+  if (from < 5) await Migrations.v4ToV5(db);
 }
 
 void main() {
@@ -832,6 +833,77 @@ void main() {
       );
       final indexNames = indexes.map((r) => r['name']).toList();
       expect(indexNames, contains('ix_sync_operations_created'));
+
+      await db.close();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Version 4 -> 5 migration tests
+  // -------------------------------------------------------------------------
+
+  group('Migrations.v4ToV5', () {
+    test('tarlalar, faaliyetler ve sync_operations tablolarına userId ekler ve index oluşturur', () async {
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+        version: 4,
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE tarlalar (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              latitude REAL,
+              longitude REAL,
+              size REAL,
+              cropType TEXT,
+              plantingDate TEXT
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE faaliyetler (
+              id TEXT PRIMARY KEY,
+              tarlaId TEXT NOT NULL,
+              type TEXT NOT NULL,
+              note TEXT,
+              audioPath TEXT,
+              photos TEXT,
+              timestamp TEXT NOT NULL,
+              dueDate TEXT,
+              isCompleted INTEGER NOT NULL DEFAULT 1
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE sync_operations (
+              id TEXT PRIMARY KEY,
+              method TEXT NOT NULL,
+              endpoint TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,
+              lastError TEXT,
+              createdAt TEXT NOT NULL,
+              updatedAt TEXT NOT NULL
+            )
+          ''');
+        },
+      );
+
+      await Migrations.v4ToV5(db);
+
+      final tIndexes = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tarlalar'",
+      );
+      expect(tIndexes.map((r) => r['name']), contains('ix_tarlalar_user_id'));
+
+      final fIndexes = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='faaliyetler'",
+      );
+      expect(fIndexes.map((r) => r['name']), contains('ix_faaliyetler_user_id'));
+
+      final sIndexes = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='sync_operations'",
+      );
+      expect(sIndexes.map((r) => r['name']), contains('ix_sync_operations_user_id'));
 
       await db.close();
     });

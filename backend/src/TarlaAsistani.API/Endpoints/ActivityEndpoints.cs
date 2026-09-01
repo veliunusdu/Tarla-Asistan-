@@ -6,6 +6,7 @@ using TarlaAsistani.Application.Features.Activities.Commands;
 using TarlaAsistani.Application.Features.Activities.DTOs;
 using TarlaAsistani.Application.Features.Activities.Queries;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.API.Endpoints;
 
@@ -24,6 +25,8 @@ public static class ActivityEndpoints
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] UserRole? role,
             CreateActivityApiRequest req,
             IMediator mediator,
             IValidator<CreateActivityCommand> validator) =>
@@ -33,6 +36,8 @@ public static class ActivityEndpoints
             {
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
+
+            var userRole = httpContext.ResolveUserRole(role, headerRole);
 
             var command = new CreateActivityCommand(
                 FarmId: farmId,
@@ -50,7 +55,8 @@ public static class ActivityEndpoints
                 VoiceTranscript: req.VoiceTranscript,
                 PerformedBy: req.PerformedBy,
                 Cost: req.Cost,
-                ClientOperationId: req.ClientOperationId
+                ClientOperationId: req.ClientOperationId,
+                CreatedByRole: userRole
             );
 
             var validationResult = await validator.ValidateAsync(command);
@@ -72,11 +78,20 @@ public static class ActivityEndpoints
             {
                 return Results.UnprocessableEntity(new { detail = ex.Message });
             }
+            catch (ForbiddenException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
         })
         .WithName("CreateActivity")
         .Produces<ActivityDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity);
 

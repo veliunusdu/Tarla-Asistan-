@@ -25,6 +25,11 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
             .FirstOrDefaultAsync(f => f.Id == request.FarmId && f.ArchivedAt == null, cancellationToken)
             ?? throw new KeyNotFoundException("Tarla bulunamadı.");
 
+        if (request.CreatedByRole == UserRole.Farmer && farm.OwnerId != request.CreatedById)
+        {
+            throw new UnauthorizedAccessException("Yalnızca kendi tarlanıza faaliyet ekleyebilirsiniz.");
+        }
+
         // 2. Check Idempotency if ClientOperationId is provided
         if (request.ClientOperationId.HasValue)
         {

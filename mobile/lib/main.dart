@@ -17,6 +17,7 @@ import 'screens/onboarding_ekrani.dart';
 import 'screens/ana_ekran.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
+import 'services/database_helper.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/firestore_user_profile_service.dart';
 import 'services/notification_service.dart';
@@ -136,6 +137,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
 
   Future<void> _logout() async {
     await _notificationService.deactivateCurrentDevice();
+    await DatabaseHelper.instance.clearUserData();
     await _backendAuthService.logout();
     await _authService.signOut();
   }

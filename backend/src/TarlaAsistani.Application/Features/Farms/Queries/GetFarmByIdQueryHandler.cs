@@ -17,10 +17,17 @@ public class GetFarmByIdQueryHandler : IRequestHandler<GetFarmByIdQuery, FarmDto
 
     public async Task<FarmDto?> Handle(GetFarmByIdQuery request, CancellationToken cancellationToken)
     {
-        // We project directly to DTO to keep the query lightweight
-        return await _db.Farms
+        var query = _db.Farms
             .AsNoTracking()
-            .Where(f => f.Id == request.Id && f.ArchivedAt == null) // HIDE ARCHIVED FARMS
+            .Where(f => f.Id == request.Id && f.ArchivedAt == null);
+
+        if (request.Role == UserRole.Farmer)
+        {
+            var uid = request.UserId ?? Guid.Empty;
+            query = query.Where(f => f.OwnerId == uid);
+        }
+
+        return await query
             .Select(f => new FarmDto(
                 f.Id,
                 f.OwnerId,

@@ -5,6 +5,7 @@ import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
+import '../services/database_helper.dart';
 import 'ai_asistan_ekrani.dart';
 import 'ana_sayfa_ekrani.dart';
 import 'profil_ekrani.dart';
@@ -90,6 +91,55 @@ class _AnaEkranState extends State<AnaEkran> {
       // 4 — Profil
       ProfilEkrani(repository: widget._profileRepo, onLogout: widget._onLogout),
     ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOrphanedData();
+    });
+  }
+
+  Future<void> _checkOrphanedData() async {
+    try {
+      final summary = await DatabaseHelper.instance.getOrphanedDataSummary();
+      if (!summary.hasOrphanedData || !mounted) return;
+
+      final parts = <String>[];
+      if (summary.farmCount > 0) parts.add('${summary.farmCount} tarla');
+      if (summary.activityCount > 0) parts.add('${summary.activityCount} faaliyet');
+      final details = parts.join(' ve ');
+
+      final shouldClean = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Eski / Sahipsiz Veriler Bulundu'),
+          content: Text(
+            'Bu cihazda önceki oturumdan kalan $details bulundu.\n\n'
+            'Güvenlik ve gizlilik nedeniyle, başka bir kullanıcıya ait olabilecek bu veriler mevcut hesabınıza aktarılamaz. '
+            'Verileri bu cihazdan temizlemek istiyor musunuz?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Daha Sonra'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Cihazdan Temizle'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldClean == true) {
+        await DatabaseHelper.instance.clearOrphanedRecords();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sahipsiz yerel veriler cihazdan temizlendi.')),
+          );
+        }
+      }
+    } catch (_) {
+      // Sessizce yut
+    }
   }
 
   @override

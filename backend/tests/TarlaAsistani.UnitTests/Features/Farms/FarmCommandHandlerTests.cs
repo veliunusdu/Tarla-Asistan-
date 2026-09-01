@@ -133,3 +133,141 @@ public class UpdateFarmCommandHandlerTests
         result.Should().BeNull();
     }
 }
+
+[Trait("Category", "Farms")]
+public class ArchiveFarmCommandHandlerTests
+{
+    [Fact]
+    public async Task Handle_WhenFarmerArchivesOwnFarm_ShouldArchiveFarmAndReturnTrue()
+    {
+        // Arrange
+        var farmerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = farmId,
+            OwnerId = farmerId,
+            Name = "Benim Tarlam",
+            ArchivedAt = null
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new ArchiveFarmCommandHandler(db);
+        var command = new ArchiveFarmCommand(farmId, farmerId, UserRole.Farmer);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().BeTrue();
+        farm.ArchivedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Handle_WhenFarmerTriesToArchiveAnotherFarmersFarm_ShouldReturnFalseAndNotModifyFarm()
+    {
+        // Arrange
+        var farmer1Id = Guid.NewGuid();
+        var farmer2Id = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = farmId,
+            OwnerId = farmer1Id,
+            Name = "Çiftçi 1 Tarlası",
+            ArchivedAt = null
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new ArchiveFarmCommandHandler(db);
+        var command = new ArchiveFarmCommand(farmId, farmer2Id, UserRole.Farmer);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().BeFalse();
+        farm.ArchivedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_WhenAgronomistArchivesFarm_ShouldArchiveFarmAndReturnTrue()
+    {
+        // Arrange
+        var agronomistId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = farmId,
+            OwnerId = farmerId,
+            Name = "Çiftçi Tarlası",
+            ArchivedAt = null
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new ArchiveFarmCommandHandler(db);
+        var command = new ArchiveFarmCommand(farmId, agronomistId, UserRole.Agronomist);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().BeTrue();
+        farm.ArchivedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Handle_WhenFarmDoesNotExist_ShouldReturnFalse()
+    {
+        // Arrange
+        var farmerId = Guid.NewGuid();
+        var db = new MockDbContextBuilder().Build();
+
+        var handler = new ArchiveFarmCommandHandler(db);
+        var command = new ArchiveFarmCommand(Guid.NewGuid(), farmerId, UserRole.Farmer);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_WhenFarmIsAlreadyArchived_ShouldReturnFalse()
+    {
+        // Arrange
+        var farmerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = farmId,
+            OwnerId = farmerId,
+            Name = "Zaten Arşivlenmiş Tarla",
+            ArchivedAt = DateTime.UtcNow
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .Build();
+
+        var handler = new ArchiveFarmCommandHandler(db);
+        var command = new ArchiveFarmCommand(farmId, farmerId, UserRole.Farmer);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+}
