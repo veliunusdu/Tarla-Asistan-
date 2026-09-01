@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import 'ai_asistan_ekrani.dart';
 import 'ana_sayfa_ekrani.dart';
@@ -27,17 +28,20 @@ class AnaEkran extends StatefulWidget {
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
     AiAssistantRepository? aiRepository,
+    ProfileRepository? profileRepository,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
        _weatherRepo = weatherRepository,
        _aiRepo = aiRepository,
+       _profileRepo = profileRepository,
        _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
   final FaaliyetRepository? _faaliyetRepo;
   final WeatherRepository? _weatherRepo;
   final AiAssistantRepository? _aiRepo;
+  final ProfileRepository? _profileRepo;
   final Future<void> Function()? _onLogout;
 
   @override
@@ -84,7 +88,7 @@ class _AnaEkranState extends State<AnaEkran> {
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),
       // 4 — Profil
-      ProfilEkrani(onLogout: widget._onLogout),
+      ProfilEkrani(repository: widget._profileRepo, onLogout: widget._onLogout),
     ];
   }
 

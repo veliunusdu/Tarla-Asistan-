@@ -1,7 +1,8 @@
 import '../../../services/api_client.dart';
 import '../domain/user_profile.dart';
+import 'profile_repository.dart';
 
-class BackendProfileRepository {
+class BackendProfileRepository implements ProfileRepository {
   const BackendProfileRepository(this._client);
 
   final ApiClient _client;
