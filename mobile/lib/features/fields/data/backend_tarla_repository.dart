@@ -33,6 +33,9 @@ class BackendTarlaRepository
   }
 
   @override
+  Future<void> archiveTarla(String id) => _remote.archiveFarm(id);
+
+  @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) async {
     await _remote.updateFarm(
       id,

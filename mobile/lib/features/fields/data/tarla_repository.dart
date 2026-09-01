@@ -7,4 +7,5 @@ abstract interface class TarlaRepository implements TarlaReadRepository {
   @override
   Future<List<Tarla>> getTarlalar();
   Future<void> addTarla(Tarla tarla);
+  Future<void> archiveTarla(String id);
 }

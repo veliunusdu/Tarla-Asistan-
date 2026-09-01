@@ -57,12 +57,21 @@ void main() {
     expect(remote.updatedRequest?.latitude, 38.5);
     expect(remote.updatedRequest?.longitude, 27.2);
   });
+
+  test('archives a farm through the backend', () async {
+    final remote = _FakeFarmRemoteRepository();
+
+    await BackendTarlaRepository(remote: remote).archiveTarla('farm-1');
+
+    expect(remote.archivedFarmId, 'farm-1');
+  });
 }
 
 class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   FarmCreateRequestDto? created;
   String? updatedFarmId;
   FarmUpdateRequestDto? updatedRequest;
+  String? archivedFarmId;
 
   final _farm = FarmResponseDto(
     id: 'farm-1',
@@ -121,5 +130,5 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   }
 
   @override
-  Future<void> archiveFarm(String farmId) async {}
+  Future<void> archiveFarm(String farmId) async => archivedFarmId = farmId;
 }

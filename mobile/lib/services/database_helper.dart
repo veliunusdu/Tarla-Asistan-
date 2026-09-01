@@ -125,6 +125,11 @@ class DatabaseHelper implements SyncOperationStore {
     );
   }
 
+  Future<int> deleteTarla(String id) async {
+    final db = await instance.database;
+    return db.delete('tarlalar', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> upsertTarlalar(List<Tarla> tarlalar) async {
     final db = await instance.database;
     await db.transaction((txn) async {

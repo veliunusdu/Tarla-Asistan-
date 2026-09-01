@@ -16,6 +16,9 @@ class LocalTarlaRepository
       DatabaseHelper.instance.insertTarla(tarla);
 
   @override
+  Future<void> archiveTarla(String id) => DatabaseHelper.instance.deleteTarla(id);
+
+  @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) =>
       DatabaseHelper.instance.updateTarlaLocation(
         id,
