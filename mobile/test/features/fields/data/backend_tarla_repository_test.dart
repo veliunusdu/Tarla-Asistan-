@@ -33,6 +33,21 @@ void main() {
     },
   );
 
+  test('serializes create fields using the .NET farm contract', () {
+    const request = FarmCreateRequestDto(
+      name: 'Kuzey Tarla',
+      latitude: 38.42,
+      longitude: 27.14,
+      cropType: 'WHEAT',
+      plantedAt: '2026-03-15',
+    );
+
+    expect(request.toJson()['initialCropType'], 'WHEAT');
+    expect(request.toJson()['initialPlantedAt'], '2026-03-15');
+    expect(request.toJson().containsKey('crop_type'), isFalse);
+    expect(request.toJson().containsKey('planted_at'), isFalse);
+  });
+
   test('maps backend hectares to dönüm for field screens', () async {
     final remote = _FakeFarmRemoteRepository();
     final repository = BackendTarlaRepository(remote: remote);
