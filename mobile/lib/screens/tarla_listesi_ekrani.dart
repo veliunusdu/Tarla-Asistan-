@@ -119,6 +119,13 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                         builder: (context) => TarlaDetayEkrani(
                           tarla: tarla,
                           faaliyetRepository: widget._faaliyetRepository,
+                          onArchive:
+                              widget._repository is TarlaArchiveRepository
+                              ? () =>
+                                    (widget._repository
+                                            as TarlaArchiveRepository)
+                                        .archiveTarla(tarla.id)
+                              : null,
                         ),
                       ),
                     );

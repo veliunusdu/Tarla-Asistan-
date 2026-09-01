@@ -7,7 +7,10 @@ import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
 
 class BackendTarlaRepository
-    implements TarlaRepository, TarlaLocationRepository {
+    implements
+        TarlaRepository,
+        TarlaLocationRepository,
+        TarlaArchiveRepository {
   const BackendTarlaRepository({required FarmRemoteRepository remote})
     : _remote = remote;
 

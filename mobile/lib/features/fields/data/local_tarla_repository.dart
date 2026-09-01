@@ -5,7 +5,10 @@ import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
 
 class LocalTarlaRepository
-    implements TarlaRepository, TarlaLocationRepository {
+    implements
+        TarlaRepository,
+        TarlaLocationRepository,
+        TarlaArchiveRepository {
   const LocalTarlaRepository();
 
   @override
@@ -16,7 +19,8 @@ class LocalTarlaRepository
       DatabaseHelper.instance.insertTarla(tarla);
 
   @override
-  Future<void> archiveTarla(String id) => DatabaseHelper.instance.deleteTarla(id);
+  Future<void> archiveTarla(String id) =>
+      DatabaseHelper.instance.deleteTarla(id);
 
   @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) =>
