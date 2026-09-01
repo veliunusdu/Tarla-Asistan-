@@ -38,11 +38,13 @@ class TarlaDetayEkrani extends StatefulWidget {
     super.key,
     required this.tarla,
     FaaliyetRepository? faaliyetRepository,
+    this.onArchive,
   }) : _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final Tarla tarla;
   final FaaliyetRepository _faaliyetRepository;
+  final Future<void> Function()? onArchive;
 
   @visibleForTesting
   FaaliyetRepository get repositoryForTesting => _faaliyetRepository;
@@ -75,6 +77,29 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     });
   }
 
+  Future<void> _archive() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tarlayı arşivle?'),
+        content: const Text('Tarla aktif listenizden kaldırılacak.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Arşivle'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || widget.onArchive == null) return;
+    await widget.onArchive!();
+    if (mounted) Navigator.pop(context, true);
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -84,6 +109,14 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.tarla.name),
+        actions: [
+          if (widget.onArchive != null)
+            IconButton(
+              tooltip: 'Tarlayı arşivle',
+              icon: const Icon(Icons.archive_outlined),
+              onPressed: _archive,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

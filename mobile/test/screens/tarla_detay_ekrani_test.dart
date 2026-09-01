@@ -81,6 +81,27 @@ void main() {
       expect(find.textContaining('2024'), findsAtLeastNWidgets(1));
     });
 
+    testWidgets('arşivleme kullanıcı onayından sonra çalışır', (tester) async {
+      var archived = false;
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onArchive: () async => archived = true,
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı arşivle'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tarlayı arşivle?'), findsOneWidget);
+      expect(archived, isFalse);
+      await tester.tap(find.text('Arşivle'));
+      await tester.pumpAndSettle();
+      expect(archived, isTrue);
+    });
+
     testWidgets('konum 0.0 ise "Konum eklenmedi" gösterilir', (tester) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
       await tester.pumpWidget(
@@ -238,24 +259,25 @@ void main() {
       expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);
     });
 
-    testWidgets('FAB tıklandığında FaaliyetEklemeEkrani aynı faaliyetRepository ile açılır', (
-      tester,
-    ) async {
-      final repo = FakeFaaliyetRepository(Future.value([]));
-      await tester.pumpWidget(
-        _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'FAB tıklandığında FaaliyetEklemeEkrani aynı faaliyetRepository ile açılır',
+      (tester) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(FloatingActionButton));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
 
-      expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
-      final eklenenEkran = tester.widget<FaaliyetEklemeEkrani>(
-        find.byType(FaaliyetEklemeEkrani),
-      );
-      expect(identical(eklenenEkran.repositoryForTesting, repo), isTrue);
-    });
+        expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+        final eklenenEkran = tester.widget<FaaliyetEklemeEkrani>(
+          find.byType(FaaliyetEklemeEkrani),
+        );
+        expect(identical(eklenenEkran.repositoryForTesting, repo), isTrue);
+      },
+    );
   });
 }
 
