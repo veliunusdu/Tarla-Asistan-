@@ -10,7 +10,8 @@ class BackendTarlaRepository
     implements
         TarlaRepository,
         TarlaLocationRepository,
-        TarlaArchiveRepository {
+        TarlaArchiveRepository,
+        TarlaUpdateRepository {
   const BackendTarlaRepository({required FarmRemoteRepository remote})
     : _remote = remote;
 
@@ -37,6 +38,19 @@ class BackendTarlaRepository
 
   @override
   Future<void> archiveTarla(String id) => _remote.archiveFarm(id);
+
+  @override
+  Future<void> updateTarla(Tarla tarla) {
+    return _remote.updateFarm(
+      tarla.id,
+      FarmUpdateRequestDto(
+        name: tarla.name,
+        latitude: tarla.latitude,
+        longitude: tarla.longitude,
+        sizeInHectares: tarla.size == null ? null : tarla.size! / 10,
+      ),
+    );
+  }
 
   @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) async {

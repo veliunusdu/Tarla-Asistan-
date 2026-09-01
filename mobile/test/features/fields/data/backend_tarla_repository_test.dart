@@ -65,6 +65,29 @@ void main() {
 
     expect(remote.archivedFarmId, 'farm-1');
   });
+
+  test('updates supported farm details through the backend', () async {
+    final remote = _FakeFarmRemoteRepository();
+    final repository = BackendTarlaRepository(remote: remote);
+
+    await repository.updateTarla(
+      Tarla(
+        id: 'farm-1',
+        name: 'Güney Tarla',
+        latitude: 38.42,
+        longitude: 27.14,
+        size: 18.5,
+        cropType: 'Buğday',
+        plantingDate: DateTime(2026, 3, 15),
+      ),
+    );
+
+    expect(remote.updatedFarmId, 'farm-1');
+    expect(remote.updatedRequest?.name, 'Güney Tarla');
+    expect(remote.updatedRequest?.sizeInHectares, 1.85);
+    expect(remote.updatedRequest?.latitude, 38.42);
+    expect(remote.updatedRequest?.longitude, 27.14);
+  });
 }
 
 class _FakeFarmRemoteRepository implements FarmRemoteRepository {

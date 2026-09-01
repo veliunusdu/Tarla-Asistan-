@@ -8,7 +8,8 @@ class LocalTarlaRepository
     implements
         TarlaRepository,
         TarlaLocationRepository,
-        TarlaArchiveRepository {
+        TarlaArchiveRepository,
+        TarlaUpdateRepository {
   const LocalTarlaRepository();
 
   @override
@@ -21,6 +22,10 @@ class LocalTarlaRepository
   @override
   Future<void> archiveTarla(String id) =>
       DatabaseHelper.instance.deleteTarla(id);
+
+  @override
+  Future<void> updateTarla(Tarla tarla) =>
+      DatabaseHelper.instance.insertTarla(tarla);
 
   @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) =>

@@ -39,12 +39,14 @@ class TarlaDetayEkrani extends StatefulWidget {
     required this.tarla,
     FaaliyetRepository? faaliyetRepository,
     this.onArchive,
+    this.onEdit,
   }) : _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final Tarla tarla;
   final FaaliyetRepository _faaliyetRepository;
   final Future<void> Function()? onArchive;
+  final Future<bool> Function()? onEdit;
 
   @visibleForTesting
   FaaliyetRepository get repositoryForTesting => _faaliyetRepository;
@@ -100,6 +102,12 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     if (mounted) Navigator.pop(context, true);
   }
 
+  Future<void> _edit() async {
+    if (widget.onEdit == null) return;
+    final updated = await widget.onEdit!();
+    if (updated && mounted) Navigator.pop(context, true);
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -110,6 +118,12 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
       appBar: AppBar(
         title: Text(widget.tarla.name),
         actions: [
+          if (widget.onEdit != null)
+            IconButton(
+              tooltip: 'Tarlayı düzenle',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _edit,
+            ),
           if (widget.onArchive != null)
             IconButton(
               tooltip: 'Tarlayı arşivle',

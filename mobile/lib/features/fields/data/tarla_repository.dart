@@ -12,3 +12,7 @@ abstract interface class TarlaRepository implements TarlaReadRepository {
 abstract interface class TarlaArchiveRepository {
   Future<void> archiveTarla(String id);
 }
+
+abstract interface class TarlaUpdateRepository {
+  Future<void> updateTarla(Tarla tarla);
+}

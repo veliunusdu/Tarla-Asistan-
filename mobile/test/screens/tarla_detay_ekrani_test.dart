@@ -102,6 +102,27 @@ void main() {
       expect(archived, isTrue);
     });
 
+    testWidgets('düzenleme işlemini kullanıcıdan başlatır', (tester) async {
+      var opened = false;
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onEdit: () async {
+              opened = true;
+              return false;
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı düzenle'));
+      await tester.pumpAndSettle();
+
+      expect(opened, isTrue);
+    });
+
     testWidgets('konum 0.0 ise "Konum eklenmedi" gösterilir', (tester) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
       await tester.pumpWidget(
