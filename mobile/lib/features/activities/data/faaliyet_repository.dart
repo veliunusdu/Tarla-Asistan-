@@ -15,3 +15,16 @@ abstract interface class FaaliyetRepository {
   /// yerel repository SQLite kaydını günceller.
   Future<void> markAsCompleted(String id);
 }
+
+abstract interface class FaaliyetDeleteRepository {
+  Future<void> deleteFaaliyet(String id);
+}
+
+abstract interface class PlanliGorevRepository {
+  Future<void> addPlanliGorev(Faaliyet gorev);
+  Future<List<Faaliyet>> getPlanliGorevler();
+}
+
+abstract interface class PlanliGorevCompletionRepository {
+  Future<void> completePlanliGorev(String id, {String? note});
+}

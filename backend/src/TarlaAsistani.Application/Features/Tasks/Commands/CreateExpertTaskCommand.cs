@@ -13,5 +13,6 @@ public record CreateExpertTaskCommand(
     TaskPriority Priority,
     TaskConfidence Confidence,
     DateOnly DueDate,
-    Guid? CropPeriodId = null
+    Guid? CropPeriodId = null,
+    UserRole CreatedByRole = UserRole.Agronomist
 ) : IRequest<TaskDto>;

@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application.Features.Tasks.DTOs;
+using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Infrastructure.Persistence;
 using TaskStatus = TarlaAsistani.Domain.Enums.TaskStatus;
 
 namespace TarlaAsistani.IntegrationTests;
@@ -11,9 +14,11 @@ namespace TarlaAsistani.IntegrationTests;
 public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly HttpClient _client;
+    private readonly CustomWebApplicationFactory _factory;
 
     public TaskEndpointsIntegrationTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -67,5 +72,72 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         var completedTask = await completeResponse.Content.ReadFromJsonAsync<TaskDto>(CustomWebApplicationFactory.JsonOptions);
         completedTask.Should().NotBeNull();
         completedTask!.Status.Should().Be(TaskStatus.Completed);
+    }
+
+    [Fact]
+    public async Task FarmerCanCreateManualTaskForOwnedFarm()
+    {
+        var ownerId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = ownerId,
+                PhoneNumber = "+905550000001",
+                Role = UserRole.Farmer,
+                AccountStatus = AccountStatus.Active,
+            });
+            await db.SaveChangesAsync();
+        }
+        var farmResponse = await _client.PostAsJsonAsync(
+            "/api/v1/farms",
+            new CreateFarmRequest(
+                ownerId,
+                "Çiftçi Görev Tarlası",
+                39.0,
+                32.0,
+                2,
+                null,
+                CropType.Wheat,
+                new DateOnly(2026, 4, 1)),
+            CustomWebApplicationFactory.JsonOptions);
+        var farm = await farmResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(
+            CustomWebApplicationFactory.JsonOptions);
+
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/farms/{farm!["id"]}/tasks");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+        request.Headers.Add("X-User-Role", "Farmer");
+        request.Content = JsonContent.Create(
+            new CreateExpertTaskApiRequest(
+                null,
+                "Sulama yap",
+                "Akşam sulama",
+                "Çiftçi tarafından planlandı",
+                TaskPriority.Medium,
+                TaskConfidence.High,
+                DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+                null),
+            options: CustomWebApplicationFactory.JsonOptions);
+
+        var response = await _client.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.Created, responseBody);
+        var task = await response.Content.ReadFromJsonAsync<TaskDto>(
+            CustomWebApplicationFactory.JsonOptions);
+        task!.Source.Should().Be(TaskSource.Manual);
+
+        var listRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/v1/farms/{farm["id"]}/tasks/all");
+        listRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        listRequest.Headers.Add("X-User-Role", "Farmer");
+        var listResponse = await _client.SendAsync(listRequest);
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var tasks = await listResponse.Content.ReadFromJsonAsync<List<TaskDto>>(
+            CustomWebApplicationFactory.JsonOptions);
+        tasks.Should().ContainSingle(item => item.Id == task.Id);
     }
 }

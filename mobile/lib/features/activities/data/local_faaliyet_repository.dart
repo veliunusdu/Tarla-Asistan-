@@ -2,7 +2,12 @@ import '../../../models/faaliyet.dart';
 import '../../../services/database_helper.dart';
 import 'faaliyet_repository.dart';
 
-class LocalFaaliyetRepository implements FaaliyetRepository {
+class LocalFaaliyetRepository
+    implements
+        FaaliyetRepository,
+        FaaliyetDeleteRepository,
+        PlanliGorevRepository,
+        PlanliGorevCompletionRepository {
   const LocalFaaliyetRepository();
 
   @override
@@ -18,10 +23,23 @@ class LocalFaaliyetRepository implements FaaliyetRepository {
       DatabaseHelper.instance.getTumFaaliyetler();
 
   @override
-  Future<void> deleteFaaliyet(String id) =>
-      DatabaseHelper.instance.deleteFaaliyet(id);
+  Future<void> deleteFaaliyet(String id) async {
+    await DatabaseHelper.instance.deleteFaaliyet(id);
+  }
 
   @override
-  Future<void> markAsCompleted(String id) =>
-      DatabaseHelper.instance.markFaaliyetCompleted(id);
+  Future<void> addPlanliGorev(Faaliyet gorev) => addFaaliyet(gorev);
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async => [];
+
+  @override
+  Future<void> completePlanliGorev(String id, {String? note}) async {
+    await DatabaseHelper.instance.completePlanliGorev(id);
+  }
+
+  @override
+  Future<void> markAsCompleted(String id) async {
+    await DatabaseHelper.instance.completePlanliGorev(id);
+  }
 }

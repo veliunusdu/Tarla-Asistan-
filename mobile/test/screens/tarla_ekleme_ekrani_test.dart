@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
+import 'package:mobile/features/location/data/location_service.dart';
+import 'package:mobile/features/location/domain/tarla_location.dart';
 import 'package:mobile/models/tarla.dart';
 import 'package:mobile/screens/tarla_ekleme_ekrani.dart';
 
@@ -32,13 +34,42 @@ class FakeTarlaRepository implements TarlaRepository {
   }
 }
 
+class FakeLocationService implements LocationService {
+  FakeLocationService({this.location, this.error});
+
+  final TarlaLocation? location;
+  final Object? error;
+
+  @override
+  Future<TarlaLocation> getCurrentLocation() async {
+    if (error != null) throw error!;
+    return location ??
+        const TarlaLocation(latitude: 39.92077, longitude: 32.85411);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-Widget _buildApp(TarlaRepository repo) => MaterialApp(
+void _setupScreen(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 1200);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Widget _buildApp(
+  TarlaRepository repo, {
+  LocationService? locationService,
+  FieldLocationPicker? locationPicker,
+}) => MaterialApp(
   theme: AppTheme.light,
-  home: TarlaEklemeEkrani(repository: repo),
+  home: TarlaEklemeEkrani(
+    repository: repo,
+    locationService: locationService,
+    locationPicker: locationPicker,
+  ),
 );
 
 Future<void> _doldurForm(
@@ -77,6 +108,7 @@ Future<void> _doldurForm(
 void main() {
   group('TarlaEklemeEkrani form doğrulama', () {
     testWidgets('boş tarla adı formu geçmez', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
       await tester.tap(find.text('Kaydet'));
@@ -87,6 +119,7 @@ void main() {
     });
 
     testWidgets('boş büyüklük formu geçmez', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
 
@@ -102,6 +135,7 @@ void main() {
     });
 
     testWidgets('parse edilemeyen büyüklük formu geçmez', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
 
@@ -123,6 +157,7 @@ void main() {
     });
 
     testWidgets('sıfır büyüklük formu geçmez', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
 
@@ -142,6 +177,7 @@ void main() {
     });
 
     testWidgets('virgüllü büyüklük güvenli parse edilir', (tester) async {
+      _setupScreen(tester);
       final completer = Completer<void>()..complete();
       final repo = FakeTarlaRepository(addCompleter: completer);
       await tester.pumpWidget(_buildApp(repo));
@@ -154,6 +190,7 @@ void main() {
     });
 
     testWidgets('ürün seçilmeden kayıt yapılmaz', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
 
@@ -173,6 +210,7 @@ void main() {
     });
 
     testWidgets('tarih seçilmeden kayıt yapılmaz', (tester) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository();
       await tester.pumpWidget(_buildApp(repo));
 
@@ -202,6 +240,7 @@ void main() {
     testWidgets(
       'başarılı kayıtta doğru tarla gönderilir ve ekran true ile kapanır',
       (tester) async {
+        _setupScreen(tester);
         final completer = Completer<void>()..complete();
         final repo = FakeTarlaRepository(addCompleter: completer);
 
@@ -247,6 +286,7 @@ void main() {
     );
 
     testWidgets('loading sırasında ikinci kayıt engellenir', (tester) async {
+      _setupScreen(tester);
       final completer = Completer<void>();
       final repo = FakeTarlaRepository(addCompleter: completer);
       await tester.pumpWidget(_buildApp(repo));
@@ -273,6 +313,7 @@ void main() {
     testWidgets('repository hatası kullanıcıya SnackBar gösterir', (
       tester,
     ) async {
+      _setupScreen(tester);
       final repo = FakeTarlaRepository(shouldThrow: true);
       await tester.pumpWidget(_buildApp(repo));
 
@@ -289,4 +330,92 @@ void main() {
       expect(find.textContaining('Exception'), findsNothing);
     });
   });
+
+  group('Tarla konumu seçimi ve görünürlüğü', () {
+    testWidgets('Tarla konumu alanı, butonları ve Konumsuz devam et seçeneği görünür', (
+      tester,
+    ) async {
+      final repo = FakeTarlaRepository();
+      await tester.pumpWidget(_buildApp(repo));
+
+      expect(find.text('Tarla konumu'), findsOneWidget);
+      expect(find.text('Konum seçilmedi'), findsOneWidget);
+      expect(find.text('Konumumu kullan'), findsOneWidget);
+      expect(find.text('Haritada seç'), findsOneWidget);
+      expect(find.text('Konumsuz devam et'), findsOneWidget);
+
+      // Tarla adı alanından sonra ve Büyüklük alanından önce olduğunu doğrula
+      final nameFinder = find.widgetWithText(TextFormField, 'Tarla Adı');
+      final locationFinder = find.text('Tarla konumu');
+      final sizeFinder = find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)');
+
+      final nameBottom = tester.getBottomLeft(nameFinder).dy;
+      final locationTop = tester.getTopLeft(locationFinder).dy;
+      final locationBottom = tester.getBottomLeft(locationFinder).dy;
+      final sizeTop = tester.getTopLeft(sizeFinder).dy;
+
+      expect(locationTop, greaterThanOrEqualTo(nameBottom));
+      expect(sizeTop, greaterThanOrEqualTo(locationBottom));
+    });
+
+    testWidgets(
+      'Konumsuz devam et form doğrulamalarını çalıştırır ve eksik alanda kaydetmez',
+      (tester) async {
+        final repo = FakeTarlaRepository();
+        await tester.pumpWidget(_buildApp(repo));
+
+        await tester.tap(find.text('Konumsuz devam et'));
+        await tester.pump();
+
+        expect(find.text('Tarla adı boş bırakılamaz.'), findsOneWidget);
+        expect(repo.addCallCount, 0);
+      },
+    );
+
+    testWidgets(
+      'Konumsuz devam et ile kaydedildiğinde koordinatlar null gönderilir',
+      (tester) async {
+        final completer = Completer<void>()..complete();
+        final repo = FakeTarlaRepository(addCompleter: completer);
+        await tester.pumpWidget(_buildApp(repo));
+
+        await _doldurForm(tester);
+        await tester.tap(find.text('Konumsuz devam et'));
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(repo.addCallCount, 1);
+        expect(repo.lastAdded?.latitude, isNull);
+        expect(repo.lastAdded?.longitude, isNull);
+      },
+    );
+
+    testWidgets(
+      'Konum seçildiğinde koordinat özeti, Haritada değiştir ve Konumu kaldır gösterilir',
+      (tester) async {
+        final repo = FakeTarlaRepository();
+        final locationService = FakeLocationService(
+          location: const TarlaLocation(latitude: 38.4237, longitude: 27.1428),
+        );
+        await tester.pumpWidget(
+          _buildApp(repo, locationService: locationService),
+        );
+
+        await tester.tap(find.text('Konumumu kullan'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('38.42370, 27.14280'), findsOneWidget);
+        expect(find.text('Haritada değiştir'), findsOneWidget);
+        expect(find.text('Konumu kaldır'), findsOneWidget);
+
+        // Konumu kaldırınca tekrar 'Konum seçilmedi' ve 'Haritada seç' döner
+        await tester.tap(find.text('Konumu kaldır'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Konum seçilmedi'), findsOneWidget);
+        expect(find.text('Haritada seç'), findsOneWidget);
+      },
+    );
+  });
 }
+

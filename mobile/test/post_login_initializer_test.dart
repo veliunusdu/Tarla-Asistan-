@@ -37,6 +37,26 @@ void main() {
       expect(events, ['profile', 'sync', 'notifications']);
     },
   );
+
+  test('continues when the optional Firestore profile mirror fails', () async {
+    final events = <String>[];
+    final initializer = PostLoginInitializer(
+      profileProvisioner: _FakeProfileProvisioner(
+        () async => throw StateError('Firestore unavailable'),
+      ),
+      initializeSync: () async => events.add('sync'),
+      initializeNotifications: () async => events.add('notifications'),
+    );
+
+    await initializer.initialize(
+      uid: 'uid-1',
+      phoneNumber: null,
+      email: 'farmer@example.com',
+    );
+
+    expect(events, ['sync', 'notifications']);
+    expect(initializer.status.profileFailure, isA<StateError>());
+  });
 }
 
 class _FakeProfileProvisioner implements UserProfileProvisioner {

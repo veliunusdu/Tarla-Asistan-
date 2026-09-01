@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
+import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/fields/data/local_tarla_repository.dart';
-import 'package:mobile/features/fields/data/tarla_read_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
+import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/screens/tarla_detay_ekrani.dart';
 import 'package:mobile/screens/tarla_listesi_ekrani.dart';
 import 'package:mobile/shared/widgets/app_empty_view.dart';
 import 'package:mobile/shared/widgets/app_error_view.dart';
@@ -28,6 +30,22 @@ class FakeTarlaRepository implements TarlaRepository {
   Future<void> addTarla(Tarla tarla) async {}
 }
 
+class RecordingTarlaRepository implements TarlaRepository {
+  RecordingTarlaRepository([List<Tarla>? initialTarlalar])
+    : _tarlalar = initialTarlalar?.toList() ?? [];
+
+  final List<Tarla> _tarlalar;
+  final List<Tarla> added = [];
+
+  @override
+  Future<List<Tarla>> getTarlalar() async => [..._tarlalar, ...added];
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {
+    added.add(tarla);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -46,6 +64,27 @@ Widget _buildApp(TarlaRepository repository) => MaterialApp(
   theme: AppTheme.light,
   home: TarlaListesiEkrani(repository: repository),
 );
+
+Future<void> completeFarmForm(WidgetTester tester) async {
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Tarla Adı'),
+    'Kuzey Tarla',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
+    '5',
+  );
+  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Buğday').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tarih seçin'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tamam'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Kaydet'));
+  await tester.pumpAndSettle();
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -96,6 +135,20 @@ void main() {
       expect(find.byType(AppErrorView), findsNothing);
     });
 
+    testWidgets('boş durumdan eklenen tarla supplied repositoryye kaydolur', (
+      tester,
+    ) async {
+      final farms = RecordingTarlaRepository();
+      await tester.pumpWidget(_buildApp(farms));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Tarla Ekle'));
+      await tester.pumpAndSettle();
+      await completeFarmForm(tester);
+
+      expect(farms.added.single.name, 'Kuzey Tarla');
+    });
+
     testWidgets('tarla listesi gösterir', (tester) async {
       final completer = Completer<List<Tarla>>();
       await tester.pumpWidget(_buildApp(FakeTarlaRepository(completer)));
@@ -110,6 +163,20 @@ void main() {
       expect(find.text('Güney Tarla'), findsOneWidget);
       expect(find.byType(AppEmptyView), findsNothing);
       expect(find.byType(AppErrorView), findsNothing);
+    });
+
+    testWidgets('FAB ile eklenen tarla supplied repositoryye kaydolur', (
+      tester,
+    ) async {
+      final farms = RecordingTarlaRepository([_tarla('1', 'Mevcut Tarla')]);
+      await tester.pumpWidget(_buildApp(farms));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      await completeFarmForm(tester);
+
+      expect(farms.added.single.name, 'Kuzey Tarla');
     });
 
     testWidgets("Tekrar Dene butonu repository'yi yeniden çağırır", (
@@ -168,20 +235,21 @@ class _CountingFakeRepository implements TarlaRepository {
 }
 
 // ---------------------------------------------------------------------------
-// TarlaReadRepository fake — sadece okuma arayüzünü test etmek için
+// Backend-capable repository fakes
 // ---------------------------------------------------------------------------
 
-/// Implements [TarlaReadRepository] directly (no write path), suitable for
-/// testing [TarlaListesiEkrani] with a backend-style adapter.
-class FakeReadRepository implements TarlaReadRepository {
+class FakeReadRepository implements TarlaRepository {
   FakeReadRepository(this._future);
   final Future<List<Tarla>> _future;
 
   @override
   Future<List<Tarla>> getTarlalar() => _future;
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
 }
 
-class _CountingReadRepository implements TarlaReadRepository {
+class _CountingReadRepository implements TarlaRepository {
   _CountingReadRepository({required this.onCall});
 
   final Completer<List<Tarla>> Function() onCall;
@@ -192,25 +260,45 @@ class _CountingReadRepository implements TarlaReadRepository {
     callCount++;
     return onCall().future;
   }
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
 }
 
 // ---------------------------------------------------------------------------
-// Helpers for read-repository tests
+// Helpers for backend-capable repository tests
 // ---------------------------------------------------------------------------
 
-Widget _buildReadApp(TarlaReadRepository repository) => MaterialApp(
+Widget _buildReadApp(TarlaRepository repository) => MaterialApp(
   theme: AppTheme.light,
   home: TarlaListesiEkrani(repository: repository),
 );
 
+class _EmptyFaaliyetRepository implements FaaliyetRepository {
+  @override
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
+
+  @override
+  Future<void> addFaaliyet(Faaliyet faaliyet) async {}
+
+  @override
+  Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
+}
+
 Tarla _backendTarla(String id, String name) => Tarla(id: id, name: name);
 
 // ---------------------------------------------------------------------------
-// Tests 11–16: TarlaListesiEkrani with backend read adapter DI
+// Tests 11–16: TarlaListesiEkrani with backend-capable repository DI
 // ---------------------------------------------------------------------------
 
 void _backendAdapterTests() {
-  group('TarlaListesiEkrani — backend read adapter DI', () {
+  group('TarlaListesiEkrani — backend-capable repository DI', () {
     // Test 11
     testWidgets(
       '11. backend read adapter inject edilince tarla listesi gösterir',
@@ -287,9 +375,9 @@ void _backendAdapterTests() {
         const screen = TarlaListesiEkrani();
         expect(screen, isA<TarlaListesiEkrani>());
 
-        // Additionally verify LocalTarlaRepository implements TarlaReadRepository,
-        // confirming it is a valid fallback without breaking the interface.
-        expect(const LocalTarlaRepository(), isA<TarlaReadRepository>());
+        // The fallback must remain write-capable because this screen owns
+        // field-creation routes as well as field reads.
+        expect(const LocalTarlaRepository(), isA<TarlaRepository>());
       },
     );
 
@@ -314,6 +402,35 @@ void _backendAdapterTests() {
         matching: find.byType(ListTile),
       );
       expect(tile, findsOneWidget);
+    });
+
+    testWidgets('tarla tıklandığında TarlaDetayEkrani aynı faaliyetRepository ile açılır', (
+      tester,
+    ) async {
+      final tarlaRepo = FakeReadRepository(
+        Future.value([_backendTarla('b1', 'Tarla A')]),
+      );
+      final faaliyetRepo = _EmptyFaaliyetRepository();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: TarlaListesiEkrani(
+            repository: tarlaRepo,
+            faaliyetRepository: faaliyetRepo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tarla A'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+      final detay = tester.widget<TarlaDetayEkrani>(
+        find.byType(TarlaDetayEkrani),
+      );
+      expect(identical(detay.repositoryForTesting, faaliyetRepo), isTrue);
     });
 
     // Test 16

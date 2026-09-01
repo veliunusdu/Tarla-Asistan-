@@ -47,12 +47,14 @@ class TarlaEklemeEkrani extends StatefulWidget {
     TarlaRepository? repository,
     LocationService? locationService,
     this.locationPicker,
+    this.editingTarla,
   }) : _repository = repository ?? const LocalTarlaRepository(),
        _locationService = locationService;
 
   final TarlaRepository _repository;
   final LocationService? _locationService;
   final FieldLocationPicker? locationPicker;
+  final Tarla? editingTarla;
 
   @override
   State<TarlaEklemeEkrani> createState() => _TarlaEklemeEkraniState();
@@ -68,6 +70,25 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
   bool _kaydediliyor = false;
   bool _konumAliniyor = false;
   TarlaLocation? _selectedLocation;
+
+  bool get _isEditing => widget.editingTarla != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final tarla = widget.editingTarla;
+    if (tarla == null) return;
+    _nameController.text = tarla.name;
+    _sizeController.text = tarla.size?.toString() ?? '';
+    _secilenUrun = tarla.cropType;
+    _secilenTarih = tarla.plantingDate;
+    if (tarla.latitude != null && tarla.longitude != null) {
+      _selectedLocation = TarlaLocation(
+        latitude: tarla.latitude!,
+        longitude: tarla.longitude!,
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -132,11 +153,11 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
 
   Future<void> _kaydet() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_secilenUrun == null) {
+    if (!_isEditing && _secilenUrun == null) {
       _snackBar('Lütfen bir ürün seçin.');
       return;
     }
-    if (_secilenTarih == null) {
+    if (!_isEditing && _secilenTarih == null) {
       _snackBar('Lütfen ekim tarihini seçin.');
       return;
     }
@@ -147,24 +168,38 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
       _sizeController.text.trim().replaceAll(',', '.'),
     );
 
-    final yeniTarla = Tarla(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final tarla = Tarla(
+      id:
+          widget.editingTarla?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       name: _nameController.text.trim(),
       latitude: _selectedLocation?.latitude,
       longitude: _selectedLocation?.longitude,
       size: boyut,
-      cropType: _secilenUrun!,
-      plantingDate: _secilenTarih!,
+      cropType: _secilenUrun,
+      plantingDate: _secilenTarih,
     );
 
     try {
-      await widget._repository.addTarla(yeniTarla);
+      if (_isEditing) {
+        final repository = widget._repository;
+        if (repository is! TarlaUpdateRepository) {
+          throw UnsupportedError('Tarla güncelleme desteklenmiyor.');
+        }
+        await (repository as TarlaUpdateRepository).updateTarla(tarla);
+      } else {
+        await widget._repository.addTarla(tarla);
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (_) {
       if (!mounted) return;
       setState(() => _kaydediliyor = false);
-      _snackBar('Tarla kaydedilemedi. Lütfen tekrar deneyin.');
+      _snackBar(
+        _isEditing
+            ? 'Tarla güncellenemedi. Lütfen tekrar deneyin.'
+            : 'Tarla kaydedilemedi. Lütfen tekrar deneyin.',
+      );
     }
   }
 
@@ -216,7 +251,9 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni Tarla Ekle')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Tarla Düzenle' : 'Yeni Tarla Ekle'),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -237,6 +274,69 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
+                // Tarla konumu
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Tarla konumu',
+                    prefixIcon: Icon(Icons.location_on),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedLocation == null
+                            ? 'Konum seçilmedi'
+                            : '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: _selectedLocation == null
+                              ? AppColors.textSecondary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs,
+                        children: [
+                          OutlinedButton(
+                            onPressed: _konumAliniyor || _kaydediliyor
+                                ? null
+                                : _konumumuKullan,
+                            child: Text(
+                              _konumAliniyor
+                                  ? 'Konum alınıyor...'
+                                  : 'Konumumu kullan',
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: _kaydediliyor ? null : _haritadaSec,
+                            child: Text(
+                              _selectedLocation == null
+                                  ? 'Haritada seç'
+                                  : 'Haritada değiştir',
+                            ),
+                          ),
+                          if (_selectedLocation != null && !_isEditing)
+                            TextButton(
+                              onPressed: _kaydediliyor
+                                  ? null
+                                  : () => setState(
+                                      () => _selectedLocation = null,
+                                    ),
+                              child: const Text('Konumu kaldır'),
+                            ),
+                          if (_selectedLocation == null && !_isEditing)
+                            TextButton(
+                              onPressed: _kaydediliyor ? null : _kaydet,
+                              child: const Text('Konumsuz devam et'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
                 // Büyüklük
                 TextFormField(
                   controller: _sizeController,
@@ -254,28 +354,38 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                 ),
                 const SizedBox(height: AppSpacing.md),
 
-                // Ürün seçimi (PRD §7.4 desteklenen ürünler)
-                DropdownButtonFormField<String>(
-                  initialValue: _secilenUrun,
-                  decoration: const InputDecoration(
-                    labelText: 'Ürün',
-                    prefixIcon: Icon(Icons.grass),
+                // Ürün dönemi ayrı bir API kaynağıdır; tarla PATCH isteği bunu
+                // değiştirmez. Mevcut değer düzenleme modunda salt okunurdur.
+                if (_isEditing)
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Ürün',
+                      prefixIcon: Icon(Icons.grass),
+                    ),
+                    child: Text(_secilenUrun ?? 'Ürün bilgisi yok'),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: _secilenUrun,
+                    decoration: const InputDecoration(
+                      labelText: 'Ürün',
+                      prefixIcon: Icon(Icons.grass),
+                    ),
+                    items: _desteklenenUrunler
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                        .toList(),
+                    onChanged: _kaydediliyor
+                        ? null
+                        : (v) => setState(() => _secilenUrun = v),
+                    validator: (v) =>
+                        v == null ? 'Lütfen bir ürün seçin.' : null,
                   ),
-                  items: _desteklenenUrunler
-                      .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                      .toList(),
-                  onChanged: _kaydediliyor
-                      ? null
-                      : (v) => setState(() => _secilenUrun = v),
-                  validator: (v) => v == null ? 'Lütfen bir ürün seçin.' : null,
-                ),
                 const SizedBox(height: AppSpacing.md),
 
-                // Ekim tarihi (PRD §7.4: gelecek tarih kabul edilmez)
-                InkWell(
-                  onTap: _kaydediliyor ? null : _tarihSec,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InputDecorator(
+                if (_isEditing) ...[
+                  const Text('Ürün bilgisi bu ekranda değiştirilemez.'),
+                  const SizedBox(height: AppSpacing.sm),
+                  InputDecorator(
                     decoration: const InputDecoration(
                       labelText: 'Ekim Tarihi',
                       prefixIcon: Icon(Icons.calendar_today),
@@ -283,52 +393,31 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                     child: Text(
                       _secilenTarih != null
                           ? _formatTarih(_secilenTarih!)
-                          : 'Tarih seçin',
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: _secilenTarih != null
-                            ? AppColors.textPrimary
-                            : AppColors.textDisabled,
+                          : 'Ekim tarihi yok',
+                    ),
+                  ),
+                ] else
+                  // Ekim tarihi (PRD §7.4: gelecek tarih kabul edilmez)
+                  InkWell(
+                    onTap: _kaydediliyor ? null : _tarihSec,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Ekim Tarihi',
+                        prefixIcon: Icon(Icons.calendar_today),
+                      ),
+                      child: Text(
+                        _secilenTarih != null
+                            ? _formatTarih(_secilenTarih!)
+                            : 'Tarih seçin',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: _secilenTarih != null
+                              ? AppColors.textPrimary
+                              : AppColors.textDisabled,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-
-                Text(
-                  _selectedLocation == null
-                      ? 'Konum seçilmedi'
-                      : '${_selectedLocation!.latitude.toStringAsFixed(5)}, ${_selectedLocation!.longitude.toStringAsFixed(5)}',
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Wrap(
-                  spacing: AppSpacing.sm,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _konumAliniyor || _kaydediliyor
-                          ? null
-                          : _konumumuKullan,
-                      child: Text(
-                        _konumAliniyor
-                            ? 'Konum alınıyor...'
-                            : 'Konumumu kullan',
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: _kaydediliyor ? null : _haritadaSec,
-                      child: Text(
-                        _selectedLocation == null
-                            ? 'Haritada seç'
-                            : 'Haritada değiştir',
-                      ),
-                    ),
-                    if (_selectedLocation != null)
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _selectedLocation = null),
-                        child: const Text('Konumu kaldır'),
-                      ),
-                  ],
-                ),
                 const SizedBox(height: AppSpacing.xl),
 
                 // Kaydet butonu

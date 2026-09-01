@@ -6,16 +6,19 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/screens/faaliyet_ekleme_ekrani.dart';
 import 'package:mobile/screens/tarla_detay_ekrani.dart';
 
 // ---------------------------------------------------------------------------
 // Fake repository
 // ---------------------------------------------------------------------------
 
-class FakeFaaliyetRepository implements FaaliyetRepository {
+class FakeFaaliyetRepository
+    implements FaaliyetRepository, FaaliyetDeleteRepository {
   FakeFaaliyetRepository(this._future);
 
   final Future<List<Faaliyet>> _future;
+  final List<String> deletedIds = [];
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) => _future;
@@ -27,7 +30,7 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
 
   @override
-  Future<void> deleteFaaliyet(String id) async {}
+  Future<void> deleteFaaliyet(String id) async => deletedIds.add(id);
 
   @override
   Future<void> markAsCompleted(String id) async {}
@@ -84,6 +87,90 @@ void main() {
       expect(find.textContaining('Buğday'), findsOneWidget);
       expect(find.textContaining('42.5'), findsOneWidget);
       expect(find.textContaining('2024'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('arşivleme kullanıcı onayından sonra çalışır', (tester) async {
+      var archived = false;
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onArchive: () async => archived = true,
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı arşivle'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tarlayı arşivle?'), findsOneWidget);
+      expect(archived, isFalse);
+      await tester.tap(find.text('Arşivle'));
+      await tester.pumpAndSettle();
+      expect(archived, isTrue);
+    });
+
+    testWidgets('arşivleme hatasında ekran açık kalır ve hata gösterir', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onArchive: () async => throw Exception('network'),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı arşivle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Arşivle'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+      expect(
+        find.text('Tarla arşivlenemedi. Lütfen tekrar deneyin.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('faaliyet silme repository üzerinden çalışır', (tester) async {
+      final repository = FakeFaaliyetRepository(Future.value([_tamamlanan()]));
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Geçmiş'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Faaliyeti sil'));
+      await tester.pumpAndSettle();
+
+      expect(repository.deletedIds, ['f2']);
+    });
+
+    testWidgets('düzenleme işlemini kullanıcıdan başlatır', (tester) async {
+      var opened = false;
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onEdit: () async {
+              opened = true;
+              return false;
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı düzenle'));
+      await tester.pumpAndSettle();
+
+      expect(opened, isTrue);
     });
 
     testWidgets('konum 0.0 ise "Konum eklenmedi" gösterilir', (tester) async {
@@ -243,139 +330,25 @@ void main() {
       expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);
     });
 
-    // ── Arşivleme ──────────────────────────────────────────────────────────
-    group('arşivleme', () {
-      testWidgets('onTarlaArsivle verilmezse arşivle butonu görünmez', (
-        tester,
-      ) async {
+    testWidgets(
+      'FAB tıklandığında FaaliyetEklemeEkrani aynı faaliyetRepository ile açılır',
+      (tester) async {
         final repo = FakeFaaliyetRepository(Future.value([]));
         await tester.pumpWidget(
           _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
         );
         await tester.pumpAndSettle();
 
-        expect(find.byType(PopupMenuButton<String>), findsNothing);
-      });
-
-      testWidgets('onTarlaArsivle verilince PopupMenuButton görünür', (
-        tester,
-      ) async {
-        final repo = FakeFaaliyetRepository(Future.value([]));
-        await tester.pumpWidget(
-          _wrap(
-            TarlaDetayEkrani(
-              tarla: _tarla(),
-              faaliyetRepository: repo,
-              onTarlaArsivle: () async {},
-            ),
-          ),
-        );
+        await tester.tap(find.byType(FloatingActionButton));
         await tester.pumpAndSettle();
 
-        expect(find.byType(PopupMenuButton<String>), findsOneWidget);
-      });
-
-      testWidgets(
-        'arşivleme onaylandığında callback çağrılır ve ekran kapanır',
-        (tester) async {
-          tester.view.physicalSize = const Size(800, 1200);
-          tester.view.devicePixelRatio = 1.0;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-
-          bool callbackCalled = false;
-          final repo = FakeFaaliyetRepository(Future.value([]));
-
-          bool ekranAcik = true;
-          await tester.pumpWidget(
-            MaterialApp(
-              home: Builder(
-                builder: (ctx) => ElevatedButton(
-                  onPressed: () async {
-                    final result = await Navigator.push<bool>(
-                      ctx,
-                      MaterialPageRoute(
-                        builder: (_) => TarlaDetayEkrani(
-                          tarla: _tarla(),
-                          faaliyetRepository: repo,
-                          onTarlaArsivle: () async {
-                            callbackCalled = true;
-                          },
-                        ),
-                      ),
-                    );
-                    if (result == true) ekranAcik = false;
-                  },
-                  child: const Text('Aç'),
-                ),
-              ),
-            ),
-          );
-
-          await tester.tap(find.text('Aç'));
-          await tester.pumpAndSettle();
-
-          // Menüyü aç
-          await tester.tap(find.byType(PopupMenuButton<String>));
-          await tester.pumpAndSettle();
-
-          // Arşivle seçeneğine bas
-          await tester.tap(find.text('Tarlayı Arşivle'));
-          await tester.pumpAndSettle();
-
-          // Onay diyaloğu — Arşivle butonuna bas
-          await tester.tap(find.text('Arşivle'));
-          await tester.pumpAndSettle();
-
-          expect(callbackCalled, isTrue);
-          expect(ekranAcik, isFalse);
-        },
-      );
-
-      testWidgets(
-        'arşivleme başarısız olunca hata snackbar gösterilir, ekran kapanmaz',
-        (tester) async {
-          tester.view.physicalSize = const Size(800, 1200);
-          tester.view.devicePixelRatio = 1.0;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-
-          final repo = FakeFaaliyetRepository(Future.value([]));
-
-          await tester.pumpWidget(
-            MaterialApp(
-              home: TarlaDetayEkrani(
-                tarla: _tarla(),
-                faaliyetRepository: repo,
-                onTarlaArsivle: () async {
-                  throw Exception('sunucu hatası');
-                },
-              ),
-            ),
-          );
-          await tester.pumpAndSettle();
-
-          // Menüyü aç
-          await tester.tap(find.byType(PopupMenuButton<String>));
-          await tester.pumpAndSettle();
-
-          await tester.tap(find.text('Tarlayı Arşivle'));
-          await tester.pumpAndSettle();
-
-          // Onay diyaloğu
-          await tester.tap(find.text('Arşivle'));
-          await tester.pumpAndSettle();
-
-          // Ekran hâlâ açık
-          expect(find.byType(TarlaDetayEkrani), findsOneWidget);
-          // Hata snackbar gösterildi
-          expect(
-            find.textContaining('arşivlenemedi'),
-            findsOneWidget,
-          );
-        },
-      );
-    });
+        expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+        final eklenenEkran = tester.widget<FaaliyetEklemeEkrani>(
+          find.byType(FaaliyetEklemeEkrani),
+        );
+        expect(identical(eklenenEkran.repositoryForTesting, repo), isTrue);
+      },
+    );
   });
 }
 

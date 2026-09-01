@@ -80,6 +80,20 @@ class ApiClient {
     return _decodeObject(response);
   }
 
+  Future<Map<String, dynamic>> postMultipart(
+    String endpoint, {
+    Map<String, String>? fields,
+    List<ApiMultipartFile>? files,
+  }) async {
+    final response = await _sendMultipart(
+      'POST',
+      endpoint,
+      fields: fields,
+      files: files,
+    );
+    return _decodeObject(response);
+  }
+
   Future<void> delete(String endpoint) async {
     await _send('DELETE', endpoint);
   }
@@ -139,6 +153,91 @@ class ApiClient {
 
     _checkStatus(response);
     return response;
+  }
+
+  Future<http.Response> _sendMultipart(
+    String method,
+    String endpoint, {
+    Map<String, String>? fields,
+    List<ApiMultipartFile>? files,
+  }) async {
+    final token = await _idTokenProvider();
+    if (token == null || token.isEmpty) {
+      throw const ApiException(
+        'Devam etmek için tekrar giriş yapın.',
+        statusCode: 401,
+      );
+    }
+
+    final response = await _executeMultipart(
+      method,
+      endpoint,
+      token: token,
+      fields: fields,
+      files: files,
+    );
+
+    if (response.statusCode == 401) {
+      final freshToken = await _forceRefreshTokenProvider();
+      if (freshToken == null || freshToken.isEmpty) {
+        throw const ApiException(
+          'Oturumunuz sona erdi. Tekrar giriş yapın.',
+          statusCode: 401,
+        );
+      }
+      final retried = await _executeMultipart(
+        method,
+        endpoint,
+        token: freshToken,
+        fields: fields,
+        files: files,
+      );
+      if (retried.statusCode == 401) {
+        throw ApiException(_errorMessage(retried), statusCode: 401);
+      }
+      _checkStatus(retried);
+      return retried;
+    }
+
+    _checkStatus(response);
+    return response;
+  }
+
+  Future<http.Response> _executeMultipart(
+    String method,
+    String endpoint, {
+    required String token,
+    Map<String, String>? fields,
+    List<ApiMultipartFile>? files,
+  }) async {
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
+    final uri = Uri.parse('$baseUrl/$normalizedEndpoint');
+    final request = http.MultipartRequest(method, uri)
+      ..headers.addAll({
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      });
+    if (fields != null) request.fields.addAll(fields);
+    if (files != null) {
+      for (final file in files) {
+        request.files.add(file.toMultipartFile());
+      }
+    }
+    try {
+      final streamed = await _http.send(request).timeout(_timeout);
+      return await http.Response.fromStream(streamed);
+    } on TimeoutException {
+      throw const ApiException(
+        'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.',
+        retryable: true,
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.',
+        retryable: true,
+      );
+    }
   }
 
   /// Sends a single HTTP request without retry or token-refresh logic.
@@ -234,4 +333,25 @@ class ApiClient {
       'Sunucuda bir sorun oluştu. Lütfen daha sonra tekrar deneyin.',
     _ => 'İşlem tamamlanamadı ($statusCode).',
   };
+}
+
+class ApiMultipartFile {
+  const ApiMultipartFile({
+    required this.field,
+    required this.bytes,
+    this.filename,
+    this.contentType,
+  });
+
+  final String field;
+  final List<int> bytes;
+  final String? filename;
+  final String? contentType;
+
+  http.MultipartFile toMultipartFile() => http.MultipartFile.fromBytes(
+        field,
+        bytes,
+        filename: filename,
+        contentType: contentType != null ? http.MediaType.parse(contentType!) : null,
+      );
 }

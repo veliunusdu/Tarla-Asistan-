@@ -6,6 +6,7 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/ai_assistant/data/ai_assistant_repository.dart';
 import 'package:mobile/features/ai_assistant/domain/ai_chat_message.dart';
+import 'package:mobile/features/ai_assistant/domain/ai_chat_response.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/features/weather/data/weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
@@ -51,11 +52,16 @@ class FakeWeatherRepository implements WeatherRepository {
 
 class FakeAiAssistantRepository implements AiAssistantRepository {
   @override
-  Future<String> sendMessage({
+  Future<AiChatResponse> sendMessage({
     required String message,
     Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
     List<AiChatMessage> history = const [],
-  }) async => 'Test cevap';
+  }) async =>
+      const AiChatResponse(reply: 'Test cevap', conversationId: 'conv-1');
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +128,19 @@ void main() {
         find.descendant(
           of: find.byType(NavigationBar),
           matching: find.text('Asistan'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Profil sekmesi görünür', (tester) async {
+      await tester.pumpWidget(_wrap());
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Profil'),
         ),
         findsOneWidget,
       );
@@ -345,5 +364,47 @@ void main() {
         );
       },
     );
+
+    testWidgets('AnaEkran faaliyetRepository nesnesini alt ekranlara iletir', (
+      tester,
+    ) async {
+      final faaliyetRepo = FakeFaaliyetRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: AnaEkran(
+            tarlaRepository: FakeTarlaRepository(),
+            faaliyetRepository: faaliyetRepo,
+            weatherRepository: FakeWeatherRepository(),
+            aiRepository: FakeAiAssistantRepository(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final anaSayfa = tester.widget<AnaSayfaEkrani>(
+        find.byType(AnaSayfaEkrani),
+      );
+      expect(
+        identical(anaSayfa.faaliyetRepositoryForTesting, faaliyetRepo),
+        isTrue,
+      );
+
+      final gunluk = tester.widget<TarlaGunluguEkrani>(
+        find.byType(TarlaGunluguEkrani, skipOffstage: false),
+      );
+      expect(
+        identical(gunluk.faaliyetRepositoryForTesting, faaliyetRepo),
+        isTrue,
+      );
+
+      final tarlaListesi = tester.widget<TarlaListesiEkrani>(
+        find.byType(TarlaListesiEkrani, skipOffstage: false),
+      );
+      expect(
+        identical(tarlaListesi.faaliyetRepositoryForTesting, faaliyetRepo),
+        isTrue,
+      );
+    });
   });
 }

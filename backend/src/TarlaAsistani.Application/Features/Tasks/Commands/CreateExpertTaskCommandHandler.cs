@@ -40,6 +40,11 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
             .FirstOrDefaultAsync(f => f.Id == request.FarmId && f.ArchivedAt == null, cancellationToken)
             ?? throw new FarmNotFoundException(request.FarmId);
 
+        if (request.CreatedByRole == UserRole.Farmer && farm.OwnerId != request.CreatedById)
+        {
+            throw new UnauthorizedAccessException("Yalnızca kendi tarlanıza görev ekleyebilirsiniz.");
+        }
+
         // 2. Resolve CropPeriodId
         Guid? resolvedCropPeriodId = request.CropPeriodId;
         if (resolvedCropPeriodId == null)
@@ -60,7 +65,8 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
         }
 
         // 3. Generate DedupeKey
-        var dedupeRaw = $"EXPERT|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId}";
+        var source = request.CreatedByRole == UserRole.Farmer ? TaskSource.Manual : TaskSource.Expert;
+        var dedupeRaw = $"{source}|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId}";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(dedupeRaw));
         var dedupeKey = Convert.ToHexString(hashBytes).ToLowerInvariant();
         if (dedupeKey.Length > 64)
@@ -83,7 +89,7 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
                 Reason = request.Reason.Trim(),
                 Priority = request.Priority,
                 Status = TaskStatus.New,
-                Source = TaskSource.Expert,
+                Source = source,
                 Confidence = request.Confidence,
                 DueDate = request.DueDate,
                 DedupeKey = dedupeKey,
@@ -103,7 +109,7 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
             }
 
             // 5. Notify farm owner of assigned task
-            if (_pushService != null && (farm.Owner?.Profile?.NotificationsEnabled ?? true))
+            if (source == TaskSource.Expert && _pushService != null && (farm.Owner?.Profile?.NotificationsEnabled ?? true))
             {
                 var notification = new Notification
                 {

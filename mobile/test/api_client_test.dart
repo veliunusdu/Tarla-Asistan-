@@ -499,4 +499,127 @@ void main() {
       api.close();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Multipart requests
+  // ---------------------------------------------------------------------------
+
+  group('postMultipart', () {
+    test('sends fields and files with Bearer token header', () async {
+      http.BaseRequest? capturedRequest;
+      final api = ApiClient(
+        httpClient: MockClient.streaming((request, bodyStream) async {
+          capturedRequest = request;
+          final responseBody = utf8.encode(jsonEncode({'reply': 'Tamam'}));
+          return http.StreamedResponse(
+            Stream.value(responseBody),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        idTokenProvider: () async => 'test-token',
+        forceRefreshTokenProvider: () async => 'refreshed-token',
+      );
+
+      final result = await api.postMultipart(
+        '/ai/chat',
+        fields: {'message': 'Fotoğraf analizi'},
+        files: [
+          const ApiMultipartFile(
+            field: 'photo',
+            bytes: [1, 2, 3],
+            filename: 'test.jpg',
+          ),
+        ],
+      );
+
+      expect(result['reply'], 'Tamam');
+      expect(capturedRequest, isA<http.MultipartRequest>());
+      final mp = capturedRequest as http.MultipartRequest;
+      expect(mp.headers['Authorization'], 'Bearer test-token');
+      expect(mp.headers['Accept'], 'application/json');
+      expect(mp.fields['message'], 'Fotoğraf analizi');
+      expect(mp.files, hasLength(1));
+      expect(mp.files.first.field, 'photo');
+      expect(mp.files.first.filename, 'test.jpg');
+      api.close();
+    });
+
+    test('retries multipart upload on 401 and successfully resends photo bytes', () async {
+      var callCount = 0;
+      List<int>? firstAttemptBytes;
+      List<int>? secondAttemptBytes;
+      String? firstToken;
+      String? secondToken;
+
+      final api = ApiClient(
+        httpClient: MockClient.streaming((request, bodyStream) async {
+          callCount++;
+          if (callCount == 1) {
+            firstToken = request.headers['Authorization'];
+            if (request is http.MultipartRequest) {
+              firstAttemptBytes = await request.files.first.finalize().toBytes();
+            }
+            return http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode({'detail': 'expired'}))),
+              401,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          secondToken = request.headers['Authorization'];
+          if (request is http.MultipartRequest) {
+            secondAttemptBytes = await request.files.first.finalize().toBytes();
+          }
+          return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode({'reply': 'Başarılı'}))),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        idTokenProvider: () async => 'initial-token',
+        forceRefreshTokenProvider: () async => 'refreshed-token',
+      );
+
+      final result = await api.postMultipart(
+        '/ai/chat',
+        fields: {'message': 'Test'},
+        files: [
+          const ApiMultipartFile(
+            field: 'photo',
+            bytes: [10, 20, 30],
+            filename: 'test.jpg',
+            contentType: 'image/jpeg',
+          ),
+        ],
+      );
+
+      expect(result['reply'], 'Başarılı');
+      expect(callCount, 2);
+      expect(firstToken, 'Bearer initial-token');
+      expect(secondToken, 'Bearer refreshed-token');
+      expect(firstAttemptBytes, [10, 20, 30]);
+      expect(secondAttemptBytes, [10, 20, 30]);
+      api.close();
+    });
+
+    test('throws ApiException on 422 or 500 error response', () async {
+      final api = ApiClient(
+        httpClient: MockClient.streaming((request, bodyStream) async {
+          return http.StreamedResponse(
+            Stream.value(utf8.encode(jsonEncode({'detail': 'photo en fazla 5 MB olabilir.'}))),
+            422,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        idTokenProvider: () async => 'test-token',
+        forceRefreshTokenProvider: () async => 'refreshed-token',
+      );
+
+      expect(
+        () => api.postMultipart('/ai/chat', fields: {'message': 'Test'}),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'photo en fazla 5 MB olabilir.')),
+      );
+      api.close();
+    });
+  });
 }

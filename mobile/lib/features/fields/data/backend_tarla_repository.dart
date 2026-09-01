@@ -1,10 +1,17 @@
+import '../../location/domain/tarla_location.dart';
 import '../../../models/tarla.dart';
 import 'dto/farm_dto.dart';
 import 'farm_remote_repository.dart';
 import 'mappers/farm_mapper.dart';
+import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
 
-class BackendTarlaRepository implements TarlaRepository {
+class BackendTarlaRepository
+    implements
+        TarlaRepository,
+        TarlaLocationRepository,
+        TarlaArchiveRepository,
+        TarlaUpdateRepository {
   const BackendTarlaRepository({required FarmRemoteRepository remote})
     : _remote = remote;
 
@@ -25,6 +32,33 @@ class BackendTarlaRepository implements TarlaRepository {
         sizeInHectares: tarla.size == null ? null : tarla.size! / 10,
         cropType: cropType,
         plantedAt: _date(plantedAt),
+      ),
+    );
+  }
+
+  @override
+  Future<void> archiveTarla(String id) => _remote.archiveFarm(id);
+
+  @override
+  Future<void> updateTarla(Tarla tarla) {
+    return _remote.updateFarm(
+      tarla.id,
+      FarmUpdateRequestDto(
+        name: tarla.name,
+        latitude: tarla.latitude,
+        longitude: tarla.longitude,
+        sizeInHectares: tarla.size == null ? null : tarla.size! / 10,
+      ),
+    );
+  }
+
+  @override
+  Future<void> updateTarlaLocation(String id, TarlaLocation location) async {
+    await _remote.updateFarm(
+      id,
+      FarmUpdateRequestDto(
+        latitude: location.latitude,
+        longitude: location.longitude,
       ),
     );
   }

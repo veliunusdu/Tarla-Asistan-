@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../features/activities/data/faaliyet_repository.dart';
+import '../features/activities/data/local_faaliyet_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
-import '../features/fields/data/tarla_read_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../models/tarla.dart';
 import '../shared/widgets/app_empty_view.dart';
@@ -13,11 +14,18 @@ import 'tarla_ekleme_ekrani.dart';
 class TarlaListesiEkrani extends StatefulWidget {
   const TarlaListesiEkrani({
     super.key,
-    TarlaReadRepository? repository,
+    TarlaRepository? repository,
+    FaaliyetRepository? faaliyetRepository,
     this.onDataChanged,
-  }) : _repository = repository ?? const LocalTarlaRepository();
+  }) : _repository = repository ?? const LocalTarlaRepository(),
+       _faaliyetRepository =
+           faaliyetRepository ?? const LocalFaaliyetRepository();
 
-  final TarlaReadRepository _repository;
+  final TarlaRepository _repository;
+  final FaaliyetRepository _faaliyetRepository;
+
+  @visibleForTesting
+  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepository;
 
   /// Tarla başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
@@ -72,11 +80,8 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                 final result = await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TarlaEklemeEkrani(
-                      repository: widget._repository is TarlaRepository
-                          ? widget._repository as TarlaRepository
-                          : null,
-                    ),
+                    builder: (context) =>
+                        TarlaEklemeEkrani(repository: widget._repository),
                   ),
                 );
                 if (result == true) {
@@ -111,7 +116,28 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => TarlaDetayEkrani(tarla: tarla),
+                        builder: (context) => TarlaDetayEkrani(
+                          tarla: tarla,
+                          faaliyetRepository: widget._faaliyetRepository,
+                          onEdit: widget._repository is TarlaUpdateRepository
+                              ? () => Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => TarlaEklemeEkrani(
+                                      repository: widget._repository,
+                                      editingTarla: tarla,
+                                    ),
+                                  ),
+                                ).then((result) => result ?? false)
+                              : null,
+                          onArchive:
+                              widget._repository is TarlaArchiveRepository
+                              ? () =>
+                                    (widget._repository
+                                            as TarlaArchiveRepository)
+                                        .archiveTarla(tarla.id)
+                              : null,
+                        ),
                       ),
                     );
                     _yenile();
@@ -128,11 +154,8 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
           final result = await Navigator.push<bool>(
             context,
             MaterialPageRoute(
-              builder: (context) => TarlaEklemeEkrani(
-                repository: widget._repository is TarlaRepository
-                    ? widget._repository as TarlaRepository
-                    : null,
-              ),
+              builder: (context) =>
+                  TarlaEklemeEkrani(repository: widget._repository),
             ),
           );
           if (result == true) {

@@ -111,6 +111,25 @@ class DatabaseHelper implements SyncOperationStore {
     return result.map((json) => Tarla.fromJson(json)).toList();
   }
 
+  Future<int> updateTarlaLocation(
+    String id,
+    double latitude,
+    double longitude,
+  ) async {
+    final db = await instance.database;
+    return await db.update(
+      'tarlalar',
+      {'latitude': latitude, 'longitude': longitude},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteTarla(String id) async {
+    final db = await instance.database;
+    return db.delete('tarlalar', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> upsertTarlalar(List<Tarla> tarlalar) async {
     final db = await instance.database;
     await db.transaction((txn) async {
@@ -239,15 +258,11 @@ class DatabaseHelper implements SyncOperationStore {
     return await db.delete('faaliyetler', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<int> markFaaliyetCompleted(String id) async {
-    final db = await instance.database;
-    return await db.update(
+  Future<int> completePlanliGorev(String id) async {
+    final db = await database;
+    return db.update(
       'faaliyetler',
-      {
-        'isCompleted': 1,
-        'dueDate': null,
-        'timestamp': DateTime.now().toIso8601String(),
-      },
+      {'isCompleted': 1, 'timestamp': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [id],
     );

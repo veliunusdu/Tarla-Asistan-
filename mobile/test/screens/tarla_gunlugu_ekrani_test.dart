@@ -26,8 +26,24 @@ class FakeTarlaRepository implements TarlaRepository {
   Future<void> addTarla(Tarla tarla) async {}
 }
 
+class RecordingTarlaRepository implements TarlaRepository {
+  final List<Tarla> added = [];
+
+  @override
+  Future<List<Tarla>> getTarlalar() async => added;
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {
+    added.add(tarla);
+  }
+}
+
 /// Mutable fake — addFaaliyet kaydeder, getTumFaaliyetler içerir.
-class FakeFaaliyetRepository implements FaaliyetRepository {
+class FakeFaaliyetRepository
+    implements
+        FaaliyetRepository,
+        PlanliGorevRepository,
+        PlanliGorevCompletionRepository {
   FakeFaaliyetRepository({
     List<Faaliyet>? faaliyetler,
     this.hata,
@@ -40,6 +56,8 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   /// addFaaliyet çağrısıyla eklenen kayıtlar
   final List<Faaliyet> eklenenler = [];
+  int planliGorevEklemeSayisi = 0;
+  final List<String> tamamlananGorevler = [];
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
@@ -48,6 +66,21 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet f) async {
     if (addFaaliyetHata != null) throw addFaaliyetHata!;
     eklenenler.add(f);
+  }
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {
+    if (addFaaliyetHata != null) throw addFaaliyetHata!;
+    planliGorevEklemeSayisi++;
+    eklenenler.add(gorev);
+  }
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async => [];
+
+  @override
+  Future<void> completePlanliGorev(String id, {String? note}) async {
+    tamamlananGorevler.add(id);
   }
 
   @override
@@ -127,6 +160,29 @@ DateTime _today() {
 }
 
 DateTime _tomorrow() => _today().add(const Duration(days: 1));
+
+Future<void> completeFarmForm(WidgetTester tester) async {
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Tarla Adı'),
+    'Kuzey Tarla',
+  );
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
+    '5',
+  );
+  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Buğday').last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tarih seçin'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Tamam'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Kaydet'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Kaydet'));
+  await tester.pumpAndSettle();
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -512,6 +568,38 @@ void main() {
       });
     });
 
+    group('planlı görev tamamlama', () {
+      testWidgets('Tamamla eylemi görevi backend repository ile tamamlar', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final tarla = _tarla('t1', name: 'Örnek Tarla');
+        final gorev = _faaliyet(
+          id: 'task-1',
+          tarlaId: 't1',
+          type: 'Sulama',
+          dueDate: DateTime.now(),
+          isCompleted: false,
+        );
+        final repo = FakeFaaliyetRepository(faaliyetler: [gorev]);
+
+        await tester.pumpWidget(
+          _wrap(tarlaRepo: FakeTarlaRepository([tarla]), faaliyetRepo: repo),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Tamamla'));
+        await tester.pumpAndSettle();
+
+        expect(repo.tamamlananGorevler, ['task-1']);
+        expect(find.text('Görev tamamlandı.'), findsOneWidget);
+      });
+    });
+
     // ── Sıralama ──────────────────────────────────────────────────────────
     group('sıralama', () {
       testWidgets('Tamamlanan en yeniden eskiye sıralanır', (tester) async {
@@ -640,21 +728,20 @@ void main() {
 
         final t = _tarla('t1', name: 'Test Tarlası');
 
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: FakeFaaliyetRepository(
-              faaliyetler: [
-                _faaliyet(
-                  id: 'f1',
-                  tarlaId: 't1',
-                  type: 'Sulama',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
-                ),
-              ],
+        final repo = FakeFaaliyetRepository(
+          faaliyetler: [
+            _faaliyet(
+              id: 'f1',
+              tarlaId: 't1',
+              type: 'Sulama',
+              isCompleted: true,
+              timestamp: DateTime(2024, 6),
             ),
-          ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
         );
         await tester.pumpAndSettle();
 
@@ -665,6 +752,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+        final detay = tester.widget<TarlaDetayEkrani>(
+          find.byType(TarlaDetayEkrani),
+        );
+        expect(identical(detay.repositoryForTesting, repo), isTrue);
       });
     });
 
@@ -706,6 +797,22 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(TarlaEklemeEkrani), findsOneWidget);
+      });
+
+      testWidgets('Günlüğümden eklenen tarla supplied repositoryye kaydolur', (
+        tester,
+      ) async {
+        final farms = RecordingTarlaRepository();
+        await tester.pumpWidget(
+          _wrap(tarlaRepo: farms, faaliyetRepo: FakeFaaliyetRepository()),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Tarla Ekle'));
+        await tester.pumpAndSettle();
+        await completeFarmForm(tester);
+
+        expect(farms.added, hasLength(1));
       });
     });
 
@@ -805,6 +912,7 @@ void main() {
           expect(repo.eklenenler.first.isCompleted, isFalse);
           expect(repo.eklenenler.first.type, 'Sulama');
           expect(repo.eklenenler.first.tarlaId, 't1');
+          expect(repo.planliGorevEklemeSayisi, 1);
         },
       );
 
@@ -882,6 +990,49 @@ void main() {
 
         expect(find.text('Görev eklendi.'), findsOneWidget);
       });
+
+      testWidgets(
+        'backend hatası olduğunda hata SnackBar gösterilir ve kayıt başarılı sayılmaz',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final t = _tarla('t1', name: 'Örnek Tarla');
+          final repo = FakeFaaliyetRepository(
+            addFaaliyetHata: Exception('Backend network error'),
+          );
+
+          await tester.pumpWidget(
+            _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Örnek Tarla').last);
+          await tester.pumpAndSettle();
+
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Görev'),
+            'Sulama',
+          );
+
+          await tester.tap(find.text('Görevi Ekle'));
+          await tester.pumpAndSettle();
+
+          expect(
+            find.text(
+              'Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.',
+            ),
+            findsOneWidget,
+          );
+          expect(repo.eklenenler, isEmpty);
+        },
+      );
     });
 
     // ── Overflow / responsive ─────────────────────────────────────────────

@@ -1,8 +1,15 @@
+import '../../location/domain/tarla_location.dart';
 import '../../../models/tarla.dart';
 import '../../../services/database_helper.dart';
+import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
 
-class LocalTarlaRepository implements TarlaRepository {
+class LocalTarlaRepository
+    implements
+        TarlaRepository,
+        TarlaLocationRepository,
+        TarlaArchiveRepository,
+        TarlaUpdateRepository {
   const LocalTarlaRepository();
 
   @override
@@ -11,4 +18,20 @@ class LocalTarlaRepository implements TarlaRepository {
   @override
   Future<void> addTarla(Tarla tarla) =>
       DatabaseHelper.instance.insertTarla(tarla);
+
+  @override
+  Future<void> archiveTarla(String id) =>
+      DatabaseHelper.instance.deleteTarla(id);
+
+  @override
+  Future<void> updateTarla(Tarla tarla) =>
+      DatabaseHelper.instance.insertTarla(tarla);
+
+  @override
+  Future<void> updateTarlaLocation(String id, TarlaLocation location) =>
+      DatabaseHelper.instance.updateTarlaLocation(
+        id,
+        location.latitude,
+        location.longitude,
+      );
 }

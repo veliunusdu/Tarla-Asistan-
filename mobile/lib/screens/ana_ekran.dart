@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import 'ai_asistan_ekrani.dart';
 import 'ana_sayfa_ekrani.dart';
+import 'profil_ekrani.dart';
 import 'tarla_gunlugu_ekrani.dart';
 import 'tarla_listesi_ekrani.dart';
 
@@ -13,7 +15,7 @@ import 'tarla_listesi_ekrani.dart';
 // Sekme tanımları — raw indeks yerine tip güvenli enum
 // ---------------------------------------------------------------------------
 
-enum _Sekme { anaSayfa, gunlugum, tarlalarim, asistan }
+enum _Sekme { anaSayfa, gunlugum, tarlalarim, asistan, profil }
 
 // ---------------------------------------------------------------------------
 // AnaEkran
@@ -26,15 +28,21 @@ class AnaEkran extends StatefulWidget {
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
     AiAssistantRepository? aiRepository,
+    ProfileRepository? profileRepository,
+    Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
        _weatherRepo = weatherRepository,
-       _aiRepo = aiRepository;
+       _aiRepo = aiRepository,
+       _profileRepo = profileRepository,
+       _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
   final FaaliyetRepository? _faaliyetRepo;
   final WeatherRepository? _weatherRepo;
   final AiAssistantRepository? _aiRepo;
+  final ProfileRepository? _profileRepo;
+  final Future<void> Function()? _onLogout;
 
   @override
   State<AnaEkran> createState() => _AnaEkranState();
@@ -50,9 +58,14 @@ class _AnaEkranState extends State<AnaEkran> {
   void _gotoTarlalarim() => setState(() => _secilen = _Sekme.tarlalarim);
   void _onDataChanged() => _refreshNotifier.value++;
 
-  Widget _seciliSayfa() {
-    return switch (_secilen) {
-      _Sekme.anaSayfa => AnaSayfaEkrani(
+  late final List<Widget> _sayfalar;
+
+  @override
+  void initState() {
+    super.initState();
+    _sayfalar = [
+      // 0 — Ana Sayfa
+      AnaSayfaEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         weatherRepository: widget._weatherRepo,
@@ -60,17 +73,23 @@ class _AnaEkranState extends State<AnaEkran> {
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,
       ),
-      _Sekme.gunlugum => TarlaGunluguEkrani(
+      // 1 — Günlüğüm
+      TarlaGunluguEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         onDataChanged: _onDataChanged,
       ),
-      _Sekme.tarlalarim => TarlaListesiEkrani(
+      // 2 — Tarlalarım
+      TarlaListesiEkrani(
         repository: widget._tarlaRepo,
+        faaliyetRepository: widget._faaliyetRepo,
         onDataChanged: _onDataChanged,
       ),
-      _Sekme.asistan => AiAsistanEkrani(repository: widget._aiRepo),
-    };
+      // 3 — Asistan
+      AiAsistanEkrani(repository: widget._aiRepo),
+      // 4 — Profil
+      ProfilEkrani(repository: widget._profileRepo, onLogout: widget._onLogout),
+    ];
   }
 
   @override
@@ -90,7 +109,7 @@ class _AnaEkranState extends State<AnaEkran> {
         }
       },
       child: Scaffold(
-        body: _seciliSayfa(),
+        body: IndexedStack(index: _secilen.index, children: _sayfalar),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _secilen.index,
           onDestinationSelected: (i) =>
@@ -115,6 +134,11 @@ class _AnaEkranState extends State<AnaEkran> {
               icon: Icon(Icons.smart_toy_outlined),
               selectedIcon: Icon(Icons.smart_toy),
               label: 'Asistan',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Profil',
             ),
           ],
         ),

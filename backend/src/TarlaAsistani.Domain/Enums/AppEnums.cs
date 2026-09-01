@@ -55,6 +55,7 @@ public enum TaskSource
     CropCalendar,
     Weather,
     Expert,
+    Manual,
 }
 
 public enum TaskConfidence

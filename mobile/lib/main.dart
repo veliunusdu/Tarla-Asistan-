@@ -5,10 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
 import 'models/notification_target.dart';
+import 'features/activities/data/backend_faaliyet_repository.dart';
 import 'features/ai_assistant/data/backend_ai_assistant_repository.dart';
 import 'features/weather/data/backend_weather_repository.dart';
 import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
+import 'features/profile/data/backend_profile_repository.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
@@ -132,6 +134,12 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     if (mounted) setState(() => _isFirstRun = false);
   }
 
+  Future<void> _logout() async {
+    await _notificationService.deactivateCurrentDevice();
+    await _backendAuthService.logout();
+    await _authService.signOut();
+  }
+
   @override
   void dispose() {
     _notificationService.dispose();
@@ -228,9 +236,15 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           ),
                         );
                       }
+                      final tarlaRepo = BackendTarlaRepository(
+                        remote: BackendFarmRepository(apiClient: _apiClient),
+                      );
                       return AnaEkran(
-                        tarlaRepository: BackendTarlaRepository(
-                          remote: BackendFarmRepository(apiClient: _apiClient),
+                        onLogout: _logout,
+                        tarlaRepository: tarlaRepo,
+                        faaliyetRepository: BackendFaaliyetRepository(
+                          apiClient: _apiClient,
+                          tarlaRepository: tarlaRepo,
                         ),
                         weatherRepository: BackendWeatherRepository(
                           apiClient: _apiClient,
@@ -238,6 +252,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         aiRepository: BackendAiAssistantRepository(
                           apiClient: _apiClient,
                         ),
+                        profileRepository: BackendProfileRepository(_apiClient),
                       );
                     },
                   );

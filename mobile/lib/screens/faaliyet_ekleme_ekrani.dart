@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:uuid/uuid.dart';
 
 import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
@@ -40,12 +41,15 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
     super.key,
     required this.tarlaId,
     FaaliyetRepository? faaliyetRepository,
-    @visibleForTesting this.initialIsCompleted = false,
+    @visibleForTesting this.initialIsCompleted = true,
     @visibleForTesting this.initialSelectedDate,
   }) : _repo = faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final String tarlaId;
   final FaaliyetRepository _repo;
+
+  @visibleForTesting
+  FaaliyetRepository get repositoryForTesting => _repo;
 
   /// Only used in tests to pre-set state and avoid date picker interaction.
   @visibleForTesting
@@ -66,7 +70,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
   String? _secilenTur;
   DateTime? _secilenTarih;
-  bool _isCompleted = false;
+  bool _isCompleted = true;
   bool _isListening = false;
   bool _kaydediliyor = false;
 
@@ -142,33 +146,30 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   }
 
   Future<void> _kaydet() async {
+    if (_kaydediliyor) return;
+    if (!_isCompleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Planlı görev özelliği henüz kullanılamıyor.'),
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     if (_secilenTarih == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isCompleted
-                ? 'Lütfen gerçekleşme tarihini seçin.'
-                : 'Lütfen planlanan tarihi seçin.',
-          ),
+        const SnackBar(
+          content: Text('Lütfen gerçekleşme tarihini seçin.'),
         ),
       );
       return;
     }
 
-    // Tarih aralığı çift kontrol (test inject için)
+    // Tarih aralığı kontrolü (yalnızca geçmiş veya bugün)
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (!_isCompleted && _secilenTarih!.isBefore(today)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Planlanan tarih geçmiş bir tarih olamaz.'),
-        ),
-      );
-      return;
-    }
-    if (_isCompleted && _secilenTarih!.isAfter(today)) {
+    if (_secilenTarih!.isAfter(today)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gerçekleşme tarihi gelecek bir tarih olamaz.'),
@@ -180,13 +181,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     setState(() => _kaydediliyor = true);
 
     final faaliyet = Faaliyet(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: const Uuid().v4(),
       tarlaId: widget.tarlaId,
       type: _secilenTur!,
       note: _noteController.text.trim(),
-      timestamp: _isCompleted ? _secilenTarih! : DateTime.now(),
-      dueDate: _isCompleted ? null : _secilenTarih,
-      isCompleted: _isCompleted,
+      timestamp: _secilenTarih!,
+      dueDate: null,
+      isCompleted: true,
     );
 
     try {
@@ -240,14 +241,14 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // ── Not (isteğe bağlı, sesli giriş destekli) ─────────────────
+              // ── Faaliyet Açıklaması (sesli giriş destekli) ─────────────────
               TextFormField(
                 controller: _noteController,
                 enabled: !_kaydediliyor,
                 maxLength: 200,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: 'Not (isteğe bağlı)',
+                  labelText: 'Faaliyet Açıklaması',
                   prefixIcon: const Icon(Icons.notes),
                   suffixIcon: IconButton(
                     icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
@@ -255,6 +256,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                     onPressed: _kaydediliyor ? null : _listen,
                   ),
                 ),
+                validator: (v) {
+                  final text = v?.trim() ?? '';
+                  if (text.length < 2) {
+                    return 'Faaliyet açıklaması en az 2 karakter olmalıdır.';
+                  }
+                  return null;
+                },
               ),
 
               const SizedBox(height: AppSpacing.md),
@@ -266,8 +274,10 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                 segments: const [
                   ButtonSegment(
                     value: false,
+                    enabled: false,
                     label: Text('Planlandı'),
                     icon: Icon(Icons.event_note),
+                    tooltip: 'Planlı görev özelliği henüz kullanılamıyor',
                   ),
                   ButtonSegment(
                     value: true,

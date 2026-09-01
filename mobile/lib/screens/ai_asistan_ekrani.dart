@@ -6,9 +6,10 @@ import 'package:image_picker/image_picker.dart';
 import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
+import '../features/ai_assistant/data/image_picker_service.dart';
 import '../features/ai_assistant/data/unavailable_ai_assistant_repository.dart';
-import '../features/ai_assistant/domain/ai_chat_history.dart';
 import '../features/ai_assistant/domain/ai_chat_message.dart';
+import '../services/api_client.dart';
 
 // ---------------------------------------------------------------------------
 // Örnek sorular
@@ -25,10 +26,18 @@ const List<String> _oneriler = [
 // ---------------------------------------------------------------------------
 
 class AiAsistanEkrani extends StatefulWidget {
-  const AiAsistanEkrani({super.key, AiAssistantRepository? repository})
-    : _repo = repository ?? const UnavailableAiAssistantRepository();
+  const AiAsistanEkrani({
+    super.key,
+    AiAssistantRepository? repository,
+    ImagePickerService? imagePickerService,
+    this.fieldId,
+  })  : _repo = repository ?? const UnavailableAiAssistantRepository(),
+        _imagePickerService =
+            imagePickerService ?? const DefaultImagePickerService();
 
   final AiAssistantRepository _repo;
+  final ImagePickerService _imagePickerService;
+  final String? fieldId;
 
   @override
   State<AiAsistanEkrani> createState() => _AiAsistanEkraniState();
@@ -38,7 +47,8 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   final List<AiChatMessage> _mesajlar = [];
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
-  Uint8List? _secilenFoto;
+  PickedImageData? _secilenFoto;
+  String? _conversationId;
   bool _gonderiyor = false;
 
   @override
@@ -81,18 +91,9 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
 
     if (kaynak == null || !mounted) return;
 
-    final picker = ImagePicker();
-    final xFile = await picker.pickImage(
-      source: kaynak,
-      imageQuality: 70,
-      maxWidth: 1024,
-      maxHeight: 1024,
-    );
-
-    if (xFile == null || !mounted) return;
-    final bytes = await xFile.readAsBytes();
-    if (!mounted) return;
-    setState(() => _secilenFoto = bytes);
+    final picked = await widget._imagePickerService.pickImage(source: kaynak);
+    if (picked == null || !mounted) return;
+    setState(() => _secilenFoto = picked);
   }
 
   // ---------------------------------------------------------------------------
@@ -101,7 +102,16 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
 
   Future<void> _gonder() async {
     final metin = _ctrl.text.trim();
-    if (metin.isEmpty && _secilenFoto == null) return;
+    if (metin.isEmpty) {
+      if (_secilenFoto != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lütfen fotoğrafla ilgili bir soru veya açıklama yazın.'),
+          ),
+        );
+      }
+      return;
+    }
     if (_gonderiyor) return;
 
     final fotoKopya = _secilenFoto;
@@ -112,7 +122,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
         AiChatMessage(
           text: metinKopya,
           isUser: true,
-          photo: fotoKopya,
+          photo: fotoKopya?.bytes,
           timestamp: DateTime.now(),
         ),
       );
@@ -124,34 +134,59 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
     _scrollToBottom();
 
     try {
-      final cevap = await widget._repo.sendMessage(
+      final response = await widget._repo.sendMessage(
         message: metinKopya,
-        photo: fotoKopya,
-        history: limitAiChatHistory(_mesajlar),
+        photo: fotoKopya?.bytes,
+        photoContentType: fotoKopya?.mimeType,
+        photoFileName: fotoKopya?.name,
+        fieldId: widget.fieldId,
+        conversationId: _conversationId,
+        history: List.unmodifiable(_mesajlar.take(_mesajlar.length - 1)),
       );
 
       if (!mounted) return;
 
       setState(() {
-        _mesajlar.add(
-          AiChatMessage(text: cevap, isUser: false, timestamp: DateTime.now()),
-        );
-        if (_mesajlar.length > maxAiChatMessages) {
-          _mesajlar.removeRange(0, _mesajlar.length - maxAiChatMessages);
+        if (response.conversationId.isNotEmpty) {
+          _conversationId = response.conversationId;
         }
+        _mesajlar.add(
+          AiChatMessage(
+            text: response.reply,
+            isUser: false,
+            timestamp: DateTime.now(),
+          ),
+        );
       });
 
       _scrollToBottom();
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      setState(() {
+        if (_mesajlar.isNotEmpty && _mesajlar.last.isUser) {
+          _mesajlar.removeLast();
+        }
+        _ctrl.text = metinKopya;
+        _secilenFoto = fotoKopya;
+      });
+      final errorMsg = e is ApiException
+          ? e.message
+          : 'AI Asistan bağlantısında bir hata oluştu.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('AI Asistan bağlantısı henüz yapılandırılmadı.'),
-        ),
+        SnackBar(content: Text(errorMsg)),
       );
     } finally {
       if (mounted) setState(() => _gonderiyor = false);
     }
+  }
+
+  void _yeniSohbet() {
+    setState(() {
+      _mesajlar.clear();
+      _conversationId = null;
+      _secilenFoto = null;
+      _ctrl.clear();
+    });
   }
 
   void _scrollToBottom() {
@@ -177,7 +212,17 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Tarla Asistanı')),
+      appBar: AppBar(
+        title: const Text('AI Tarla Asistanı'),
+        actions: [
+          if (_mesajlar.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Yeni Sohbet',
+              onPressed: _gonderiyor ? null : _yeniSohbet,
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -191,7 +236,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
           ),
           _GirisBolumu(
             ctrl: _ctrl,
-            secilenFoto: _secilenFoto,
+            secilenFoto: _secilenFoto?.bytes,
             onFotoKaldir: () => setState(() => _secilenFoto = null),
             onFotoEkle: _fotoCek,
             onGonder: _gonder,

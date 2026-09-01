@@ -5,7 +5,9 @@ import '../app/theme/app_spacing.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
+import '../features/fields/data/tarla_location_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/location/data/location_service.dart';
 import '../features/weather/data/unavailable_weather_repository.dart';
 import '../features/weather/data/backend_weather_repository.dart';
 import '../features/weather/data/weather_repository.dart';
@@ -18,6 +20,7 @@ import '../shared/widgets/app_loading_view.dart';
 import 'faaliyet_ekleme_ekrani.dart';
 import 'tarla_detay_ekrani.dart';
 import 'tarla_ekleme_ekrani.dart';
+import 'tarla_konum_duzenleme_ekrani.dart';
 import 'tarla_listesi_ekrani.dart';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +55,8 @@ class AnaSayfaEkrani extends StatefulWidget {
     TarlaRepository? tarlaRepository,
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
+    this.locationService,
+    this.locationPicker,
     this.onTarlalarimSekme,
     this.onGunlukSekme,
     this.refreshNotifier,
@@ -62,6 +67,11 @@ class AnaSayfaEkrani extends StatefulWidget {
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
   final WeatherRepository _weatherRepo;
+  final LocationService? locationService;
+  final FieldLocationPicker? locationPicker;
+
+  @visibleForTesting
+  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepo;
 
   /// Tarlalarım sekmesine geçmek için AnaEkran'dan gelen callback.
   final VoidCallback? onTarlalarimSekme;
@@ -152,6 +162,37 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     if (result == true && mounted) _yenile();
   }
 
+  Future<void> _konumEkle() async {
+    final tarlaRepo = widget._tarlaRepo;
+    if (tarlaRepo is! TarlaLocationRepository) {
+      return _tarlaEkle();
+    }
+
+    final tarla = _tarlalarCache.cast<Tarla?>().firstWhere(
+      (t) => t?.latitude == null || t?.longitude == null,
+      orElse: () => _tarlalarCache.isNotEmpty ? _tarlalarCache.first : null,
+    );
+
+    if (tarla == null) {
+      return _tarlaEkle();
+    }
+
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TarlaKonumDuzenlemeEkrani(
+          tarla: tarla,
+          repository: tarlaRepo as TarlaLocationRepository,
+          locationService: widget.locationService,
+          locationPicker: widget.locationPicker,
+        ),
+      ),
+    );
+    if (result == true && mounted) {
+      _yenile();
+    }
+  }
+
   Future<void> _faaliyetEkle() async {
     if (_tarlalarCache.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -181,7 +222,10 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => FaaliyetEklemeEkrani(tarlaId: secilen!.id),
+        builder: (_) => FaaliyetEklemeEkrani(
+          tarlaId: secilen!.id,
+          faaliyetRepository: widget._faaliyetRepo,
+        ),
       ),
     );
     if (result == true && mounted) _yenile();
@@ -215,6 +259,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                 future: _weather,
                 onRetry: _yenileHava,
                 onTarlaEkle: _tarlaEkle,
+                onKonumEkle: _konumEkle,
               ),
               const SizedBox(height: AppSpacing.lg),
 
@@ -307,11 +352,13 @@ class _HavaDurumuSection extends StatelessWidget {
     required this.future,
     required this.onRetry,
     required this.onTarlaEkle,
+    required this.onKonumEkle,
   });
 
   final Future<WeatherSummary> future;
   final VoidCallback onRetry;
   final VoidCallback onTarlaEkle;
+  final VoidCallback onKonumEkle;
 
   @override
   Widget build(BuildContext context) {
@@ -339,8 +386,8 @@ class _HavaDurumuSection extends StatelessWidget {
                         const Text('Hava durumu için tarla konumu ekleyin'),
                         const SizedBox(height: AppSpacing.sm),
                         OutlinedButton(
-                          onPressed: onTarlaEkle,
-                          child: const Text('Tarla Ekle'),
+                          onPressed: onKonumEkle,
+                          child: const Text('Konum ekle'),
                         ),
                       ],
                     ),

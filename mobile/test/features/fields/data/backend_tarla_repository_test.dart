@@ -3,6 +3,7 @@ import 'package:mobile/features/fields/data/backend_tarla_repository.dart';
 import 'package:mobile/features/fields/data/dto/crop_period_dto.dart';
 import 'package:mobile/features/fields/data/dto/farm_dto.dart';
 import 'package:mobile/features/fields/data/farm_remote_repository.dart';
+import 'package:mobile/features/location/domain/tarla_location.dart';
 import 'package:mobile/models/tarla.dart';
 
 void main() {
@@ -32,6 +33,21 @@ void main() {
     },
   );
 
+  test('serializes create fields using the .NET farm contract', () {
+    const request = FarmCreateRequestDto(
+      name: 'Kuzey Tarla',
+      latitude: 38.42,
+      longitude: 27.14,
+      cropType: 'WHEAT',
+      plantedAt: '2026-03-15',
+    );
+
+    expect(request.toJson()['initial_crop_type'], 'WHEAT');
+    expect(request.toJson()['initial_planted_at'], '2026-03-15');
+    expect(request.toJson().containsKey('crop_type'), isFalse);
+    expect(request.toJson().containsKey('planted_at'), isFalse);
+  });
+
   test('maps backend hectares to dönüm for field screens', () async {
     final remote = _FakeFarmRemoteRepository();
     final repository = BackendTarlaRepository(remote: remote);
@@ -42,10 +58,58 @@ void main() {
     expect(fields.single.size, 25);
     expect(fields.single.latitude, 38.4237);
   });
+
+  test('updates farm location with latitude and longitude', () async {
+    final remote = _FakeFarmRemoteRepository();
+    final repository = BackendTarlaRepository(remote: remote);
+
+    await repository.updateTarlaLocation(
+      'farm-1',
+      const TarlaLocation(latitude: 38.5, longitude: 27.2),
+    );
+
+    expect(remote.updatedFarmId, 'farm-1');
+    expect(remote.updatedRequest?.latitude, 38.5);
+    expect(remote.updatedRequest?.longitude, 27.2);
+  });
+
+  test('archives a farm through the backend', () async {
+    final remote = _FakeFarmRemoteRepository();
+
+    await BackendTarlaRepository(remote: remote).archiveTarla('farm-1');
+
+    expect(remote.archivedFarmId, 'farm-1');
+  });
+
+  test('updates supported farm details through the backend', () async {
+    final remote = _FakeFarmRemoteRepository();
+    final repository = BackendTarlaRepository(remote: remote);
+
+    await repository.updateTarla(
+      Tarla(
+        id: 'farm-1',
+        name: 'Güney Tarla',
+        latitude: 38.42,
+        longitude: 27.14,
+        size: 18.5,
+        cropType: 'Buğday',
+        plantingDate: DateTime(2026, 3, 15),
+      ),
+    );
+
+    expect(remote.updatedFarmId, 'farm-1');
+    expect(remote.updatedRequest?.name, 'Güney Tarla');
+    expect(remote.updatedRequest?.sizeInHectares, 1.85);
+    expect(remote.updatedRequest?.latitude, 38.42);
+    expect(remote.updatedRequest?.longitude, 27.14);
+  });
 }
 
 class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   FarmCreateRequestDto? created;
+  String? updatedFarmId;
+  FarmUpdateRequestDto? updatedRequest;
+  String? archivedFarmId;
 
   final _farm = FarmResponseDto(
     id: 'farm-1',
@@ -97,8 +161,12 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   Future<FarmMutationResponseDto> updateFarm(
     String farmId,
     FarmUpdateRequestDto request,
-  ) async => FarmMutationResponseDto(farm: _farm, warnings: const []);
+  ) async {
+    updatedFarmId = farmId;
+    updatedRequest = request;
+    return FarmMutationResponseDto(farm: _farm, warnings: const []);
+  }
 
   @override
-  Future<void> archiveFarm(String farmId) async {}
+  Future<void> archiveFarm(String farmId) async => archivedFarmId = farmId;
 }
