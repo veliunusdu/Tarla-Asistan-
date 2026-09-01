@@ -16,4 +16,12 @@ class LocalFaaliyetRepository implements FaaliyetRepository {
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() =>
       DatabaseHelper.instance.getTumFaaliyetler();
+
+  @override
+  Future<void> deleteFaaliyet(String id) =>
+      DatabaseHelper.instance.deleteFaaliyet(id);
+
+  @override
+  Future<void> markAsCompleted(String id) =>
+      DatabaseHelper.instance.markFaaliyetCompleted(id);
 }

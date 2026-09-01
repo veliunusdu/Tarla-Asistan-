@@ -52,6 +52,12 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() => _future;
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }
 
 // ---------------------------------------------------------------------------

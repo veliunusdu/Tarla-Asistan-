@@ -25,6 +25,12 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +242,140 @@ void main() {
 
       expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);
     });
+
+    // ── Arşivleme ──────────────────────────────────────────────────────────
+    group('arşivleme', () {
+      testWidgets('onTarlaArsivle verilmezse arşivle butonu görünmez', (
+        tester,
+      ) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(PopupMenuButton<String>), findsNothing);
+      });
+
+      testWidgets('onTarlaArsivle verilince PopupMenuButton görünür', (
+        tester,
+      ) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(
+            TarlaDetayEkrani(
+              tarla: _tarla(),
+              faaliyetRepository: repo,
+              onTarlaArsivle: () async {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+      });
+
+      testWidgets(
+        'arşivleme onaylandığında callback çağrılır ve ekran kapanır',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1200);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          bool callbackCalled = false;
+          final repo = FakeFaaliyetRepository(Future.value([]));
+
+          bool ekranAcik = true;
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Builder(
+                builder: (ctx) => ElevatedButton(
+                  onPressed: () async {
+                    final result = await Navigator.push<bool>(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => TarlaDetayEkrani(
+                          tarla: _tarla(),
+                          faaliyetRepository: repo,
+                          onTarlaArsivle: () async {
+                            callbackCalled = true;
+                          },
+                        ),
+                      ),
+                    );
+                    if (result == true) ekranAcik = false;
+                  },
+                  child: const Text('Aç'),
+                ),
+              ),
+            ),
+          );
+
+          await tester.tap(find.text('Aç'));
+          await tester.pumpAndSettle();
+
+          // Menüyü aç
+          await tester.tap(find.byType(PopupMenuButton<String>));
+          await tester.pumpAndSettle();
+
+          // Arşivle seçeneğine bas
+          await tester.tap(find.text('Tarlayı Arşivle'));
+          await tester.pumpAndSettle();
+
+          // Onay diyaloğu — Arşivle butonuna bas
+          await tester.tap(find.text('Arşivle'));
+          await tester.pumpAndSettle();
+
+          expect(callbackCalled, isTrue);
+          expect(ekranAcik, isFalse);
+        },
+      );
+
+      testWidgets(
+        'arşivleme başarısız olunca hata snackbar gösterilir, ekran kapanmaz',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1200);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final repo = FakeFaaliyetRepository(Future.value([]));
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: TarlaDetayEkrani(
+                tarla: _tarla(),
+                faaliyetRepository: repo,
+                onTarlaArsivle: () async {
+                  throw Exception('sunucu hatası');
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Menüyü aç
+          await tester.tap(find.byType(PopupMenuButton<String>));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('Tarlayı Arşivle'));
+          await tester.pumpAndSettle();
+
+          // Onay diyaloğu
+          await tester.tap(find.text('Arşivle'));
+          await tester.pumpAndSettle();
+
+          // Ekran hâlâ açık
+          expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+          // Hata snackbar gösterildi
+          expect(
+            find.textContaining('arşivlenemedi'),
+            findsOneWidget,
+          );
+        },
+      );
+    });
   });
 }
 
@@ -255,4 +395,10 @@ class _CallCountingRepo implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }

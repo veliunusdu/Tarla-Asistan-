@@ -28,6 +28,12 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }
 
 // ---------------------------------------------------------------------------
@@ -283,4 +289,10 @@ class _SlowFaaliyetRepository implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }

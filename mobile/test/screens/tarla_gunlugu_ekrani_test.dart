@@ -55,6 +55,26 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
     if (hata != null) throw hata!;
     return [..._faaliyetler, ...eklenenler];
   }
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {
+    final idx = _faaliyetler.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      final f = _faaliyetler[idx];
+      _faaliyetler[idx] = Faaliyet(
+        id: f.id,
+        tarlaId: f.tarlaId,
+        type: f.type,
+        note: f.note,
+        timestamp: DateTime.now(),
+        dueDate: null,
+        isCompleted: true,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,6 +1037,10 @@ class _SlowFaaliyetRepository implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() => _future;
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }
 
 class _CountingFaaliyetRepo implements FaaliyetRepository {
@@ -1029,4 +1053,8 @@ class _CountingFaaliyetRepo implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() => _fn();
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }

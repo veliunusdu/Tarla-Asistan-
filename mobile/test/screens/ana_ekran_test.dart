@@ -35,6 +35,12 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
 }
 
 class FakeWeatherRepository implements WeatherRepository {

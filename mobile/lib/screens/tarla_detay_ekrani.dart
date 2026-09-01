@@ -6,7 +6,6 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
-import '../services/database_helper.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
@@ -38,11 +37,16 @@ class TarlaDetayEkrani extends StatefulWidget {
     super.key,
     required this.tarla,
     FaaliyetRepository? faaliyetRepository,
+    this.onTarlaArsivle,
   }) : _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final Tarla tarla;
   final FaaliyetRepository _faaliyetRepository;
+
+  /// Sağlandığında AppBar menüsünde "Arşivle" seçeneği görünür.
+  /// Callback başarıyla dönünce ekran otomatik kapanır.
+  final Future<void> Function()? onTarlaArsivle;
 
   @override
   State<TarlaDetayEkrani> createState() => _TarlaDetayEkraniState();
@@ -52,6 +56,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late Future<List<Faaliyet>> _faaliyetler;
+  bool _isArsivleniyor = false;
 
   @override
   void initState() {
@@ -72,6 +77,49 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     });
   }
 
+  Future<void> _arsivle() async {
+    final onay = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tarlayı Arşivle'),
+        content: Text(
+          '"${widget.tarla.name}" adlı tarlayı arşivlemek istediğinizden emin misiniz? '
+          'Arşivlenen tarla listeden gizlenir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('İptal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Arşivle'),
+          ),
+        ],
+      ),
+    );
+
+    if (onay != true || !mounted) return;
+
+    setState(() => _isArsivleniyor = true);
+
+    try {
+      await widget.onTarlaArsivle!();
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isArsivleniyor = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Tarla arşivlenemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -81,6 +129,35 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.tarla.name),
+        actions: [
+          if (_isArsivleniyor)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (widget.onTarlaArsivle != null)
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'arsivle') _arsivle();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'arsivle',
+                  child: Row(
+                    children: [
+                      Icon(Icons.archive_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Text('Tarlayı Arşivle'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -100,21 +177,23 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           Expanded(child: _faaliyetTabView()),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        onPressed: () async {
-          final result = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  FaaliyetEklemeEkrani(tarlaId: widget.tarla.id),
+      floatingActionButton: _isArsivleniyor
+          ? null
+          : FloatingActionButton(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              onPressed: () async {
+                final result = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        FaaliyetEklemeEkrani(tarlaId: widget.tarla.id),
+                  ),
+                );
+                if (result == true) _yenile();
+              },
+              child: const Icon(Icons.add),
             ),
-          );
-          if (result == true) _yenile();
-        },
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
@@ -141,7 +220,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
               faaliyetler: yapilacaklar,
               isGecmis: false,
               onDelete: (id) async {
-                await DatabaseHelper.instance.deleteFaaliyet(id);
+                await widget._faaliyetRepository.deleteFaaliyet(id);
                 _yenile();
               },
             ),
@@ -149,7 +228,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
               faaliyetler: gecmis,
               isGecmis: true,
               onDelete: (id) async {
-                await DatabaseHelper.instance.deleteFaaliyet(id);
+                await widget._faaliyetRepository.deleteFaaliyet(id);
                 _yenile();
               },
             ),

@@ -251,6 +251,31 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   }
 
   // ---------------------------------------------------------------------------
+  // Görev tamamlama
+  // ---------------------------------------------------------------------------
+
+  Future<void> _tamamla(String faaliyetId) async {
+    try {
+      await widget._faaliyetRepo.markAsCompleted(faaliyetId);
+      if (!mounted) return;
+      _yenile();
+      widget.onDataChanged?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Görev tamamlandı olarak işaretlendi.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Görev tamamlanamadı. Lütfen tekrar deneyin.',
+          ),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Tarih seçici
   // ---------------------------------------------------------------------------
 
@@ -356,7 +381,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
               if (gosterilen.isEmpty)
                 _bosState()
               else
-                ...gosterilen.map(
+              ...gosterilen.map(
                   (k) => _GunlukKayitKarti(
                     kayit: k,
                     onTap: k.tarla != null
@@ -367,6 +392,9 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                             ),
                           )
                         : null,
+                    onTamamla: k.faaliyet.isCompleted
+                        ? null
+                        : () => _tamamla(k.faaliyet.id),
                   ),
                 ),
 
@@ -384,45 +412,9 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
 
   Widget _aciklama(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Günlük işlerini planla ve faaliyet geçmişini takip et.',
-          style: theme.textTheme.bodyMedium,
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Card(
-          elevation: 0,
-          color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.6),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.xs,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    'Şimdilik cihazdaki faaliyet kayıtları gösteriliyor.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSecondaryContainer,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+    return Text(
+      'Günlük işlerini planla ve faaliyet geçmişini takip et.',
+      style: theme.textTheme.bodyMedium,
     );
   }
 
@@ -688,10 +680,18 @@ class _FiltreCubugu extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _GunlukKayitKarti extends StatelessWidget {
-  const _GunlukKayitKarti({required this.kayit, this.onTap});
+  const _GunlukKayitKarti({
+    required this.kayit,
+    this.onTap,
+    this.onTamamla,
+  });
 
   final _GunlukKayit kayit;
   final VoidCallback? onTap;
+
+  /// Görev tamamlandı olarak işaretlendiğinde çağrılır.
+  /// null ise "Tamamla" butonu gösterilmez.
+  final VoidCallback? onTamamla;
 
   @override
   Widget build(BuildContext context) {
@@ -707,77 +707,101 @@ class _GunlukKayitKarti extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
-          child: Row(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Durum ikonu — sabit boyut
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: ikonRenk.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  tamamlandi ? Icons.check_circle : Icons.schedule,
-                  color: ikonRenk,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Durum ikonu — sabit boyut
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: ikonRenk.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      tamamlandi ? Icons.check_circle : Icons.schedule,
+                      color: ikonRenk,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
 
-              // İçerik — Expanded ile overflow önlenir
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Tarla adı + rozet aynı satırda
-                    Row(
+                  // İçerik — Expanded ile overflow önlenir
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            kayit.tarlaAdi,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
+                        // Tarla adı + rozet aynı satırda
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                kayit.tarlaAdi,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            maxLines: 1,
+                            const SizedBox(width: AppSpacing.xs),
+                            _DurumRozeti(tamamlandi: tamamlandi),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        // Faaliyet türü
+                        Text(
+                          f.type,
+                          style: theme.textTheme.titleMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Not
+                        if (f.note.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            f.note,
+                            style: theme.textTheme.bodyMedium,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
+                        ],
+                        const SizedBox(height: AppSpacing.xs),
+                        // Tarih
+                        Text(
+                          _tarihStr(kayit.referansTarih),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: tamamlandi ? AppColors.textSecondary : ikonRenk,
+                          ),
                         ),
-                        const SizedBox(width: AppSpacing.xs),
-                        _DurumRozeti(tamamlandi: tamamlandi),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    // Faaliyet türü
-                    Text(
-                      f.type,
-                      style: theme.textTheme.titleMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // Not
-                    if (f.note.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        f.note,
-                        style: theme.textTheme.bodyMedium,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: AppSpacing.xs),
-                    // Tarih
-                    Text(
-                      _tarihStr(kayit.referansTarih),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: tamamlandi ? AppColors.textSecondary : ikonRenk,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+              // "Tamamla" butonu — yalnızca tamamlanmamış görevlerde
+              if (onTamamla != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: onTamamla,
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Tamamla'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.success,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: 4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
