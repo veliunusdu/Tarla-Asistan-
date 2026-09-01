@@ -83,7 +83,7 @@ class ApiClient {
   Future<Map<String, dynamic>> postMultipart(
     String endpoint, {
     Map<String, String>? fields,
-    List<http.MultipartFile>? files,
+    List<ApiMultipartFile>? files,
   }) async {
     final response = await _sendMultipart(
       'POST',
@@ -159,7 +159,7 @@ class ApiClient {
     String method,
     String endpoint, {
     Map<String, String>? fields,
-    List<http.MultipartFile>? files,
+    List<ApiMultipartFile>? files,
   }) async {
     final token = await _idTokenProvider();
     if (token == null || token.isEmpty) {
@@ -208,7 +208,7 @@ class ApiClient {
     String endpoint, {
     required String token,
     Map<String, String>? fields,
-    List<http.MultipartFile>? files,
+    List<ApiMultipartFile>? files,
   }) async {
     final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
     final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
@@ -219,7 +219,11 @@ class ApiClient {
         'Authorization': 'Bearer $token',
       });
     if (fields != null) request.fields.addAll(fields);
-    if (files != null) request.files.addAll(files);
+    if (files != null) {
+      for (final file in files) {
+        request.files.add(file.toMultipartFile());
+      }
+    }
     try {
       final streamed = await _http.send(request).timeout(_timeout);
       return await http.Response.fromStream(streamed);
@@ -329,4 +333,25 @@ class ApiClient {
       'Sunucuda bir sorun oluştu. Lütfen daha sonra tekrar deneyin.',
     _ => 'İşlem tamamlanamadı ($statusCode).',
   };
+}
+
+class ApiMultipartFile {
+  const ApiMultipartFile({
+    required this.field,
+    required this.bytes,
+    this.filename,
+    this.contentType,
+  });
+
+  final String field;
+  final List<int> bytes;
+  final String? filename;
+  final String? contentType;
+
+  http.MultipartFile toMultipartFile() => http.MultipartFile.fromBytes(
+        field,
+        bytes,
+        filename: filename,
+        contentType: contentType != null ? http.MediaType.parse(contentType!) : null,
+      );
 }

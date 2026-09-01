@@ -260,6 +260,61 @@ void main() {
         );
         expect(requestSent, isFalse);
       });
+
+      test('401 durumunda token refresh sonrası fotoğraf baytlarını eksiksiz tekrar gönderir', () async {
+        var callCount = 0;
+        List<int>? firstPhotoBytes;
+        List<int>? secondPhotoBytes;
+        String? firstAuth;
+        String? secondAuth;
+
+        final client = ApiClient(
+          httpClient: MockClient.streaming((request, bodyStream) async {
+            callCount++;
+            if (callCount == 1) {
+              firstAuth = request.headers['Authorization'];
+              if (request is http.MultipartRequest) {
+                firstPhotoBytes = await request.files.first.finalize().toBytes();
+              }
+              return http.StreamedResponse(
+                Stream.value(utf8.encode(jsonEncode({'detail': 'expired'}))),
+                401,
+                headers: {'content-type': 'application/json'},
+              );
+            }
+            secondAuth = request.headers['Authorization'];
+            if (request is http.MultipartRequest) {
+              secondPhotoBytes = await request.files.first.finalize().toBytes();
+            }
+            return http.StreamedResponse(
+              Stream.value(utf8.encode(jsonEncode({
+                'reply': 'Yeniden deneme başarılı.',
+                'conversation_id': 'conv-retry',
+              }))),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }),
+          idTokenProvider: () async => 'token-1',
+          forceRefreshTokenProvider: () async => 'token-2',
+        );
+
+        final repo = BackendAiAssistantRepository(apiClient: client);
+
+        final response = await repo.sendMessage(
+          message: 'Bu bitki ne?',
+          photo: validJpegBytes,
+          photoFileName: 'bitki.jpg',
+        );
+
+        expect(response.reply, 'Yeniden deneme başarılı.');
+        expect(response.conversationId, 'conv-retry');
+        expect(callCount, 2);
+        expect(firstAuth, 'Bearer token-1');
+        expect(secondAuth, 'Bearer token-2');
+        expect(firstPhotoBytes, validJpegBytes);
+        expect(secondPhotoBytes, validJpegBytes);
+      });
     });
   });
 }

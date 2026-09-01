@@ -525,9 +525,9 @@ void main() {
         '/ai/chat',
         fields: {'message': 'Fotoğraf analizi'},
         files: [
-          http.MultipartFile.fromBytes(
-            'photo',
-            [1, 2, 3],
+          const ApiMultipartFile(
+            field: 'photo',
+            bytes: [1, 2, 3],
             filename: 'test.jpg',
           ),
         ],
@@ -545,17 +545,30 @@ void main() {
       api.close();
     });
 
-    test('retries once on 401 with refreshed token', () async {
+    test('retries multipart upload on 401 and successfully resends photo bytes', () async {
       var callCount = 0;
+      List<int>? firstAttemptBytes;
+      List<int>? secondAttemptBytes;
+      String? firstToken;
+      String? secondToken;
+
       final api = ApiClient(
         httpClient: MockClient.streaming((request, bodyStream) async {
           callCount++;
           if (callCount == 1) {
+            firstToken = request.headers['Authorization'];
+            if (request is http.MultipartRequest) {
+              firstAttemptBytes = await request.files.first.finalize().toBytes();
+            }
             return http.StreamedResponse(
               Stream.value(utf8.encode(jsonEncode({'detail': 'expired'}))),
               401,
               headers: {'content-type': 'application/json'},
             );
+          }
+          secondToken = request.headers['Authorization'];
+          if (request is http.MultipartRequest) {
+            secondAttemptBytes = await request.files.first.finalize().toBytes();
           }
           return http.StreamedResponse(
             Stream.value(utf8.encode(jsonEncode({'reply': 'Başarılı'}))),
@@ -570,10 +583,22 @@ void main() {
       final result = await api.postMultipart(
         '/ai/chat',
         fields: {'message': 'Test'},
+        files: [
+          const ApiMultipartFile(
+            field: 'photo',
+            bytes: [10, 20, 30],
+            filename: 'test.jpg',
+            contentType: 'image/jpeg',
+          ),
+        ],
       );
 
       expect(result['reply'], 'Başarılı');
       expect(callCount, 2);
+      expect(firstToken, 'Bearer initial-token');
+      expect(secondToken, 'Bearer refreshed-token');
+      expect(firstAttemptBytes, [10, 20, 30]);
+      expect(secondAttemptBytes, [10, 20, 30]);
       api.close();
     });
 

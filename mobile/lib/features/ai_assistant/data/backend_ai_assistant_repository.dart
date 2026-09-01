@@ -90,17 +90,17 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
         ? photoFileName!.trim()
         : (resolvedContentType == 'image/png' ? 'photo.png' : 'photo.jpg');
 
-    final multipartFile = http.MultipartFile.fromBytes(
-      'photo',
-      photo,
+    final uploadFile = ApiMultipartFile(
+      field: 'photo',
+      bytes: photo,
       filename: resolvedFileName,
-      contentType: http.MediaType.parse(resolvedContentType),
+      contentType: resolvedContentType,
     );
 
     final response = await _client.postMultipart(
       '/ai/chat',
       fields: fields,
-      files: [multipartFile],
+      files: [uploadFile],
     );
 
     return _parseResponse(response);
