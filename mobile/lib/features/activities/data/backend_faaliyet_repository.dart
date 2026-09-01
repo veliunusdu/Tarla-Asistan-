@@ -1,7 +1,6 @@
 import 'package:uuid/uuid.dart';
 
 import '../../../models/faaliyet.dart';
-import '../../../models/tarla.dart';
 import '../../../services/api_client.dart';
 import '../../fields/data/tarla_repository.dart';
 import 'faaliyet_repository.dart';

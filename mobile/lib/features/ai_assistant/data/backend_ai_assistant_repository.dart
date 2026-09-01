@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:http/http.dart' as http;
-
 import '../../../services/api_client.dart';
 import '../domain/ai_chat_message.dart';
 import '../domain/ai_chat_response.dart';

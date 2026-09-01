@@ -24,9 +24,7 @@ void main() {
 
         final client = ApiClient(
           httpClient: MockClient((request) async {
-            if (request is http.Request) {
-              capturedRequest = request;
-            }
+            capturedRequest = request;
             return http.Response(
               jsonEncode({
                 'reply': 'Tarlanız için sulama önerilir.',
