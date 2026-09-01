@@ -182,8 +182,8 @@ void main() {
       expect(capturedBody['name'], 'Yeni Tarla');
       expect(capturedBody['latitude'], 38.5);
       expect(capturedBody['longitude'], 27.1);
-      expect(capturedBody['crop_type'], 'CORN');
-      expect(capturedBody['planted_at'], '2026-04-01');
+      expect(capturedBody['initial_crop_type'], 'CORN');
+      expect(capturedBody['initial_planted_at'], '2026-04-01');
       expect(capturedBody['size_in_hectares'], 8.0);
       expect(capturedBody['irrigation_method'], 'DRIP');
       client.close();

@@ -25,11 +25,13 @@ public static class TaskEndpoints
             Guid farmId,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
             CreateExpertTaskApiRequest req,
             IMediator mediator,
             IValidator<CreateExpertTaskCommand> validator) =>
         {
             var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
+            var userRole = httpContext.ResolveUserRole(headerRole: headerRole);
             if (userId == Guid.Empty)
             {
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
@@ -44,7 +46,8 @@ public static class TaskEndpoints
                 Priority: req.Priority ?? TaskPriority.High,
                 Confidence: req.Confidence ?? TaskConfidence.High,
                 DueDate: req.DueDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
-                CropPeriodId: req.CropPeriodId
+                CropPeriodId: req.CropPeriodId,
+                CreatedByRole: userRole
             );
 
             var validationResult = await validator.ValidateAsync(command);
@@ -70,11 +73,16 @@ public static class TaskEndpoints
             {
                 return Results.Conflict(new { detail = ex.Message });
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
         })
         .WithName("CreateExpertTask")
         .Produces<TaskDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict)
         .Produces(StatusCodes.Status422UnprocessableEntity);
@@ -100,7 +108,29 @@ public static class TaskEndpoints
         .Produces<DailyTaskListDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
-        // 3. GET /api/v1/tasks/{id} - Get task details
+        // 3. GET /api/v1/farms/{farmId}/tasks/all - List all farm tasks
+        farmTasks.MapGet("/all", async (
+            Guid farmId,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] Guid? userId,
+            [FromQuery] UserRole? role,
+            IMediator mediator) =>
+        {
+            var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var queryRole = httpContext.ResolveUserRole(role, headerRole);
+            var result = await mediator.Send(
+                new ListFarmTasksQuery(farmId, queryUserId, queryRole));
+            return result is not null
+                ? Results.Ok(result)
+                : Results.NotFound(new { detail = "Tarla bulunamadı." });
+        })
+        .WithName("ListAllFarmTasks")
+        .Produces<List<TaskDto>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // 4. GET /api/v1/tasks/{id} - Get task details
         tasks.MapGet("/{id:guid}", async (
             Guid id,
             HttpContext httpContext,

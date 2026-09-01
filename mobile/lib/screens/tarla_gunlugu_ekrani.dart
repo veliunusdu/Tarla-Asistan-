@@ -111,6 +111,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   Tarla? _seciliTarla;
   late DateTime _planliTarih;
   bool _kaydediliyor = false;
+  String? _tamamlananGorevId;
 
   // ── Filtre ────────────────────────────────────────────────────────────────
   _Filtre _filtre = _Filtre.bugun;
@@ -137,13 +138,18 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   }
 
   Future<(List<Tarla>, List<_GunlukKayit>)> _yukle() async {
-    final results = await Future.wait([
-      widget._tarlaRepo.getTarlalar(),
-      widget._faaliyetRepo.getTumFaaliyetler(),
-    ]);
+    final repository = widget._faaliyetRepo;
+    final tarlalarFuture = widget._tarlaRepo.getTarlalar();
+    final faaliyetlerFuture = repository.getTumFaaliyetler();
+    final planliGorevlerFuture = repository is PlanliGorevRepository
+        ? (repository as PlanliGorevRepository).getPlanliGorevler()
+        : Future.value(<Faaliyet>[]);
 
-    final tarlalar = results[0] as List<Tarla>;
-    final faaliyetler = results[1] as List<Faaliyet>;
+    final tarlalar = await tarlalarFuture;
+    final faaliyetler = [
+      ...await faaliyetlerFuture,
+      ...await planliGorevlerFuture,
+    ];
 
     // Seçili tarla silinmişse sıfırla
     if (_seciliTarla != null &&
@@ -225,7 +231,12 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
         dueDate: _planliTarih,
       );
 
-      await widget._faaliyetRepo.addFaaliyet(faaliyet);
+      final repository = widget._faaliyetRepo;
+      if (repository is PlanliGorevRepository) {
+        await (repository as PlanliGorevRepository).addPlanliGorev(faaliyet);
+      } else {
+        await repository.addFaaliyet(faaliyet);
+      }
 
       if (!mounted) return;
 
@@ -250,6 +261,34 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
       );
     } finally {
       if (mounted) setState(() => _kaydediliyor = false);
+    }
+  }
+
+  Future<void> _goreviTamamla(Faaliyet gorev) async {
+    final repository = widget._faaliyetRepo;
+    if (repository is! PlanliGorevCompletionRepository) return;
+
+    setState(() => _tamamlananGorevId = gorev.id);
+    try {
+      await (repository as PlanliGorevCompletionRepository).completePlanliGorev(
+        gorev.id,
+        note: gorev.note,
+      );
+      if (!mounted) return;
+      _yenile();
+      widget.onDataChanged?.call();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Görev tamamlandı.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Görev tamamlanamadı. Lütfen tekrar deneyin.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _tamamlananGorevId = null);
     }
   }
 
@@ -363,6 +402,13 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                 ...gosterilen.map(
                   (k) => _GunlukKayitKarti(
                     kayit: k,
+                    completing: _tamamlananGorevId == k.faaliyet.id,
+                    onComplete:
+                        !k.faaliyet.isCompleted &&
+                            widget._faaliyetRepo
+                                is PlanliGorevCompletionRepository
+                        ? () => _goreviTamamla(k.faaliyet)
+                        : null,
                     onTap: k.tarla != null
                         ? () => Navigator.push(
                             context,
@@ -417,7 +463,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
-                    'Şimdilik cihazdaki faaliyet kayıtları gösteriliyor.',
+                    'Planlı görevler ve tamamlanan faaliyetler hesabınızla eşitlenir.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSecondaryContainer,
                     ),
@@ -695,10 +741,17 @@ class _FiltreCubugu extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _GunlukKayitKarti extends StatelessWidget {
-  const _GunlukKayitKarti({required this.kayit, this.onTap});
+  const _GunlukKayitKarti({
+    required this.kayit,
+    required this.completing,
+    this.onTap,
+    this.onComplete,
+  });
 
   final _GunlukKayit kayit;
+  final bool completing;
   final VoidCallback? onTap;
+  final VoidCallback? onComplete;
 
   @override
   Widget build(BuildContext context) {
@@ -782,6 +835,24 @@ class _GunlukKayitKarti extends StatelessWidget {
                         color: tamamlandi ? AppColors.textSecondary : ikonRenk,
                       ),
                     ),
+                    if (onComplete != null) ...[
+                      const SizedBox(height: AppSpacing.xs),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: completing ? null : onComplete,
+                          icon: completing
+                              ? const SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check, size: 18),
+                          label: const Text('Tamamla'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

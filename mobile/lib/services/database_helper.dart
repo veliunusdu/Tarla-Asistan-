@@ -257,4 +257,14 @@ class DatabaseHelper implements SyncOperationStore {
     final db = await instance.database;
     return await db.delete('faaliyetler', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<int> completePlanliGorev(String id) async {
+    final db = await database;
+    return db.update(
+      'faaliyetler',
+      {'isCompleted': 1, 'timestamp': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }

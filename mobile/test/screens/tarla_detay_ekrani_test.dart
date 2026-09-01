@@ -13,10 +13,12 @@ import 'package:mobile/screens/tarla_detay_ekrani.dart';
 // Fake repository
 // ---------------------------------------------------------------------------
 
-class FakeFaaliyetRepository implements FaaliyetRepository {
+class FakeFaaliyetRepository
+    implements FaaliyetRepository, FaaliyetDeleteRepository {
   FakeFaaliyetRepository(this._future);
 
   final Future<List<Faaliyet>> _future;
+  final List<String> deletedIds = [];
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) => _future;
@@ -26,6 +28,9 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<void> deleteFaaliyet(String id) async => deletedIds.add(id);
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +105,48 @@ void main() {
       await tester.tap(find.text('Arşivle'));
       await tester.pumpAndSettle();
       expect(archived, isTrue);
+    });
+
+    testWidgets('arşivleme hatasında ekran açık kalır ve hata gösterir', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(
+            tarla: _tarla(),
+            faaliyetRepository: FakeFaaliyetRepository(Future.value([])),
+            onArchive: () async => throw Exception('network'),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Tarlayı arşivle'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Arşivle'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+      expect(
+        find.text('Tarla arşivlenemedi. Lütfen tekrar deneyin.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('faaliyet silme repository üzerinden çalışır', (tester) async {
+      final repository = FakeFaaliyetRepository(Future.value([_tamamlanan()]));
+      await tester.pumpWidget(
+        _wrap(
+          TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Geçmiş'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Faaliyeti sil'));
+      await tester.pumpAndSettle();
+
+      expect(repository.deletedIds, ['f2']);
     });
 
     testWidgets('düzenleme işlemini kullanıcıdan başlatır', (tester) async {

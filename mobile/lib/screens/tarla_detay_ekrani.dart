@@ -6,7 +6,6 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
-import '../services/database_helper.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
@@ -59,6 +58,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late Future<List<Faaliyet>> _faaliyetler;
+  bool _archiving = false;
 
   @override
   void initState() {
@@ -77,6 +77,22 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     setState(() {
       _faaliyetler = widget._faaliyetRepository.getFaaliyetler(widget.tarla.id);
     });
+  }
+
+  Future<void> _deleteFaaliyet(String id) async {
+    final repository = widget._faaliyetRepository;
+    if (repository is! FaaliyetDeleteRepository) return;
+    try {
+      await (repository as FaaliyetDeleteRepository).deleteFaaliyet(id);
+      if (mounted) _yenile();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Faaliyet silinemedi. Lütfen tekrar deneyin.'),
+        ),
+      );
+    }
   }
 
   Future<void> _archive() async {
@@ -98,8 +114,19 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
       ),
     );
     if (confirmed != true || widget.onArchive == null) return;
-    await widget.onArchive!();
-    if (mounted) Navigator.pop(context, true);
+    setState(() => _archiving = true);
+    try {
+      await widget.onArchive!();
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _archiving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tarla arşivlenemedi. Lütfen tekrar deneyin.'),
+        ),
+      );
+    }
   }
 
   Future<void> _edit() async {
@@ -127,8 +154,13 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           if (widget.onArchive != null)
             IconButton(
               tooltip: 'Tarlayı arşivle',
-              icon: const Icon(Icons.archive_outlined),
-              onPressed: _archive,
+              icon: _archiving
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.archive_outlined),
+              onPressed: _archiving ? null : _archive,
             ),
         ],
         bottom: TabBar(
@@ -192,18 +224,16 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
             _FaaliyetListesi(
               faaliyetler: yapilacaklar,
               isGecmis: false,
-              onDelete: (id) async {
-                await DatabaseHelper.instance.deleteFaaliyet(id);
-                _yenile();
-              },
+              onDelete: widget._faaliyetRepository is FaaliyetDeleteRepository
+                  ? _deleteFaaliyet
+                  : null,
             ),
             _FaaliyetListesi(
               faaliyetler: gecmis,
               isGecmis: true,
-              onDelete: (id) async {
-                await DatabaseHelper.instance.deleteFaaliyet(id);
-                _yenile();
-              },
+              onDelete: widget._faaliyetRepository is FaaliyetDeleteRepository
+                  ? _deleteFaaliyet
+                  : null,
             ),
           ],
         );
@@ -327,7 +357,7 @@ class _FaaliyetListesi extends StatelessWidget {
 
   final List<Faaliyet> faaliyetler;
   final bool isGecmis;
-  final Future<void> Function(String id) onDelete;
+  final Future<void> Function(String id)? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -369,7 +399,7 @@ class _FaaliyetKarti extends StatelessWidget {
 
   final Faaliyet faaliyet;
   final bool isGecmis;
-  final Future<void> Function(String id) onDelete;
+  final Future<void> Function(String id)? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -426,11 +456,14 @@ class _FaaliyetKarti extends StatelessWidget {
               ),
           ],
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          color: AppColors.textDisabled,
-          onPressed: () => onDelete(faaliyet.id),
-        ),
+        trailing: onDelete == null
+            ? null
+            : IconButton(
+                tooltip: 'Faaliyeti sil',
+                icon: const Icon(Icons.delete_outline),
+                color: AppColors.textDisabled,
+                onPressed: () => onDelete!(faaliyet.id),
+              ),
       ),
     );
   }

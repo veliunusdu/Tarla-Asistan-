@@ -5,18 +5,47 @@ import '../../../services/api_client.dart';
 import '../../fields/data/tarla_repository.dart';
 import 'faaliyet_repository.dart';
 
-class BackendFaaliyetRepository implements FaaliyetRepository {
+class BackendFaaliyetRepository
+    implements
+        FaaliyetRepository,
+        FaaliyetDeleteRepository,
+        PlanliGorevRepository,
+        PlanliGorevCompletionRepository {
   const BackendFaaliyetRepository({
     required ApiClient apiClient,
     required TarlaRepository tarlaRepository,
     Uuid uuid = const Uuid(),
-  })  : _api = apiClient,
-        _tarlaRepo = tarlaRepository,
-        _uuid = uuid;
+  }) : _api = apiClient,
+       _tarlaRepo = tarlaRepository,
+       _uuid = uuid;
 
   final ApiClient _api;
   final TarlaRepository _tarlaRepo;
   final Uuid _uuid;
+
+  @override
+  Future<void> deleteFaaliyet(String id) => _api.delete('/activities/$id');
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {
+    final dueDate = gorev.dueDate;
+    if (dueDate == null) {
+      throw ArgumentError('Planlı görev tarihi gereklidir.');
+    }
+    await _api.postJson('/farms/${gorev.tarlaId}/tasks', {
+      'title': gorev.type.trim(),
+      'description': gorev.note.trim().isEmpty
+          ? gorev.type.trim()
+          : gorev.note.trim(),
+      'reason': 'Çiftçi tarafından planlandı',
+      'priority': 'MEDIUM',
+      'confidence': 'HIGH',
+      'due_date': _date(dueDate),
+    });
+  }
+
+  static String _date(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   @override
   Future<void> addFaaliyet(Faaliyet faaliyet) async {
@@ -59,7 +88,10 @@ class BackendFaaliyetRepository implements FaaliyetRepository {
 
       for (final item in items) {
         allActivities.add(
-          _fromBackendJson(item as Map<String, dynamic>, fallbackTarlaId: tarlaId),
+          _fromBackendJson(
+            item as Map<String, dynamic>,
+            fallbackTarlaId: tarlaId,
+          ),
         );
       }
 
@@ -72,6 +104,33 @@ class BackendFaaliyetRepository implements FaaliyetRepository {
 
     allActivities.sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return allActivities;
+  }
+
+  @override
+  Future<void> completePlanliGorev(String id, {String? note}) async {
+    await _api.postJson('/tasks/$id/complete', {
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    });
+  }
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async {
+    final tarlalar = await _tarlaRepo.getTarlalar();
+    final tasksPerFarm = await Future.wait(
+      tarlalar.map((tarla) async {
+        final tasks = await _api.getJsonList('/farms/${tarla.id}/tasks/all');
+        return tasks
+            .cast<Map<String, dynamic>>()
+            .where((item) {
+              final status = item['status']?.toString().toUpperCase() ?? '';
+              return status != 'COMPLETED' &&
+                  status != 'CANCELLED' &&
+                  status != 'NOT_APPLIED';
+            })
+            .map((item) => _fromTaskJson(item, fallbackTarlaId: tarla.id));
+      }),
+    );
+    return tasksPerFarm.expand((tasks) => tasks).toList();
   }
 
   @override
@@ -170,6 +229,26 @@ class BackendFaaliyetRepository implements FaaliyetRepository {
       timestamp: timestamp,
       dueDate: null,
       isCompleted: true,
+    );
+  }
+
+  static Faaliyet _fromTaskJson(
+    Map<String, dynamic> json, {
+    required String fallbackTarlaId,
+  }) {
+    final createdAt = DateTime.tryParse(
+      json['created_at_utc']?.toString() ?? '',
+    );
+    final dueDate = DateTime.tryParse(json['due_date']?.toString() ?? '');
+
+    return Faaliyet(
+      id: json['id']?.toString() ?? '',
+      tarlaId: json['farm_id']?.toString() ?? fallbackTarlaId,
+      type: json['title']?.toString() ?? 'Planlı görev',
+      note: json['description']?.toString() ?? '',
+      timestamp: createdAt?.toLocal() ?? DateTime.now(),
+      dueDate: dueDate,
+      isCompleted: false,
     );
   }
 }

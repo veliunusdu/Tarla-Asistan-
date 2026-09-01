@@ -39,7 +39,11 @@ class RecordingTarlaRepository implements TarlaRepository {
 }
 
 /// Mutable fake — addFaaliyet kaydeder, getTumFaaliyetler içerir.
-class FakeFaaliyetRepository implements FaaliyetRepository {
+class FakeFaaliyetRepository
+    implements
+        FaaliyetRepository,
+        PlanliGorevRepository,
+        PlanliGorevCompletionRepository {
   FakeFaaliyetRepository({
     List<Faaliyet>? faaliyetler,
     this.hata,
@@ -52,6 +56,8 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
 
   /// addFaaliyet çağrısıyla eklenen kayıtlar
   final List<Faaliyet> eklenenler = [];
+  int planliGorevEklemeSayisi = 0;
+  final List<String> tamamlananGorevler = [];
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
@@ -60,6 +66,21 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet f) async {
     if (addFaaliyetHata != null) throw addFaaliyetHata!;
     eklenenler.add(f);
+  }
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {
+    if (addFaaliyetHata != null) throw addFaaliyetHata!;
+    planliGorevEklemeSayisi++;
+    eklenenler.add(gorev);
+  }
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async => [];
+
+  @override
+  Future<void> completePlanliGorev(String id, {String? note}) async {
+    tamamlananGorevler.add(id);
   }
 
   @override
@@ -527,6 +548,38 @@ void main() {
       });
     });
 
+    group('planlı görev tamamlama', () {
+      testWidgets('Tamamla eylemi görevi backend repository ile tamamlar', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final tarla = _tarla('t1', name: 'Örnek Tarla');
+        final gorev = _faaliyet(
+          id: 'task-1',
+          tarlaId: 't1',
+          type: 'Sulama',
+          dueDate: DateTime.now(),
+          isCompleted: false,
+        );
+        final repo = FakeFaaliyetRepository(faaliyetler: [gorev]);
+
+        await tester.pumpWidget(
+          _wrap(tarlaRepo: FakeTarlaRepository([tarla]), faaliyetRepo: repo),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Tamamla'));
+        await tester.pumpAndSettle();
+
+        expect(repo.tamamlananGorevler, ['task-1']);
+        expect(find.text('Görev tamamlandı.'), findsOneWidget);
+      });
+    });
+
     // ── Sıralama ──────────────────────────────────────────────────────────
     group('sıralama', () {
       testWidgets('Tamamlanan en yeniden eskiye sıralanır', (tester) async {
@@ -668,10 +721,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: repo,
-          ),
+          _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
         );
         await tester.pumpAndSettle();
 
@@ -842,6 +892,7 @@ void main() {
           expect(repo.eklenenler.first.isCompleted, isFalse);
           expect(repo.eklenenler.first.type, 'Sulama');
           expect(repo.eklenenler.first.tarlaId, 't1');
+          expect(repo.planliGorevEklemeSayisi, 1);
         },
       );
 
@@ -920,48 +971,48 @@ void main() {
         expect(find.text('Görev eklendi.'), findsOneWidget);
       });
 
-      testWidgets('backend hatası olduğunda hata SnackBar gösterilir ve kayıt başarılı sayılmaz', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+      testWidgets(
+        'backend hatası olduğunda hata SnackBar gösterilir ve kayıt başarılı sayılmaz',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
 
-        final t = _tarla('t1', name: 'Örnek Tarla');
-        final repo = FakeFaaliyetRepository(
-          addFaaliyetHata: Exception('Backend network error'),
-        );
+          final t = _tarla('t1', name: 'Örnek Tarla');
+          final repo = FakeFaaliyetRepository(
+            addFaaliyetHata: Exception('Backend network error'),
+          );
 
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: repo,
-          ),
-        );
-        await tester.pumpAndSettle();
+          await tester.pumpWidget(
+            _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
+          );
+          await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Örnek Tarla').last);
-        await tester.pumpAndSettle();
+          await tester.tap(
+            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Örnek Tarla').last);
+          await tester.pumpAndSettle();
 
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Görev'),
-          'Sulama',
-        );
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Görev'),
+            'Sulama',
+          );
 
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pumpAndSettle();
+          await tester.tap(find.text('Görevi Ekle'));
+          await tester.pumpAndSettle();
 
-        expect(
-          find.text('Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.'),
-          findsOneWidget,
-        );
-        expect(repo.eklenenler, isEmpty);
-      });
+          expect(
+            find.text(
+              'Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.',
+            ),
+            findsOneWidget,
+          );
+          expect(repo.eklenenler, isEmpty);
+        },
+      );
     });
 
     // ── Overflow / responsive ─────────────────────────────────────────────

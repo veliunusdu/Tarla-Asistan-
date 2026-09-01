@@ -233,8 +233,8 @@ void main() {
       expect(json['name'], 'Batı Tarlası');
       expect(json['latitude'], 37.5);
       expect(json['longitude'], 27.3);
-      expect(json['crop_type'], 'CORN');
-      expect(json['planted_at'], '2026-04-01');
+      expect(json['initial_crop_type'], 'CORN');
+      expect(json['initial_planted_at'], '2026-04-01');
       expect(json['size_in_hectares'], 10.0);
     });
 
