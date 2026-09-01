@@ -133,6 +133,12 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     if (mounted) setState(() => _isFirstRun = false);
   }
 
+  Future<void> _logout() async {
+    await _notificationService.deactivateCurrentDevice();
+    await _backendAuthService.logout();
+    await _authService.signOut();
+  }
+
   @override
   void dispose() {
     _notificationService.dispose();
@@ -233,6 +239,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         remote: BackendFarmRepository(apiClient: _apiClient),
                       );
                       return AnaEkran(
+                        onLogout: _logout,
                         tarlaRepository: tarlaRepo,
                         faaliyetRepository: BackendFaaliyetRepository(
                           apiClient: _apiClient,

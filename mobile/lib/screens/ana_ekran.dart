@@ -27,15 +27,18 @@ class AnaEkran extends StatefulWidget {
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
     AiAssistantRepository? aiRepository,
+    Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
        _weatherRepo = weatherRepository,
-       _aiRepo = aiRepository;
+       _aiRepo = aiRepository,
+       _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
   final FaaliyetRepository? _faaliyetRepo;
   final WeatherRepository? _weatherRepo;
   final AiAssistantRepository? _aiRepo;
+  final Future<void> Function()? _onLogout;
 
   @override
   State<AnaEkran> createState() => _AnaEkranState();
@@ -81,7 +84,7 @@ class _AnaEkranState extends State<AnaEkran> {
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),
       // 4 — Profil
-      const ProfilEkrani(),
+      ProfilEkrani(onLogout: widget._onLogout),
     ];
   }
 

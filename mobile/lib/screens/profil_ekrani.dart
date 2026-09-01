@@ -5,6 +5,27 @@ class ProfilEkrani extends StatelessWidget {
 
   final Future<void> Function()? onLogout;
 
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Çıkış yapmak istiyor musunuz?'),
+        content: const Text('Bu cihazdaki oturumunuz kapatılacak.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Vazgeç'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Çıkış yap'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await onLogout?.call();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Profil ve Ayarlar')),
@@ -24,7 +45,7 @@ class ProfilEkrani extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         FilledButton.tonalIcon(
-          onPressed: onLogout == null ? null : () => onLogout!(),
+          onPressed: onLogout == null ? null : () => _confirmLogout(context),
           icon: const Icon(Icons.logout),
           label: const Text('Çıkış yap'),
         ),
