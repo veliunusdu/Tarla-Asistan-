@@ -6,6 +6,7 @@ import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/screens/faaliyet_ekleme_ekrani.dart';
+import 'package:uuid/uuid.dart';
 
 // ---------------------------------------------------------------------------
 // Fake repository
@@ -52,6 +53,28 @@ Future<void> _secilenTur(WidgetTester tester, String tur) async {
 void main() {
   group('FaaliyetEklemeEkrani', () {
     group('form doğrulama', () {
+      testWidgets('varsayılan olarak Tamamlandı seçilidir ve Planlandı butonu devre dışıdır', (
+        tester,
+      ) async {
+        final repo = FakeFaaliyetRepository();
+        await tester.pumpWidget(
+          _wrap(
+            FaaliyetEklemeEkrani(
+              tarlaId: _tarlaId,
+              faaliyetRepository: repo,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final segmentedBtn = tester.widget<SegmentedButton<bool>>(
+          find.byType(SegmentedButton<bool>),
+        );
+        expect(segmentedBtn.selected, {true});
+        expect(segmentedBtn.segments[0].enabled, isFalse);
+        expect(segmentedBtn.segments[1].enabled, isTrue);
+      });
+
       testWidgets('faaliyet türü seçilmeden kayıt yapılmaz', (tester) async {
         final repo = FakeFaaliyetRepository();
         await tester.pumpWidget(
@@ -75,15 +98,19 @@ void main() {
         tester,
       ) async {
         final repo = FakeFaaliyetRepository();
-        final yarin = DateTime.now().add(const Duration(days: 1));
+        final bugun = DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+        );
 
         await tester.pumpWidget(
           _wrap(
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: repo,
-              initialIsCompleted: false,
-              initialSelectedDate: yarin,
+              initialIsCompleted: true,
+              initialSelectedDate: bugun,
             ),
           ),
         );
@@ -131,37 +158,8 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(repo.kayitlar, isEmpty);
-        expect(find.textContaining('tarihi seçin'), findsOneWidget);
-      });
-
-      testWidgets('Planlandı modunda geçmiş tarih girilirse kayıt yapılmaz', (
-        tester,
-      ) async {
-        final repo = FakeFaaliyetRepository();
-        final dun = DateTime.now().subtract(const Duration(days: 1));
-
-        await tester.pumpWidget(
-          _wrap(
-            FaaliyetEklemeEkrani(
-              tarlaId: _tarlaId,
-              faaliyetRepository: repo,
-              initialIsCompleted: false,
-              initialSelectedDate: dun,
-            ),
-          ),
-        );
-
-        await _secilenTur(tester, 'Sulama');
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
-          'Sulama yapıldı',
-        );
-        await tester.tap(find.text('Kaydet'));
-        await tester.pumpAndSettle();
-
-        expect(repo.kayitlar, isEmpty);
         expect(
-          find.text('Planlanan tarih geçmiş bir tarih olamaz.'),
+          find.text('Lütfen gerçekleşme tarihini seçin.'),
           findsOneWidget,
         );
       });
@@ -201,7 +199,7 @@ void main() {
 
     group('kaydetme davranışı', () {
       testWidgets(
-        'Planlandı faaliyeti isCompleted:false ve doğru dueDate ile kaydedilir',
+        'Planlandı modunda kayıt engellenir ve Planlı görev özelliği henüz kullanılamıyor uyarısı verilir',
         (tester) async {
           final repo = FakeFaaliyetRepository();
           final yarin = DateTime.now().add(const Duration(days: 1));
@@ -226,17 +224,16 @@ void main() {
           await tester.tap(find.text('Kaydet'));
           await tester.pumpAndSettle();
 
-          expect(repo.kayitlar, hasLength(1));
-          final f = repo.kayitlar.first;
-          expect(f.isCompleted, isFalse);
-          expect(f.dueDate, beklenenGun);
-          expect(f.type, 'Sulama');
-          expect(f.note, 'Planlanan sulama');
+          expect(repo.kayitlar, isEmpty);
+          expect(
+            find.text('Planlı görev özelliği henüz kullanılamıyor.'),
+            findsOneWidget,
+          );
         },
       );
 
       testWidgets(
-        'Tamamlandı faaliyeti isCompleted:true ve dueDate:null kaydedilir',
+        'Tamamlandı faaliyeti isCompleted:true, dueDate:null ve UUID id ile kaydedilir',
         (tester) async {
           final repo = FakeFaaliyetRepository();
           final bugun = DateTime(
@@ -270,21 +267,26 @@ void main() {
           expect(f.dueDate, isNull);
           expect(f.type, 'Gübreleme');
           expect(f.note, 'Azot gübresi atıldı');
+          expect(Uuid.isValidUUID(fromString: f.id), isTrue);
         },
       );
 
       testWidgets('loading sırasında ikinci kayıt engellenir', (tester) async {
         final completer = Completer<void>();
         final slowRepo = _SlowFaaliyetRepository(completer.future);
-        final yarin = DateTime.now().add(const Duration(days: 1));
+        final bugun = DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+        );
 
         await tester.pumpWidget(
           _wrap(
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: slowRepo,
-              initialIsCompleted: false,
-              initialSelectedDate: yarin,
+              initialIsCompleted: true,
+              initialSelectedDate: bugun,
             ),
           ),
         );
@@ -313,15 +315,19 @@ void main() {
       ) async {
         final repo = FakeFaaliyetRepository();
         repo.hatayiAyarla(Exception('db hatası'));
-        final yarin = DateTime.now().add(const Duration(days: 1));
+        final bugun = DateTime(
+          DateTime.now().year,
+          DateTime.now().month,
+          DateTime.now().day,
+        );
 
         await tester.pumpWidget(
           _wrap(
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: repo,
-              initialIsCompleted: false,
-              initialSelectedDate: yarin,
+              initialIsCompleted: true,
+              initialSelectedDate: bugun,
             ),
           ),
         );
