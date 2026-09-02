@@ -26,6 +26,17 @@ class FakeTarlaRepository implements TarlaRepository {
   Future<void> addTarla(Tarla tarla) async {}
 }
 
+/// Simulates the API returning a newly mapped Tarla instance on every reload.
+class RefreshingTarlaRepository implements TarlaRepository {
+  @override
+  Future<List<Tarla>> getTarlalar() async => [
+    _tarla('t1', name: 'Örnek Tarla'),
+  ];
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
+}
+
 class RecordingTarlaRepository implements TarlaRepository {
   final List<Tarla> added = [];
 
@@ -953,6 +964,42 @@ void main() {
         // Yeni görev bugün planlı olduğundan Bugün filtresinde görünmeli
         expect(find.text('SulamaGörev'), findsOneWidget);
       });
+
+      testWidgets(
+        'liste yenilendiğinde seçili tarla yeni API nesnesiyle eşleşir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final repo = FakeFaaliyetRepository();
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: RefreshingTarlaRepository(),
+              faaliyetRepo: repo,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Örnek Tarla').last);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'Görev'),
+            'Yenilenen görev',
+          );
+
+          await tester.tap(find.text('Görevi Ekle'));
+          await tester.pumpAndSettle();
+
+          expect(repo.eklenenler, hasLength(1));
+          expect(tester.takeException(), isNull);
+        },
+      );
 
       testWidgets('kayıt sonrası Görev eklendi SnackBar gösterilir', (
         tester,

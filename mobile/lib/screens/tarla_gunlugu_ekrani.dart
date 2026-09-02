@@ -588,6 +588,13 @@ class _YeniGorevKarti extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    Tarla? guncelSeciliTarla;
+    for (final tarla in tarlalar) {
+      if (tarla.id == seciliTarla?.id) {
+        guncelSeciliTarla = tarla;
+        break;
+      }
+    }
 
     return Card(
       child: Padding(
@@ -604,7 +611,9 @@ class _YeniGorevKarti extends StatelessWidget {
                 children: [
                   // Tarla seçimi
                   DropdownButtonFormField<Tarla>(
-                    initialValue: seciliTarla,
+                    // API her yüklemede yeni model nesneleri oluşturur. Seçimi
+                    // nesne referansı yerine sabit tarla kimliğiyle eşleştiririz.
+                    initialValue: guncelSeciliTarla,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       labelText: 'Tarla',
