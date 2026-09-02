@@ -66,4 +66,9 @@ class BackendFarmRepository implements FarmRemoteRepository {
   Future<void> archiveFarm(String farmId) async {
     await _client.delete('$_base/$farmId');
   }
+
+  @override
+  Future<Map<String, dynamic>> getFarmSummary({int upcomingLimit = 5}) async {
+    return await _client.getJson('$_base/summary?upcomingLimit=$upcomingLimit');
+  }
 }

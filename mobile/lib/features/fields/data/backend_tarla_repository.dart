@@ -2,6 +2,8 @@ import '../../location/domain/tarla_location.dart';
 import '../../../models/tarla.dart';
 import 'dto/farm_dto.dart';
 import 'farm_remote_repository.dart';
+import 'farm_summary_model.dart';
+import 'farm_summary_repository.dart';
 import 'mappers/farm_mapper.dart';
 import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
@@ -11,7 +13,8 @@ class BackendTarlaRepository
         TarlaRepository,
         TarlaLocationRepository,
         TarlaArchiveRepository,
-        TarlaUpdateRepository {
+        TarlaUpdateRepository,
+        FarmSummaryRepository {
   const BackendTarlaRepository({required FarmRemoteRepository remote})
     : _remote = remote;
 
@@ -66,10 +69,16 @@ class BackendTarlaRepository
   @override
   Future<List<Tarla>> getTarlalar() async {
     final response = await _remote.getFarms();
-    return response.items.map(_fromDto).toList();
+    return response.items.map(fromDto).toList();
   }
 
-  static Tarla _fromDto(FarmResponseDto dto) {
+  @override
+  Future<FarmSummaryResponse> getFarmSummary({int upcomingLimit = 5}) async {
+    final json = await _remote.getFarmSummary(upcomingLimit: upcomingLimit);
+    return FarmSummaryResponse.fromJson(json);
+  }
+
+  static Tarla fromDto(FarmResponseDto dto) {
     final tarla = FarmMapper.fromDto(dto);
     return Tarla(
       id: tarla.id,

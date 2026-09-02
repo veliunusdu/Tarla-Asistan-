@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
+import 'package:mobile/features/fields/data/farm_summary_model.dart';
+import 'package:mobile/features/fields/data/farm_summary_repository.dart';
 import 'package:mobile/features/fields/data/local_tarla_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/models/faaliyet.dart';
@@ -92,6 +94,7 @@ Future<void> completeFarmForm(WidgetTester tester) async {
 
 void main() {
   _backendAdapterTests();
+  _isOzetleriVePerformansTests();
 
   group('TarlaListesiEkrani', () {
     testWidgets('yüklenirken AppLoadingView gösterir', (tester) async {
@@ -274,6 +277,17 @@ Widget _buildReadApp(TarlaRepository repository) => MaterialApp(
   home: TarlaListesiEkrani(repository: repository),
 );
 
+Widget _buildAppWithFaaliyet({
+  required TarlaRepository tarlaRepo,
+  required FaaliyetRepository faaliyetRepo,
+}) => MaterialApp(
+  theme: AppTheme.light,
+  home: TarlaListesiEkrani(
+    repository: tarlaRepo,
+    faaliyetRepository: faaliyetRepo,
+  ),
+);
+
 class _EmptyFaaliyetRepository implements FaaliyetRepository {
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
@@ -291,7 +305,91 @@ class _EmptyFaaliyetRepository implements FaaliyetRepository {
   Future<void> markAsCompleted(String id) async {}
 }
 
+class _TestFaaliyetRepository
+    implements FaaliyetRepository, PlanliGorevRepository {
+  _TestFaaliyetRepository([
+    List<Faaliyet>? faaliyetler,
+    List<Faaliyet>? planliGorevler,
+  ])  : _faaliyetler = faaliyetler ?? const [],
+        _planliGorevler = planliGorevler;
+
+  final List<Faaliyet> _faaliyetler;
+  final List<Faaliyet>? _planliGorevler;
+  int getTumFaaliyetlerCallCount = 0;
+  int getPlanliGorevlerCallCount = 0;
+  int getFaaliyetlerCallCount = 0;
+
+  @override
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async {
+    getFaaliyetlerCallCount++;
+    return _faaliyetler.where((f) => f.tarlaId == tarlaId).toList();
+  }
+
+  @override
+  Future<void> addFaaliyet(Faaliyet faaliyet) async {}
+
+  @override
+  Future<List<Faaliyet>> getTumFaaliyetler() async {
+    getTumFaaliyetlerCallCount++;
+    return _faaliyetler;
+  }
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {}
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async {
+    getPlanliGorevlerCallCount++;
+    if (_planliGorevler != null) return _planliGorevler;
+    return _faaliyetler.where((f) => !f.isCompleted).toList();
+  }
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
+}
+
+class _ErrorFaaliyetRepository implements FaaliyetRepository {
+  @override
+  Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
+
+  @override
+  Future<void> addFaaliyet(Faaliyet faaliyet) async {}
+
+  @override
+  Future<List<Faaliyet>> getTumFaaliyetler() async {
+    throw Exception('faaliyet servisi hatası');
+  }
+
+  @override
+  Future<void> deleteFaaliyet(String id) async {}
+
+  @override
+  Future<void> markAsCompleted(String id) async {}
+}
+
 Tarla _backendTarla(String id, String name) => Tarla(id: id, name: name);
+
+class _SummaryTestTarlaRepository implements TarlaRepository, FarmSummaryRepository {
+  _SummaryTestTarlaRepository(this._summary);
+  final FarmSummaryResponse _summary;
+  int getFarmSummaryCallCount = 0;
+
+  @override
+  Future<List<Tarla>> getTarlalar() async =>
+      _summary.farms.map((f) => f.tarla).toList();
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
+
+  @override
+  Future<FarmSummaryResponse> getFarmSummary({int upcomingLimit = 5}) async {
+    getFarmSummaryCallCount++;
+    return _summary;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tests 11–16: TarlaListesiEkrani with backend-capable repository DI
@@ -452,5 +550,508 @@ void _backendAdapterTests() {
       expect(tester.takeException(), isNull);
       expect(find.text('Dar Ekran Tarlası'), findsOneWidget);
     });
+  });
+}
+
+void _isOzetleriVePerformansTests() {
+  group('TarlaListesiEkrani — iş özetleri ve performans', () {
+    testWidgets(
+      'tarla kartı ürün ve alan bilgisini gösterir',
+      (tester) async {
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Kuzey Tarla'), findsOneWidget);
+        expect(find.textContaining('Buğday'), findsOneWidget);
+        expect(find.textContaining('10.0 dönüm'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'sıradaki planlanan iş en yakın tarihli seçilerek gösterilir',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+        final dortGunSonra = DateTime(now.year, now.month, now.day + 4);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Sulama',
+            note: '',
+            timestamp: now,
+            dueDate: yarin,
+            isCompleted: false,
+          ),
+          Faaliyet(
+            id: 'f2',
+            tarlaId: 't1',
+            type: 'Çapalama',
+            note: '',
+            timestamp: now,
+            dueDate: dortGunSonra,
+            isCompleted: false,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sıradaki: Sulama • Yarın'), findsOneWidget);
+        expect(find.textContaining('Çapalama'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'son tamamlanan iş en yeni tarihli olan seçilerek gösterilir',
+      (tester) async {
+        final now = DateTime.now();
+        final dun = DateTime(now.year, now.month, now.day - 1, 14, 0);
+        final besGunOnce = DateTime(now.year, now.month, now.day - 5, 10, 0);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Sürüm',
+            note: '',
+            timestamp: besGunOnce,
+            isCompleted: true,
+          ),
+          Faaliyet(
+            id: 'f2',
+            tarlaId: 't1',
+            type: 'Gübreleme',
+            note: '',
+            timestamp: dun,
+            isCompleted: true,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Son: Gübreleme • Dün'), findsOneWidget);
+        expect(find.textContaining('Sürüm'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'hem sıradaki hem son iş varsa ikisi birden özet satırlarında görünür',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+        final dun = DateTime(now.year, now.month, now.day - 1);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Sulama',
+            note: '',
+            timestamp: now,
+            dueDate: yarin,
+            isCompleted: false,
+          ),
+          Faaliyet(
+            id: 'f2',
+            tarlaId: 't1',
+            type: 'Gübreleme',
+            note: '',
+            timestamp: dun,
+            isCompleted: true,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sıradaki: Sulama • Yarın'), findsOneWidget);
+        expect(find.text('Son: Gübreleme • Dün'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'hiç iş verisi olmayan tarla kartında sade "Henüz iş kaydı yok" gösterilir',
+      (tester) async {
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Boş Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Henüz iş kaydı yok'), findsOneWidget);
+        expect(find.textContaining('Sıradaki:'), findsNothing);
+        expect(find.textContaining('Son:'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'sadece sıradaki işi olan tarlada yalnızca sıradaki görünür, gereksiz boş metin görünmez',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Sulama',
+            note: '',
+            timestamp: now,
+            dueDate: yarin,
+            isCompleted: false,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sıradaki: Sulama • Yarın'), findsOneWidget);
+        expect(find.textContaining('Son:'), findsNothing);
+        expect(find.text('Henüz iş kaydı yok'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'sadece son işi olan tarlada yalnızca son iş görünür, gereksiz boş metin görünmez',
+      (tester) async {
+        final now = DateTime.now();
+        final dun = DateTime(now.year, now.month, now.day - 1);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Gübreleme',
+            note: '',
+            timestamp: dun,
+            isCompleted: true,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Son: Gübreleme • Dün'), findsOneWidget);
+        expect(find.textContaining('Sıradaki:'), findsNothing);
+        expect(find.text('Henüz iş kaydı yok'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'gecikmiş açık iş "Gecikti" olarak gösterilir',
+      (tester) async {
+        final now = DateTime.now();
+        final gecmisTarih = DateTime(now.year, now.month, now.day - 2);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'İlaçlama',
+            note: '',
+            timestamp: gecmisTarih,
+            dueDate: gecmisTarih,
+            isCompleted: false,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sıradaki: İlaçlama • Gecikti'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'kart özetlerinde Faaliyet veya Görev kelimesi yer almaz',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([
+          Faaliyet(
+            id: 'f1',
+            tarlaId: 't1',
+            type: 'Sulama',
+            note: '',
+            timestamp: now,
+            dueDate: yarin,
+            isCompleted: false,
+          ),
+        ]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Faaliyet'), findsNothing);
+        expect(find.textContaining('Görev'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'birden fazla tarla olduğunda UI repository aggregate metodlarını 1 kez çağırır (not: HTTP katmanında BackendFaaliyetRepository N+1 istek üretir)',
+      (tester) async {
+        final tarlaRepo = FakeReadRepository(
+          Future.value([
+            _tarla('t1', 'Tarla 1'),
+            _tarla('t2', 'Tarla 2'),
+            _tarla('t3', 'Tarla 3'),
+          ]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // UI repository seviyesinde aggregate metodları birer kez çağırır:
+        expect(faaliyetRepo.getTumFaaliyetlerCallCount, 1);
+        expect(faaliyetRepo.getPlanliGorevlerCallCount, 1);
+        expect(faaliyetRepo.getFaaliyetlerCallCount, 0);
+      },
+    );
+
+    testWidgets(
+      'production sözleşmesinde getTumFaaliyetler sadece Activity ve getPlanliGorevler sadece Task döndürdüğünde hem Sıradaki hem Son iş doğru gösterilir',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+        final dun = DateTime(now.year, now.month, now.day - 1);
+
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+
+        // Production BackendFaaliyetRepository sözleşmesi:
+        // getTumFaaliyetler: SADECE tamamlanmış aktiviteler (dueDate: null, isCompleted: true)
+        // getPlanliGorevler: SADECE açık planlı görevler (dueDate: tarih, isCompleted: false)
+        final faaliyetRepo = _TestFaaliyetRepository(
+          [
+            // getTumFaaliyetler kayıtları (yalnızca Activity)
+            Faaliyet(
+              id: 'a1',
+              tarlaId: 't1',
+              type: 'Gübreleme',
+              note: '',
+              timestamp: dun,
+              dueDate: null,
+              isCompleted: true,
+            ),
+          ],
+          [
+            // getPlanliGorevler kayıtları (yalnızca Task)
+            Faaliyet(
+              id: 't1',
+              tarlaId: 't1',
+              type: 'Sulama',
+              note: '',
+              timestamp: now,
+              dueDate: yarin,
+              isCompleted: false,
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Sıradaki iş getPlanliGorevler kaynağından alınmalı:
+        expect(find.text('Sıradaki: Sulama • Yarın'), findsOneWidget);
+        // Son iş getTumFaaliyetler kaynağından alınmalı:
+        expect(find.text('Son: Gübreleme • Dün'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'iş verisi servisi hata verse bile tarlalar listelenmeye devam eder',
+      (tester) async {
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _ErrorFaaliyetRepository();
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Hata durumunda AppErrorView görünmez, tarla listelenir
+        expect(find.byType(AppErrorView), findsNothing);
+        expect(find.text('Kuzey Tarla'), findsOneWidget);
+        expect(find.text('Henüz iş kaydı yok'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tarla kartına dokununca TarlaDetayEkrani açılır ve dönüldüğünde yenilenir',
+      (tester) async {
+        final tarlaRepo = FakeReadRepository(
+          Future.value([_tarla('t1', 'Kuzey Tarla')]),
+        );
+        final faaliyetRepo = _TestFaaliyetRepository([]);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: tarlaRepo,
+            faaliyetRepo: faaliyetRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(faaliyetRepo.getTumFaaliyetlerCallCount, 1);
+
+        await tester.tap(find.text('Kuzey Tarla'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(TarlaDetayEkrani), findsOneWidget);
+
+        // Pop back
+        final nav = tester.state<NavigatorState>(find.byType(Navigator).last);
+        nav.pop();
+        await tester.pumpAndSettle();
+
+        expect(faaliyetRepo.getTumFaaliyetlerCallCount, 2);
+      },
+    );
+
+    testWidgets(
+      'FarmSummaryRepository sağlandığında tek getFarmSummary çağrısıyla Sıradaki ve Son iş doğru gösterilir',
+      (tester) async {
+        final now = DateTime.now();
+        final yarin = DateTime(now.year, now.month, now.day + 1);
+        final dun = DateTime(now.year, now.month, now.day - 1);
+
+        final tarla = _tarla('t1', 'Kuzey Tarla');
+        final summaryResponse = FarmSummaryResponse(
+          farms: [
+            FarmWorkSummary(
+              tarla: tarla,
+              nextTask: Faaliyet(
+                id: 't1',
+                tarlaId: 't1',
+                type: 'Sulama',
+                note: '',
+                timestamp: now,
+                dueDate: yarin,
+                isCompleted: false,
+              ),
+              lastActivity: Faaliyet(
+                id: 'a1',
+                tarlaId: 't1',
+                type: 'Gübreleme',
+                note: '',
+                timestamp: dun,
+                dueDate: null,
+                isCompleted: true,
+              ),
+            ),
+          ],
+          upcomingTasks: [],
+        );
+
+        final summaryRepo = _SummaryTestTarlaRepository(summaryResponse);
+
+        await tester.pumpWidget(
+          _buildAppWithFaaliyet(
+            tarlaRepo: summaryRepo,
+            faaliyetRepo: _TestFaaliyetRepository([]),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(summaryRepo.getFarmSummaryCallCount, 1);
+        expect(find.text('Kuzey Tarla'), findsOneWidget);
+        expect(find.text('Sıradaki: Sulama • Yarın'), findsOneWidget);
+        expect(find.text('Son: Gübreleme • Dün'), findsOneWidget);
+      },
+    );
   });
 }

@@ -39,7 +39,7 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   };
 
   String get _screenTitle => switch (widget.target.type) {
-    NotificationTargetType.task => 'Görev detayı',
+    NotificationTargetType.task => 'İş Detayı',
     NotificationTargetType.supportCase => 'Vaka detayı',
     NotificationTargetType.weather => 'Hava uyarısı',
     NotificationTargetType.unknown => 'Bildirim',
@@ -88,11 +88,11 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   ) {
     if (widget.target.type == NotificationTargetType.task) {
       return [
-        _Header(title: data['title']?.toString() ?? 'Görev'),
+        _Header(title: data['title']?.toString() ?? 'İş'),
         _Info(label: 'Durum', value: data['status']),
         _Info(label: 'Öncelik', value: data['priority']),
         _Info(label: 'Son tarih', value: data['due_date']),
-        _Section(title: 'Yapılacak işlem', body: data['description']),
+        _Section(title: 'Açıklama', body: data['description']),
         _Section(title: 'Neden', body: data['reason']),
       ];
     }

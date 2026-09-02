@@ -103,7 +103,7 @@ class _AnaEkranState extends State<AnaEkran> {
 
       final parts = <String>[];
       if (summary.farmCount > 0) parts.add('${summary.farmCount} tarla');
-      if (summary.activityCount > 0) parts.add('${summary.activityCount} faaliyet');
+      if (summary.activityCount > 0) parts.add('${summary.activityCount} iş kaydı');
       final details = parts.join(' ve ');
 
       final shouldClean = await showDialog<bool>(

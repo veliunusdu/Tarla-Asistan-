@@ -56,6 +56,10 @@ class FakeFarmRemoteRepository implements FarmRemoteRepository {
 
   @override
   Future<void> archiveFarm(String farmId) => throw UnimplementedError();
+
+  @override
+  Future<Map<String, dynamic>> getFarmSummary({int upcomingLimit = 5}) async =>
+      {'farms': [], 'upcoming_tasks': []};
 }
 
 // ---------------------------------------------------------------------------

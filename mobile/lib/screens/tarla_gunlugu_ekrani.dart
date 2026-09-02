@@ -8,32 +8,18 @@ import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
+import '../shared/utils/date_formatter.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
+import '../shared/widgets/tarla_secim_bottom_sheet.dart';
+import 'faaliyet_ekleme_ekrani.dart';
 import 'tarla_detay_ekrani.dart';
 import 'tarla_ekleme_ekrani.dart';
 
 // ---------------------------------------------------------------------------
 // Tarih yardımcıları
 // ---------------------------------------------------------------------------
-
-const List<String> _trAylar = [
-  'Oca',
-  'Şub',
-  'Mar',
-  'Nis',
-  'May',
-  'Haz',
-  'Tem',
-  'Ağu',
-  'Eyl',
-  'Eki',
-  'Kas',
-  'Ara',
-];
-String _tarihStr(DateTime dt) =>
-    '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
 DateTime _todayDate() {
   final now = DateTime.now();
@@ -102,15 +88,9 @@ class TarlaGunluguEkrani extends StatefulWidget {
 class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   // ── Veri ──────────────────────────────────────────────────────────────────
   late Future<(List<Tarla>, List<_GunlukKayit>)> _veri;
+  List<Tarla> _tarlalarCache = [];
 
-  // ── Form ──────────────────────────────────────────────────────────────────
-  final _formKey = GlobalKey<FormState>();
-  final _gorevCtrl = TextEditingController();
-  final _notCtrl = TextEditingController();
-  final _gorevFocus = FocusNode();
-  Tarla? _seciliTarla;
-  late DateTime _planliTarih;
-  bool _kaydediliyor = false;
+  // ── Tamamlama durumu ──────────────────────────────────────────────────────
   String? _tamamlananGorevId;
 
   // ── Filtre ────────────────────────────────────────────────────────────────
@@ -124,15 +104,11 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   @override
   void initState() {
     super.initState();
-    _planliTarih = _todayDate();
     _veri = _yukle();
   }
 
   @override
   void dispose() {
-    _gorevCtrl.dispose();
-    _notCtrl.dispose();
-    _gorevFocus.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -145,15 +121,11 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
         : Future.value(<Faaliyet>[]);
 
     final tarlalar = await tarlalarFuture;
+    _tarlalarCache = tarlalar;
+
     // İş Planım yalnızca açık planlı görevleri gösterir. Tamamlanan işler
     // backend tarafından faaliyet geçmişine taşınır ve burada tekrar edilmez.
     final faaliyetler = await planliGorevlerFuture;
-
-    // Seçili tarla silinmişse sıfırla
-    if (_seciliTarla != null &&
-        !tarlalar.any((t) => t.id == _seciliTarla!.id)) {
-      _seciliTarla = null;
-    }
 
     final tarlaMap = {for (final t in tarlalar) t.id: t};
 
@@ -215,57 +187,67 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   }
 
   // ---------------------------------------------------------------------------
-  // Kaydetme
+  // Yeni İş Ekleme Akışı
   // ---------------------------------------------------------------------------
 
-  Future<void> _kaydet() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-
-    setState(() => _kaydediliyor = true);
-
-    try {
-      final faaliyet = Faaliyet(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        tarlaId: _seciliTarla!.id,
-        type: _gorevCtrl.text.trim(),
-        note: _notCtrl.text.trim(),
-        timestamp: DateTime.now(),
-        isCompleted: false,
-        dueDate: _planliTarih,
-      );
-
-      final repository = widget._faaliyetRepo;
-      if (repository is PlanliGorevRepository) {
-        await (repository as PlanliGorevRepository).addPlanliGorev(faaliyet);
-      } else {
-        await repository.addFaaliyet(faaliyet);
-      }
-
-      if (!mounted) return;
-
-      _gorevCtrl.clear();
-      _notCtrl.clear();
-      setState(() => _planliTarih = _todayDate());
-
-      _yenile();
-      widget.onDataChanged?.call();
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Görev eklendi.')));
-    } catch (_) {
-      if (!mounted) return;
+  Future<void> _isEkle(List<Tarla> tarlalar) async {
+    if (tarlalar.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.',
+        SnackBar(
+          content: const Text(
+            'İş eklemek için önce en az bir tarla eklemelisiniz.',
+          ),
+          action: SnackBarAction(
+            label: 'Tarla Ekle',
+            onPressed: () async {
+              final result = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      TarlaEklemeEkrani(repository: widget._tarlaRepo),
+                ),
+              );
+              if (result == true && mounted) _yenile();
+            },
           ),
         ),
       );
-    } finally {
-      if (mounted) setState(() => _kaydediliyor = false);
+      return;
+    }
+
+    Tarla? secilen;
+    if (tarlalar.length == 1) {
+      secilen = tarlalar.first;
+    } else {
+      secilen = await TarlaSecimBottomSheet.show(
+        context,
+        tarlalar: tarlalar,
+      );
+    }
+
+    if (secilen == null || !mounted) return;
+
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaaliyetEklemeEkrani(
+          tarlaId: secilen!.id,
+          faaliyetRepository: widget._faaliyetRepo,
+          initialIsCompleted: false,
+          initialSelectedDate: _todayDate(),
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      _yenile();
+      widget.onDataChanged?.call();
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Görev tamamlama
+  // ---------------------------------------------------------------------------
 
   Future<void> _goreviTamamla(Faaliyet gorev) async {
     final repository = widget._faaliyetRepo;
@@ -282,47 +264,17 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
       widget.onDataChanged?.call();
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Görev tamamlandı.')));
+      ).showSnackBar(const SnackBar(content: Text('İş tamamlandı.')));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Görev tamamlanamadı. Lütfen tekrar deneyin.'),
+          content: Text('İş tamamlanamadı. Lütfen tekrar deneyin.'),
         ),
       );
     } finally {
       if (mounted) setState(() => _tamamlananGorevId = null);
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Tarih seçici
-  // ---------------------------------------------------------------------------
-
-  Future<void> _tarihSec() async {
-    final today = _todayDate();
-    final init = _planliTarih.isBefore(today) ? today : _planliTarih;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: init,
-      firstDate: today,
-      lastDate: DateTime(2100),
-    );
-    if (picked != null && mounted) {
-      setState(() => _planliTarih = picked);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Form alanına kaydır
-  // ---------------------------------------------------------------------------
-
-  void _scrollToForm() {
-    _scrollCtrl.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -351,10 +303,10 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               _aciklama(context),
-              const SizedBox(height: AppSpacing.md),
+              const SizedBox(height: AppSpacing.sm),
 
-              // Form veya "tarla yok" durumu
-              if (tarlalar.isEmpty)
+              // Tarla yok durumu
+              if (tarlalar.isEmpty) ...[
                 _TarlaYokDurumu(
                   onTarlaEkle: () async {
                     final result = await Navigator.push<bool>(
@@ -366,30 +318,16 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                     );
                     if (result == true && mounted) _yenile();
                   },
-                )
-              else
-                _YeniGorevKarti(
-                  formKey: _formKey,
-                  tarlalar: tarlalar,
-                  seciliTarla: _seciliTarla,
-                  onTarlaSecildi: (t) => setState(() => _seciliTarla = t),
-                  gorevCtrl: _gorevCtrl,
-                  gorevFocus: _gorevFocus,
-                  notCtrl: _notCtrl,
-                  planliTarih: _planliTarih,
-                  onTarihSec: _tarihSec,
-                  kaydediliyor: _kaydediliyor,
-                  onKaydet: _kaydet,
                 ),
-
-              const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.md),
+              ],
 
               // Filtre çubuğu
               _FiltreCubugu(
                 secili: _filtre,
                 onSecildi: (f) => setState(() => _filtre = f),
               ),
-              const SizedBox(height: AppSpacing.sm),
+              const SizedBox(height: AppSpacing.md),
 
               // Bölüm başlığı
               Text(
@@ -426,10 +364,17 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                   ),
                 ),
 
-              const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: 80),
             ],
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _isEkle(_tarlalarCache),
+        icon: const Icon(Icons.add),
+        label: const Text('İş Ekle'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
       ),
     );
   }
@@ -440,45 +385,14 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
 
   Widget _aciklama(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Yaklaşan işlerini planla ve takip et.',
-          style: theme.textTheme.bodyMedium,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      child: Text(
+        'Planladığın işleri buradan takip edebilirsin.',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: AppColors.textSecondary,
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Card(
-          elevation: 0,
-          color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.6),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.sm,
-              vertical: AppSpacing.xs,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: AppSpacing.xs),
-                Expanded(
-                  child: Text(
-                    'Planlı işler hesabınla eşitlenir. Tamamlanan işler faaliyet geçmişine eklenir.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSecondaryContainer,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -493,18 +407,15 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
 
   Widget _bosState() {
     return switch (_filtre) {
-      _Filtre.bugun => AppEmptyView(
+      _Filtre.bugun => const AppEmptyView(
         icon: Icons.today,
-        title: 'Bugün için görev bulunmuyor.',
-        description:
-            'Yeni bir görev ekleyerek günlük planını oluşturabilirsin.',
-        actionLabel: 'Görev Ekle',
-        onAction: _scrollToForm,
+        title: 'Bugün için planlanmış iş bulunmuyor.',
+        description: 'Yeni bir iş planlayarak günlük planını oluşturabilirsin.',
       ),
       _Filtre.yaklasan => const AppEmptyView(
         icon: Icons.event_available,
         title: 'Yaklaşan iş bulunmuyor.',
-        description: 'Yeni bir iş ekleyerek planlama yapabilirsiniz.',
+        description: 'Yeni bir iş ekleyerek planlama yapabilirsin.',
       ),
       _Filtre.geciken => const AppEmptyView(
         icon: Icons.event_busy_outlined,
@@ -514,7 +425,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
       _Filtre.tumu => const AppEmptyView(
         icon: Icons.event_note_outlined,
         title: 'Henüz planlı iş bulunmuyor.',
-        description: 'İş ekleyerek başlayabilirsiniz.',
+        description: 'İş planlayarak başlayabilirsin.',
       ),
     };
   }
@@ -539,170 +450,16 @@ class _TarlaYokDurumu extends StatelessWidget {
           children: [
             const Icon(Icons.terrain, color: AppColors.textDisabled, size: 48),
             const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Görev eklemek için önce bir tarla oluşturmalısın.',
+            const Text(
+              'İş eklemek için önce bir tarla oluşturmalısın.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: AppSpacing.md),
             OutlinedButton.icon(
               onPressed: onTarlaEkle,
               icon: const Icon(Icons.add),
               label: const Text('Tarla Ekle'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Yeni görev formu
-// ---------------------------------------------------------------------------
-
-class _YeniGorevKarti extends StatelessWidget {
-  const _YeniGorevKarti({
-    required this.formKey,
-    required this.tarlalar,
-    required this.seciliTarla,
-    required this.onTarlaSecildi,
-    required this.gorevCtrl,
-    required this.gorevFocus,
-    required this.notCtrl,
-    required this.planliTarih,
-    required this.onTarihSec,
-    required this.kaydediliyor,
-    required this.onKaydet,
-  });
-
-  final GlobalKey<FormState> formKey;
-  final List<Tarla> tarlalar;
-  final Tarla? seciliTarla;
-  final ValueChanged<Tarla?> onTarlaSecildi;
-  final TextEditingController gorevCtrl;
-  final FocusNode gorevFocus;
-  final TextEditingController notCtrl;
-  final DateTime planliTarih;
-  final VoidCallback onTarihSec;
-  final bool kaydediliyor;
-  final VoidCallback onKaydet;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Tarla? guncelSeciliTarla;
-    for (final tarla in tarlalar) {
-      if (tarla.id == seciliTarla?.id) {
-        guncelSeciliTarla = tarla;
-        break;
-      }
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Yeni Görev', style: theme.textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.md),
-            Form(
-              key: formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Tarla seçimi
-                  DropdownButtonFormField<Tarla>(
-                    // API her yüklemede yeni model nesneleri oluşturur. Seçimi
-                    // nesne referansı yerine sabit tarla kimliğiyle eşleştiririz.
-                    initialValue: guncelSeciliTarla,
-                    isExpanded: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Tarla',
-                      hintText: 'Tarla seç',
-                    ),
-                    items: tarlalar
-                        .map(
-                          (t) => DropdownMenuItem<Tarla>(
-                            value: t,
-                            child: Text(
-                              t.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: kaydediliyor ? null : onTarlaSecildi,
-                    validator: (v) =>
-                        v == null ? 'Tarla seçimi zorunludur.' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Görev adı
-                  TextFormField(
-                    controller: gorevCtrl,
-                    focusNode: gorevFocus,
-                    enabled: !kaydediliyor,
-                    decoration: const InputDecoration(
-                      labelText: 'Görev',
-                      hintText: 'Örneğin: Sulama yap',
-                    ),
-                    textCapitalization: TextCapitalization.sentences,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Görev adı boş olamaz.'
-                        : null,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Not (isteğe bağlı)
-                  TextFormField(
-                    controller: notCtrl,
-                    enabled: !kaydediliyor,
-                    decoration: const InputDecoration(
-                      labelText: 'Not (isteğe bağlı)',
-                      hintText: 'Görevle ilgili kısa bir not ekle',
-                    ),
-                    maxLines: 3,
-                    minLines: 1,
-                    textCapitalization: TextCapitalization.sentences,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Planlanan tarih
-                  InkWell(
-                    onTap: kaydediliyor ? null : onTarihSec,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Planlanan Tarih',
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _tarihStr(planliTarih),
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Kaydet butonu
-                  ElevatedButton.icon(
-                    onPressed: kaydediliyor ? null : onKaydet,
-                    icon: kaydediliyor
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.add_task),
-                    label: const Text('Görevi Ekle'),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
@@ -822,7 +579,7 @@ class _GunlukKayitKarti extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 2),
-                    // Faaliyet türü
+                    // İş türü / başlık
                     Text(
                       f.type,
                       style: theme.textTheme.titleMedium,
@@ -842,7 +599,7 @@ class _GunlukKayitKarti extends StatelessWidget {
                     const SizedBox(height: AppSpacing.xs),
                     // Tarih
                     Text(
-                      _tarihStr(kayit.referansTarih),
+                      formatTarih(kayit.referansTarih),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: tamamlandi ? AppColors.textSecondary : ikonRenk,
                       ),

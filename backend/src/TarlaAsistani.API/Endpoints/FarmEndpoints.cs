@@ -71,6 +71,33 @@ public static class FarmEndpoints
         .WithName("GetFarms")
         .Produces<List<FarmDto>>(StatusCodes.Status200OK);
 
+        // 2.1 GET /api/v1/farms/summary - Aggregate dashboard & overview summary
+        group.MapGet("/summary", async (
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] Guid? userId,
+            [FromQuery] UserRole? role,
+            [FromQuery] int? upcomingLimit,
+            IMediator mediator) =>
+        {
+            var resolvedUserId = httpContext.ResolveUserId(userId, headerUserId);
+            var resolvedRole = httpContext.ResolveUserRole(role, headerRole);
+
+            if (resolvedUserId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var clampedLimit = Math.Clamp(upcomingLimit ?? 5, 1, 20);
+            var query = new GetFarmSummaryQuery(resolvedUserId, resolvedRole, clampedLimit);
+            var summary = await mediator.Send(query);
+            return Results.Ok(summary);
+        })
+        .WithName("GetFarmSummary")
+        .Produces<FarmSummaryResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
+
         // 3. GET /api/v1/farms/{id} - Get farm by ID
         group.MapGet("/{id:guid}", async (
             Guid id,

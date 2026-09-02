@@ -7,41 +7,28 @@ import '../app/theme/app_spacing.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
+import '../shared/utils/date_formatter.dart';
 
 const List<String> _faaliyetTurleri = [
   'Sulama',
   'Gübreleme',
   'İlaçlama',
   'Hasat',
-  'Ekim',
+  'Ekim / Dikim',
   'Budama',
+  'Toprak İşleme',
   'Diğer',
 ];
 
-const List<String> _trAylar = [
-  'Oca',
-  'Şub',
-  'Mar',
-  'Nis',
-  'May',
-  'Haz',
-  'Tem',
-  'Ağu',
-  'Eyl',
-  'Eki',
-  'Kas',
-  'Ara',
-];
-
-String _tarihStr(DateTime dt) =>
-    '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
+enum IsDurumu { planla, yapildi }
 
 class FaaliyetEklemeEkrani extends StatefulWidget {
   const FaaliyetEklemeEkrani({
     super.key,
     required this.tarlaId,
     FaaliyetRepository? faaliyetRepository,
-    @visibleForTesting this.initialSelectedDate,
+    this.initialSelectedDate,
+    this.initialIsCompleted = true,
   }) : _repo = faaliyetRepository ?? const LocalFaaliyetRepository();
 
   final String tarlaId;
@@ -50,9 +37,11 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
   @visibleForTesting
   FaaliyetRepository get repositoryForTesting => _repo;
 
-  /// Only used in tests to pre-set a date.
-  @visibleForTesting
+  /// Optional initial date to pre-populate.
   final DateTime? initialSelectedDate;
+
+  /// Pre-set mode (true = yapildi, false = planla). Defaults to true.
+  final bool initialIsCompleted;
 
   @override
   State<FaaliyetEklemeEkrani> createState() => _FaaliyetEklemeEkraniState();
@@ -61,8 +50,10 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
 class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   final _formKey = GlobalKey<FormState>();
   final _noteController = TextEditingController();
+  final _customTitleController = TextEditingController();
   final _speechToText = SpeechToText();
 
+  late IsDurumu _durum;
   String? _secilenTur;
   DateTime? _secilenTarih;
   bool _isListening = false;
@@ -71,6 +62,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   @override
   void initState() {
     super.initState();
+    _durum = widget.initialIsCompleted ? IsDurumu.yapildi : IsDurumu.planla;
     _secilenTarih = widget.initialSelectedDate;
     _initSpeech();
   }
@@ -78,6 +70,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   @override
   void dispose() {
     _noteController.dispose();
+    _customTitleController.dispose();
     _speechToText.stop();
     super.dispose();
   }
@@ -103,15 +96,44 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     }
   }
 
+  void _gecerliTarihiAyarla() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (_secilenTarih == null) return;
+    if (_durum == IsDurumu.planla && _secilenTarih!.isBefore(today)) {
+      _secilenTarih = today;
+    } else if (_durum == IsDurumu.yapildi && _secilenTarih!.isAfter(today)) {
+      _secilenTarih = today;
+    }
+  }
+
   Future<void> _tarihSec() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
+    final DateTime firstDate;
+    final DateTime lastDate;
+    final DateTime initialDate;
+
+    if (_durum == IsDurumu.planla) {
+      firstDate = today;
+      lastDate = DateTime(2100);
+      initialDate = (_secilenTarih != null && !_secilenTarih!.isBefore(today))
+          ? _secilenTarih!
+          : today;
+    } else {
+      firstDate = DateTime(2000);
+      lastDate = today;
+      initialDate = (_secilenTarih != null && !_secilenTarih!.isAfter(today))
+          ? _secilenTarih!
+          : today;
+    }
+
     final secilen = await showDatePicker(
       context: context,
-      initialDate: _secilenTarih ?? today,
-      firstDate: DateTime(2000),
-      lastDate: today,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
       locale: const Locale('tr'),
     );
 
@@ -124,18 +146,32 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     if (_kaydediliyor) return;
     if (!_formKey.currentState!.validate()) return;
 
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
     if (_secilenTarih == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lütfen gerçekleşme tarihini seçin.'),
+        SnackBar(
+          content: Text(
+            _durum == IsDurumu.planla
+                ? 'Lütfen planlanan tarihi seçin.'
+                : 'Lütfen gerçekleşme tarihini seçin.',
+          ),
         ),
       );
       return;
     }
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    if (_secilenTarih!.isAfter(today)) {
+    if (_durum == IsDurumu.planla && _secilenTarih!.isBefore(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Planlanan tarih geçmiş bir tarih olamaz.'),
+        ),
+      );
+      return;
+    }
+
+    if (_durum == IsDurumu.yapildi && _secilenTarih!.isAfter(today)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gerçekleşme tarihi gelecek bir tarih olamaz.'),
@@ -143,27 +179,69 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       );
       return;
     }
+
     setState(() => _kaydediliyor = true);
 
-    final faaliyet = Faaliyet(
-      id: const Uuid().v4(),
-      tarlaId: widget.tarlaId,
-      type: _secilenTur!,
-      note: _noteController.text.trim(),
-      timestamp: _secilenTarih!,
-      dueDate: null,
-      isCompleted: true,
-    );
-
     try {
-      await widget._repo.addFaaliyet(faaliyet);
-      if (mounted) Navigator.pop(context, true);
+      if (_durum == IsDurumu.planla) {
+        final title = _secilenTur == 'Diğer'
+            ? _customTitleController.text.trim()
+            : _secilenTur!;
+        final gorev = Faaliyet(
+          id: const Uuid().v4(),
+          tarlaId: widget.tarlaId,
+          type: title,
+          note: _noteController.text.trim(),
+          timestamp: DateTime.now(),
+          dueDate: _secilenTarih!,
+          isCompleted: false,
+        );
+
+        final repository = widget._repo;
+        if (repository is! PlanliGorevRepository) {
+          throw StateError('İş planlama kaydı desteklenmiyor.');
+        }
+        await (repository as PlanliGorevRepository).addPlanliGorev(gorev);
+      } else {
+        final noteText = _secilenTur == 'Diğer'
+            ? (_noteController.text.trim().isEmpty
+                ? _customTitleController.text.trim()
+                : '${_customTitleController.text.trim()} - ${_noteController.text.trim()}')
+            : _noteController.text.trim();
+
+        final faaliyet = Faaliyet(
+          id: const Uuid().v4(),
+          tarlaId: widget.tarlaId,
+          type: _secilenTur!,
+          note: noteText,
+          timestamp: _secilenTarih!,
+          dueDate: null,
+          isCompleted: true,
+        );
+
+        await widget._repo.addFaaliyet(faaliyet);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _durum == IsDurumu.planla ? 'İş planlandı.' : 'İş kaydedildi.',
+            ),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _kaydediliyor = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Faaliyet kaydedilemedi. Lütfen tekrar deneyin.'),
+          SnackBar(
+            content: Text(
+              _durum == IsDurumu.planla
+                  ? 'İş planlanamadı. Lütfen tekrar deneyin.'
+                  : 'İş kaydedilemedi. Lütfen tekrar deneyin.',
+            ),
           ),
         );
       }
@@ -179,7 +257,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('İşlem Kaydı Ekle')),
+      appBar: AppBar(title: const Text('İş Ekle')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Form(
@@ -187,11 +265,43 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Faaliyet türü ──────────────────────────────────────────────
+              // ── İş durumu seçimi ──────────────────────────────────────────
+              Text('Bu işi ne yapıyorsun?', style: theme.textTheme.labelLarge),
+              const SizedBox(height: AppSpacing.xs),
+              SegmentedButton<IsDurumu>(
+                segments: const [
+                  ButtonSegment(
+                    value: IsDurumu.planla,
+                    label: Text('Planla'),
+                    icon: Icon(Icons.event_note),
+                  ),
+                  ButtonSegment(
+                    value: IsDurumu.yapildi,
+                    label: Text('Yapıldı'),
+                    icon: Icon(Icons.check_circle_outline),
+                  ),
+                ],
+                selected: {_durum},
+                onSelectionChanged: _kaydediliyor
+                    ? null
+                    : (Set<IsDurumu> s) {
+                        final yeniDurum = s.first;
+                        if (yeniDurum != _durum) {
+                          setState(() {
+                            _durum = yeniDurum;
+                            _gecerliTarihiAyarla();
+                          });
+                        }
+                      },
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              // ── İş türü ───────────────────────────────────────────────────
               DropdownButtonFormField<String>(
                 initialValue: _secilenTur,
                 decoration: const InputDecoration(
-                  labelText: 'Faaliyet Türü',
+                  labelText: 'İş türü',
                   prefixIcon: Icon(Icons.agriculture),
                 ),
                 items: _faaliyetTurleri
@@ -201,34 +311,28 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                     ? null
                     : (v) => setState(() => _secilenTur = v),
                 validator: (v) =>
-                    v == null ? 'Lütfen bir faaliyet türü seçin.' : null,
+                    v == null ? 'Lütfen bir iş türü seçin.' : null,
               ),
 
-              const SizedBox(height: AppSpacing.md),
-
-              // ── Faaliyet Açıklaması (sesli giriş destekli) ─────────────────
-              TextFormField(
-                controller: _noteController,
-                enabled: !_kaydediliyor,
-                maxLength: 200,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Faaliyet Açıklaması',
-                  prefixIcon: const Icon(Icons.notes),
-                  suffixIcon: IconButton(
-                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                    color: _isListening ? AppColors.error : AppColors.primary,
-                    onPressed: _kaydediliyor ? null : _listen,
+              if (_secilenTur == 'Diğer') ...[
+                const SizedBox(height: AppSpacing.md),
+                TextFormField(
+                  controller: _customTitleController,
+                  enabled: !_kaydediliyor,
+                  decoration: const InputDecoration(
+                    labelText: 'İş adı',
+                    hintText: 'Örn: Budama temizliği',
+                    prefixIcon: Icon(Icons.edit_note),
                   ),
+                  validator: (v) {
+                    if (_secilenTur == 'Diğer' &&
+                        (v == null || v.trim().isEmpty)) {
+                      return 'Lütfen iş adını girin.';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (v) {
-                  final text = v?.trim() ?? '';
-                  if (text.length < 2) {
-                    return 'Faaliyet açıklaması en az 2 karakter olmalıdır.';
-                  }
-                  return null;
-                },
-              ),
+              ],
 
               const SizedBox(height: AppSpacing.md),
 
@@ -237,13 +341,15 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                 onTap: _kaydediliyor ? null : _tarihSec,
                 borderRadius: BorderRadius.circular(12),
                 child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Gerçekleşme Tarihi',
+                  decoration: InputDecoration(
+                    labelText: _durum == IsDurumu.planla
+                        ? 'Planlanan tarih'
+                        : 'Yapıldığı tarih',
                     prefixIcon: const Icon(Icons.calendar_today),
                   ),
                   child: Text(
                     _secilenTarih != null
-                        ? _tarihStr(_secilenTarih!)
+                        ? formatTarih(_secilenTarih!)
                         : 'Tarih seçin',
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: _secilenTarih != null
@@ -254,9 +360,28 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                 ),
               ),
 
+              const SizedBox(height: AppSpacing.md),
+
+              // ── Not (sesli giriş destekli, opsiyonel) ──────────────────────
+              TextFormField(
+                controller: _noteController,
+                enabled: !_kaydediliyor,
+                maxLength: 200,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Not',
+                  prefixIcon: const Icon(Icons.notes),
+                  suffixIcon: IconButton(
+                    icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                    color: _isListening ? AppColors.error : AppColors.primary,
+                    onPressed: _kaydediliyor ? null : _listen,
+                  ),
+                ),
+              ),
+
               const SizedBox(height: AppSpacing.xl),
 
-              // ── Kaydet ────────────────────────────────────────────────────
+              // ── Kaydet / Planla Butonu ────────────────────────────────────
               ElevatedButton(
                 onPressed: _kaydediliyor ? null : _kaydet,
                 child: _kaydediliyor
@@ -265,7 +390,11 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Kaydet'),
+                    : Text(
+                        _durum == IsDurumu.planla
+                            ? 'İşi Planla'
+                            : 'İşi Kaydet',
+                      ),
               ),
             ],
           ),
