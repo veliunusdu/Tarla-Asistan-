@@ -186,5 +186,81 @@ void main() {
       );
       client.close();
     });
+
+    test(
+      'uses farmId parameter directly without requesting farms list',
+      () async {
+        int farmListCalls = 0;
+        late Uri capturedWeatherUri;
+        final client = makeClient(
+          handler: (request) async {
+            if (request.url.path.contains('farms?') ||
+                request.url.query.contains('limit=')) {
+              farmListCalls++;
+              return http.Response('[]', 200);
+            }
+            capturedWeatherUri = request.url;
+            return http.Response(
+              jsonEncode({
+                'farm_id': 'farm-dynamic-123',
+                'provider': 'open_meteo',
+                'current': {
+                  'temperature_c': 25.4,
+                  'condition': 'Parçalı Bulutlu',
+                },
+                'points': [],
+                'risks': [],
+              }),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          },
+        );
+        final repo = BackendWeatherRepository(apiClient: client);
+
+        final summary = await repo.getWeather(farmId: 'farm-dynamic-123');
+
+        expect(farmListCalls, 0);
+        expect(
+          capturedWeatherUri.path,
+          contains('farms/farm-dynamic-123/weather'),
+        );
+        expect(summary.temperature, 25);
+        expect(summary.description, 'Parçalı Bulutlu');
+        client.close();
+      },
+    );
+
+    test(
+      'prefers normalized current condition and temperature when present',
+      () async {
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {
+                'temperature_c': 21.6,
+                'condition': 'Güneşli ve Açık',
+              },
+              'points': [
+                {'temperature_c': 15.0, 'precipitation_probability': 90.0},
+              ],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-normalized',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.temperature, 22);
+        expect(summary.description, 'Güneşli ve Açık');
+        client.close();
+      },
+    );
   });
 }

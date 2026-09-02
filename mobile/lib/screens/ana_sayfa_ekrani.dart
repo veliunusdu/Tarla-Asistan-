@@ -138,11 +138,26 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
       });
       _faaliyetler = _fetchGorevler();
     }
-    _weather = widget._weatherRepo.getWeather();
+    _weather = _fetchWeather();
     _gorevVerisi = Future.wait([
       _tarlalar,
       _faaliyetler,
     ]).then((r) => (r[0] as List<Tarla>, r[1] as List<Faaliyet>));
+  }
+
+  Future<WeatherSummary> _fetchWeather() async {
+    String? farmId;
+    try {
+      final tarlalar = await _tarlalar;
+      final tarlaWithLocation = tarlalar.cast<Tarla?>().firstWhere(
+        (t) => t != null && t.latitude != null && t.longitude != null,
+        orElse: () => null,
+      );
+      if (tarlaWithLocation != null) {
+        farmId = tarlaWithLocation.id;
+      }
+    } catch (_) {}
+    return widget._weatherRepo.getWeather(farmId: farmId);
   }
 
   /// Tarla/görev verisi değiştiğinde çağrılır.
@@ -181,7 +196,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
   void _yenileHava() {
     setState(() {
-      _weather = widget._weatherRepo.getWeather();
+      _weather = _fetchWeather();
     });
   }
 

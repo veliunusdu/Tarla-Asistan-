@@ -26,43 +26,60 @@ class BackendWeatherRepository implements WeatherRepository {
   final String? _farmId;
 
   @override
-  Future<WeatherSummary> getWeather() async {
+  Future<WeatherSummary> getWeather({String? farmId}) async {
     final Map<String, dynamic> raw;
     try {
-      final farmId = _farmId ?? await _findFirstFarmId();
-      raw = await _client.getJson('farms/$farmId/weather');
+      final targetFarmId = farmId ?? _farmId ?? await _findFirstFarmId();
+      raw = await _client.getJson('farms/$targetFarmId/weather');
     } on ApiException {
       rethrow;
     }
 
+    int temperature = 0;
+    String? conditionFromCurrent;
+
+    final current = raw['current'];
+    if (current is Map<String, dynamic>) {
+      final temp = current['temperature_c'];
+      if (temp is num) {
+        temperature = temp.round();
+      }
+      final cond = current['condition'] as String?;
+      if (cond != null && cond.isNotEmpty) {
+        conditionFromCurrent = cond;
+      }
+    }
+
     final points = raw['points'];
-    if (points is! List || points.isEmpty) {
+    if ((points is! List || points.isEmpty) && current == null) {
       throw const ApiException(
         'Hava durumu noktası bulunamadı.',
         statusCode: null,
       );
     }
 
-    final first = points.first;
-    if (first is! Map<String, dynamic>) {
-      throw const ApiException(
-        'Hava durumu verisi geçersiz.',
-        statusCode: null,
-      );
+    if (current == null && points is List && points.isNotEmpty) {
+      final first = points.first;
+      if (first is Map<String, dynamic>) {
+        final tempC = first['temperature_c'];
+        temperature = tempC != null ? (tempC as num).round() : 0;
+      }
     }
 
-    final tempC = first['temperature_c'];
-    final temperature = tempC != null ? (tempC as num).round() : 0;
+    final precipProb =
+        (points is List && points.isNotEmpty && points.first is Map)
+            ? points.first['precipitation_probability']
+            : null;
 
-    final precipProb = first['precipitation_probability'];
-    final description = _descriptionFromWeather(
-      precipitationProbability: precipProb is num
-          ? precipProb.toDouble()
-          : null,
-      temperature: temperature,
-      isStale: raw['is_stale'] as bool? ?? false,
-      staleReason: raw['stale_reason'] as String?,
-    );
+    final description =
+        conditionFromCurrent ??
+        _descriptionFromWeather(
+          precipitationProbability:
+              precipProb is num ? precipProb.toDouble() : null,
+          temperature: temperature,
+          isStale: raw['is_stale'] as bool? ?? false,
+          staleReason: raw['stale_reason'] as String?,
+        );
 
     return WeatherSummary(temperature: temperature, description: description);
   }
