@@ -126,6 +126,24 @@ public static class DependencyInjection
 
         var credentialsPath = configuration.GetValue<string>("Firebase:CredentialsPath");
         var projectId = configuration.GetValue<string>("Firebase:ProjectId");
+        var environmentName = configuration["ASPNETCORE_ENVIRONMENT"]
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        var firebaseAuthEnabled = bool.TryParse(
+            FirstConfiguredValue(
+                configuration["Firebase:AuthEnabled"],
+                configuration["FIREBASE_AUTH_ENABLED"],
+                Environment.GetEnvironmentVariable("FIREBASE_AUTH_ENABLED")),
+            out var configuredFirebaseAuthEnabled)
+            ? configuredFirebaseAuthEnabled
+            : true;
+        var requiresFirebaseAdmin = firebaseAuthEnabled &&
+            (string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase));
+
+        if (requiresFirebaseAdmin && string.IsNullOrWhiteSpace(projectId))
+        {
+            throw new InvalidOperationException("Firebase ProjectId must be configured in Production and Staging.");
+        }
 
         try
         {
@@ -163,10 +181,22 @@ public static class DependencyInjection
                     ProjectId = projectId
                 });
             }
+
+            if (requiresFirebaseAdmin && FirebaseApp.DefaultInstance == null)
+            {
+                throw new InvalidOperationException(
+                    "Firebase Admin credentials must be configured in Production and Staging. " +
+                    "Provide Firebase:CredentialsPath or GOOGLE_APPLICATION_CREDENTIALS.");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently fall back to development / uninitialized mode
+            if (requiresFirebaseAdmin)
+            {
+                throw new InvalidOperationException(
+                    "Firebase Admin credentials could not be initialized in Production or Staging.",
+                    ex);
+            }
         }
     }
 }

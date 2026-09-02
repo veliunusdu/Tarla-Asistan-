@@ -1,3 +1,4 @@
+using FirebaseAdmin;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -17,6 +18,7 @@ public static class HealthEndpoints
             {
                 status = dbOk ? "ok" : "degraded",
                 database = dbOk ? "ok" : "unhealthy",
+                firebase = FirebaseApp.DefaultInstance != null ? "ok" : "not_configured",
                 timestamp = DateTime.UtcNow
             };
 
@@ -42,7 +44,8 @@ public static class HealthEndpoints
             var result = new
             {
                 status = dbOk ? "ok" : "degraded",
-                database = dbOk ? "ok" : "unhealthy"
+                database = dbOk ? "ok" : "unhealthy",
+                firebase = FirebaseApp.DefaultInstance != null ? "ok" : "not_configured"
             };
 
             return dbOk

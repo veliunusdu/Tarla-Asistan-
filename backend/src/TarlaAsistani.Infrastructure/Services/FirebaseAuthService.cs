@@ -1,5 +1,6 @@
 using FirebaseAdmin;
 using FirebaseAdmin.Auth;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TarlaAsistani.Application.Common.Interfaces;
 
@@ -8,10 +9,12 @@ namespace TarlaAsistani.Infrastructure.Services;
 public class FirebaseAuthService : IFirebaseAuthService
 {
     private readonly ILogger<FirebaseAuthService> _logger;
+    private readonly IHostEnvironment? _environment;
 
-    public FirebaseAuthService(ILogger<FirebaseAuthService> logger)
+    public FirebaseAuthService(ILogger<FirebaseAuthService> logger, IHostEnvironment? environment = null)
     {
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task<FirebaseTokenInfo?> VerifyIdTokenAsync(string idToken, CancellationToken cancellationToken = default)
@@ -21,8 +24,10 @@ public class FirebaseAuthService : IFirebaseAuthService
             return null;
         }
 
-        // 1. Dev simulation for local/testing environments (e.g. dev_token, mock_token_farmer1)
-        if (idToken.StartsWith("dev_", StringComparison.OrdinalIgnoreCase) || idToken.StartsWith("mock_", StringComparison.OrdinalIgnoreCase))
+        // Development token simulation must never be accepted outside local/test environments.
+        if (AllowsDevelopmentTokenSimulation() &&
+            (idToken.StartsWith("dev_", StringComparison.OrdinalIgnoreCase) ||
+             idToken.StartsWith("mock_", StringComparison.OrdinalIgnoreCase)))
         {
             _logger.LogInformation("Using development Firebase token simulation for {IdToken}", idToken);
             return new FirebaseTokenInfo(
@@ -74,6 +79,16 @@ public class FirebaseAuthService : IFirebaseAuthService
 
         _logger.LogWarning("FirebaseApp is not configured, and token is not a dev token.");
         return null;
+    }
+
+    private bool AllowsDevelopmentTokenSimulation()
+    {
+        var environmentName = _environment?.EnvironmentName
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+
+        return string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task RevokeUserSessionsAsync(string firebaseUid, CancellationToken cancellationToken = default)

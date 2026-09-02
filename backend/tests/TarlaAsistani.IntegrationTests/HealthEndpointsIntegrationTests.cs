@@ -53,5 +53,6 @@ public class HealthEndpointsIntegrationTests : IClassFixture<CustomWebApplicatio
         content.Should().NotBeNull();
         content!["status"]!.GetValue<string>().Should().Be("ok");
         content["database"]!.GetValue<string>().Should().Be("ok");
+        content["firebase"]!.GetValue<string>().Should().Be("not_configured");
     }
 }

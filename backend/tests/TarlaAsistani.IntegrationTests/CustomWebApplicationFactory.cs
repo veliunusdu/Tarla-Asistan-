@@ -41,6 +41,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseEnvironment(_environmentName);
         builder.UseSetting("Auth:JwtSecret", "integration-test-jwt-secret-change-me-32-chars!");
         builder.UseSetting("Cors:AllowedOrigins:0", "http://localhost:3000");
+        // Firebase-backed authentication is replaced by a mock for integration tests.
+        builder.UseSetting("FIREBASE_AUTH_ENABLED", "false");
         builder.ConfigureLogging(logging =>
         {
             logging.ClearProviders();
