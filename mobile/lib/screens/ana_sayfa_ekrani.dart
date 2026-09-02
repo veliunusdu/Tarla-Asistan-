@@ -4,6 +4,7 @@ import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
+import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_location_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
@@ -14,36 +15,16 @@ import '../features/weather/data/weather_repository.dart';
 import '../features/weather/domain/weather_summary.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
+import '../shared/utils/date_formatter.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
+import '../shared/widgets/tarla_secim_bottom_sheet.dart';
 import 'faaliyet_ekleme_ekrani.dart';
 import 'tarla_detay_ekrani.dart';
 import 'tarla_ekleme_ekrani.dart';
 import 'tarla_konum_duzenleme_ekrani.dart';
 import 'tarla_listesi_ekrani.dart';
-
-// ---------------------------------------------------------------------------
-// Tarih yardımcısı
-// ---------------------------------------------------------------------------
-
-const List<String> _trAylar = [
-  'Oca',
-  'Şub',
-  'Mar',
-  'Nis',
-  'May',
-  'Haz',
-  'Tem',
-  'Ağu',
-  'Eyl',
-  'Eki',
-  'Kas',
-  'Ara',
-];
-
-String _tarihStr(DateTime dt) =>
-    '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
 // ---------------------------------------------------------------------------
 // Ekran widget'ı
@@ -109,12 +90,54 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     super.dispose();
   }
 
+  Future<List<Faaliyet>> _fetchGorevler() async {
+    final repo = widget._faaliyetRepo;
+    final map = <String, Faaliyet>{};
+
+    if (repo is PlanliGorevRepository) {
+      try {
+        final planli =
+            await (repo as PlanliGorevRepository).getPlanliGorevler();
+        for (final f in planli) {
+          if (!f.isCompleted && f.dueDate != null) {
+            map[f.id] = f;
+          }
+        }
+      } catch (_) {}
+    }
+
+    try {
+      final tum = await repo.getTumFaaliyetler();
+      for (final f in tum) {
+        if (!f.isCompleted && f.dueDate != null) {
+          map[f.id] = f;
+        }
+      }
+    } catch (_) {}
+
+    return map.values.toList();
+  }
+
   void _initData() {
-    _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
-      _tarlalarCache = list;
-      return list;
-    });
-    _faaliyetler = widget._faaliyetRepo.getTumFaaliyetler();
+    final summaryRepo = widget._tarlaRepo is FarmSummaryRepository
+        ? widget._tarlaRepo as FarmSummaryRepository
+        : null;
+
+    if (summaryRepo != null) {
+      final summaryFuture = summaryRepo.getFarmSummary();
+      _tarlalar = summaryFuture.then((s) {
+        final list = s.farms.map((f) => f.tarla).toList();
+        _tarlalarCache = list;
+        return list;
+      });
+      _faaliyetler = summaryFuture.then((s) => s.upcomingTasks);
+    } else {
+      _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
+        _tarlalarCache = list;
+        return list;
+      });
+      _faaliyetler = _fetchGorevler();
+    }
     _weather = widget._weatherRepo.getWeather();
     _gorevVerisi = Future.wait([
       _tarlalar,
@@ -126,11 +149,25 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   /// Hava durumu gereksiz yere yeniden istenmez.
   void _yenileTarlaVeFaaliyetler() {
     setState(() {
-      _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
-        _tarlalarCache = list;
-        return list;
-      });
-      _faaliyetler = widget._faaliyetRepo.getTumFaaliyetler();
+      final summaryRepo = widget._tarlaRepo is FarmSummaryRepository
+          ? widget._tarlaRepo as FarmSummaryRepository
+          : null;
+
+      if (summaryRepo != null) {
+        final summaryFuture = summaryRepo.getFarmSummary();
+        _tarlalar = summaryFuture.then((s) {
+          final list = s.farms.map((f) => f.tarla).toList();
+          _tarlalarCache = list;
+          return list;
+        });
+        _faaliyetler = summaryFuture.then((s) => s.upcomingTasks);
+      } else {
+        _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
+          _tarlalarCache = list;
+          return list;
+        });
+        _faaliyetler = _fetchGorevler();
+      }
       _gorevVerisi = Future.wait([
         _tarlalar,
         _faaliyetler,
@@ -193,12 +230,12 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     }
   }
 
-  Future<void> _faaliyetEkle() async {
+  Future<void> _isEkle({bool isCompleted = true}) async {
     if (_tarlalarCache.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
-            'Faaliyet eklemek için önce en az bir tarla eklemelisiniz.',
+            'İş eklemek için önce en az bir tarla eklemelisiniz.',
           ),
           action: SnackBarAction(label: 'Tarla Ekle', onPressed: _tarlaEkle),
         ),
@@ -211,9 +248,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     if (_tarlalarCache.length == 1) {
       secilen = _tarlalarCache.first;
     } else {
-      secilen = await showModalBottomSheet<Tarla>(
-        context: context,
-        builder: (ctx) => _TarlaSecimSayfasi(tarlalar: _tarlalarCache),
+      secilen = await TarlaSecimBottomSheet.show(
+        context,
+        tarlalar: _tarlalarCache,
       );
     }
 
@@ -225,6 +262,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         builder: (_) => FaaliyetEklemeEkrani(
           tarlaId: secilen!.id,
           faaliyetRepository: widget._faaliyetRepo,
+          initialIsCompleted: isCompleted,
+          initialSelectedDate: isCompleted ? null : DateTime.now(),
         ),
       ),
     );
@@ -271,18 +310,18 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // ── Yaklaşan görevler ─────────────────────────────────────────
+              // ── Yaklaşan işler ───────────────────────────────────────────
               _YaklasanGorevlerSection(
                 gorevVerisi: _gorevVerisi,
                 onRetry: _yenile,
-                onFaaliyetPlanla: _faaliyetEkle,
+                onFaaliyetPlanla: () => _isEkle(isCompleted: false),
               ),
               const SizedBox(height: AppSpacing.lg),
 
               // ── Hızlı işlemler ────────────────────────────────────────────
               _HizliIslemlerSection(
                 onTarlaEkle: _tarlaEkle,
-                onFaaliyetEkle: _faaliyetEkle,
+                onFaaliyetEkle: () => _isEkle(isCompleted: true),
                 onTarlalarim:
                     widget.onTarlalarimSekme ??
                     () => Navigator.push(
@@ -298,46 +337,6 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tarla seçim bottom sheet
-// ---------------------------------------------------------------------------
-
-class _TarlaSecimSayfasi extends StatelessWidget {
-  const _TarlaSecimSayfasi({required this.tarlalar});
-
-  final List<Tarla> tarlalar;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Text(
-              'Hangi tarla için faaliyet eklenecek?',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ),
-          const Divider(height: 1),
-          ...tarlalar.map(
-            (t) => ListTile(
-              leading: const Icon(Icons.terrain, color: AppColors.primary),
-              title: Text(t.name),
-              subtitle: Text(
-                '${t.cropType ?? 'Ürün bilgisi yok'} · ${t.size != null ? '${t.size!.toInt()} dönüm' : 'Alan bilinmiyor'}',
-              ),
-              onTap: () => Navigator.pop(context, t),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-        ],
       ),
     );
   }
@@ -560,13 +559,13 @@ class _YaklasanGorevlerSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Yaklaşan Görevler', style: theme.textTheme.titleMedium),
+        Text('Yaklaşan İşler', style: theme.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         FutureBuilder<(List<Tarla>, List<Faaliyet>)>(
           future: gorevVerisi,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const AppLoadingView(message: 'Görevler yükleniyor…');
+              return const AppLoadingView(message: 'İşler yükleniyor…');
             }
             if (snapshot.hasError) {
               return AppErrorView(onRetry: onRetry);
@@ -586,10 +585,10 @@ class _YaklasanGorevlerSection extends StatelessWidget {
             if (gosterilen.isEmpty) {
               return AppEmptyView(
                 icon: Icons.event_available,
-                title: 'Henüz planlanmış faaliyet bulunmuyor.',
+                title: 'Planlanmış işin yok.',
                 description:
-                    'Tarla faaliyetlerinizi planlayarak buraya ekleyin.',
-                actionLabel: 'Faaliyet Planla',
+                    'Yeni bir iş planlayarak başlayabilirsin.',
+                actionLabel: 'İş Planla',
                 onAction: onFaaliyetPlanla,
               );
             }
@@ -668,7 +667,7 @@ class _GorevKarti extends StatelessWidget {
                     ),
                     Text(faaliyet.type, style: theme.textTheme.titleMedium),
                     Text(
-                      _tarihStr(faaliyet.dueDate!),
+                      formatTarih(faaliyet.dueDate!),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppColors.warning,
                       ),
@@ -726,7 +725,7 @@ class _HizliIslemlerSection extends StatelessWidget {
             ),
             _HizliIslemButonu(
               icon: Icons.add_task,
-              label: 'İşlem Kaydı Ekle',
+              label: 'İş Ekle',
               onTap: onFaaliyetEkle,
             ),
             _HizliIslemButonu(
@@ -736,7 +735,7 @@ class _HizliIslemlerSection extends StatelessWidget {
             ),
             _HizliIslemButonu(
               icon: Icons.event_note,
-              label: 'Tüm Faaliyetler',
+              label: 'İş Planım',
               onTap: onTumFaaliyetler,
             ),
           ],

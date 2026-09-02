@@ -31,7 +31,10 @@ class LocalFaaliyetRepository
   Future<void> addPlanliGorev(Faaliyet gorev) => addFaaliyet(gorev);
 
   @override
-  Future<List<Faaliyet>> getPlanliGorevler() async => [];
+  Future<List<Faaliyet>> getPlanliGorevler() async {
+    final all = await DatabaseHelper.instance.getTumFaaliyetler();
+    return all.where((f) => !f.isCompleted).toList();
+  }
 
   @override
   Future<void> completePlanliGorev(String id, {String? note}) async {

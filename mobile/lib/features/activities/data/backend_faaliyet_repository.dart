@@ -88,7 +88,7 @@ class BackendFaaliyetRepository
 
       for (final item in items) {
         allActivities.add(
-          _fromBackendJson(
+          fromBackendJson(
             item as Map<String, dynamic>,
             fallbackTarlaId: tarlaId,
           ),
@@ -130,7 +130,7 @@ class BackendFaaliyetRepository
                   status != 'CANCELLED' &&
                   status != 'NOT_APPLIED';
             })
-            .map((item) => _fromTaskJson(item, fallbackTarlaId: tarla.id));
+            .map((item) => fromTaskJson(item, fallbackTarlaId: tarla.id));
       }),
     );
     return tasksPerFarm.expand((tasks) => tasks).toList();
@@ -210,7 +210,7 @@ class BackendFaaliyetRepository
     return _uuid.v4();
   }
 
-  static Faaliyet _fromBackendJson(
+  static Faaliyet fromBackendJson(
     Map<String, dynamic> json, {
     required String fallbackTarlaId,
   }) {
@@ -235,7 +235,7 @@ class BackendFaaliyetRepository
     );
   }
 
-  static Faaliyet _fromTaskJson(
+  static Faaliyet fromTaskJson(
     Map<String, dynamic> json, {
     required String fallbackTarlaId,
   }) {

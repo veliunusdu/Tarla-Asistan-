@@ -191,6 +191,50 @@ void main() {
     );
 
     test(
+      'getTumFaaliyetler fetches activities per farm and returns completed records with dueDate null',
+      () async {
+        final client = ApiClient(
+          httpClient: MockClient((request) async {
+            if (request.url.path == '/api/v1/farms/farm-1/activities') {
+              return http.Response(
+                jsonEncode({
+                  'items': [
+                    {
+                      'id': 'activity-1',
+                      'farm_id': 'farm-1',
+                      'activity_type': 'FERTILIZATION',
+                      'description': 'Taban gübresi',
+                      'occurred_at_utc': '2026-09-02T10:00:00Z',
+                    },
+                  ],
+                  'total': 1,
+                  'limit': 50,
+                  'offset': 0,
+                }),
+                200,
+                headers: {'content-type': 'application/json'},
+              );
+            }
+            return http.Response('Not found', 404);
+          }),
+          idTokenProvider: () async => 'dummy-token',
+        );
+        final repository = BackendFaaliyetRepository(
+          apiClient: client,
+          tarlaRepository: _FakeTarlaRepository([_tarla('farm-1', 'Tarla 1')]),
+        );
+
+        final result = await repository.getTumFaaliyetler();
+
+        expect(result, hasLength(1));
+        expect(result.single.id, 'activity-1');
+        expect(result.single.type, 'Gübreleme');
+        expect(result.single.isCompleted, isTrue);
+        expect(result.single.dueDate, isNull);
+      },
+    );
+
+    test(
       'addFaaliyet sends POST to /farms/{farmId}/activities with correct payload',
       () async {
         String? capturedPath;

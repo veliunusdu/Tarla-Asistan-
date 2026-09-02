@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
+import 'package:mobile/features/fields/data/farm_summary_model.dart';
+import 'package:mobile/features/fields/data/farm_summary_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/features/location/data/location_service.dart';
 import 'package:mobile/features/location/domain/tarla_location.dart';
@@ -50,6 +52,26 @@ class FakeWeatherRepository implements WeatherRepository {
   Future<WeatherSummary> getWeather() => _future;
 }
 
+class FakeFarmSummaryTarlaRepository
+    implements TarlaRepository, FarmSummaryRepository {
+  FakeFarmSummaryTarlaRepository(this.summary);
+  final FarmSummaryResponse summary;
+  int getFarmSummaryCallCount = 0;
+
+  @override
+  Future<List<Tarla>> getTarlalar() async =>
+      summary.farms.map((f) => f.tarla).toList();
+
+  @override
+  Future<void> addTarla(Tarla tarla) async {}
+
+  @override
+  Future<FarmSummaryResponse> getFarmSummary({int upcomingLimit = 5}) async {
+    getFarmSummaryCallCount++;
+    return summary;
+  }
+}
+
 class FakeLocationService implements LocationService {
   FakeLocationService({this.location, this.error});
 
@@ -64,11 +86,18 @@ class FakeLocationService implements LocationService {
   }
 }
 
-class FakeFaaliyetRepository implements FaaliyetRepository {
-  FakeFaaliyetRepository({Future<List<Faaliyet>>? faaliyetlerFuture})
-    : _future = faaliyetlerFuture ?? Future.value([]);
+class FakeFaaliyetRepository
+    implements FaaliyetRepository, PlanliGorevRepository {
+  FakeFaaliyetRepository({
+    Future<List<Faaliyet>>? faaliyetlerFuture,
+    Future<List<Faaliyet>>? planliGorevlerFuture,
+  })  : _future = faaliyetlerFuture ?? Future.value([]),
+        _planliFuture = planliGorevlerFuture;
 
   final Future<List<Faaliyet>> _future;
+  final Future<List<Faaliyet>>? _planliFuture;
+  int getTumFaaliyetlerCallCount = 0;
+  int getPlanliGorevlerCallCount = 0;
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) async => [];
@@ -77,7 +106,19 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
 
   @override
-  Future<List<Faaliyet>> getTumFaaliyetler() => _future;
+  Future<List<Faaliyet>> getTumFaaliyetler() {
+    getTumFaaliyetlerCallCount++;
+    return _future;
+  }
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {}
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() {
+    getPlanliGorevlerCallCount++;
+    return _planliFuture ?? Future.value([]);
+  }
 
   @override
   Future<void> deleteFaaliyet(String id) async {}
@@ -448,7 +489,28 @@ void main() {
     });
 
     // ── Yaklaşan görevler ─────────────────────────────────────────────────
-    group('yaklaşan görevler', () {
+    group('yaklaşan işler', () {
+      testWidgets(
+        'Yaklaşan İşler başlığı görünür ve eski Yaklaşan Görevler görünmez',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository(Future.value([])),
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('Yaklaşan İşler'), findsOneWidget);
+          expect(find.text('Yaklaşan Görevler'), findsNothing);
+        },
+      );
+
       testWidgets('planlanmış faaliyet gösterilir', (tester) async {
         tester.view.physicalSize = const Size(800, 1600);
         tester.view.devicePixelRatio = 1.0;
@@ -475,6 +537,103 @@ void main() {
         expect(find.text('Sulama'), findsAtLeastNWidgets(1));
       });
 
+      testWidgets(
+        'production sözleşmesinde getPlanliGorevler üzerinden gelen açık görev Yaklaşan İşler listesinde gösterilir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final faaliyetRepo = FakeFaaliyetRepository(
+            // Production contract: getTumFaaliyetler yalnızca Activity döner
+            faaliyetlerFuture: Future.value([
+              Faaliyet(
+                id: 'a1',
+                tarlaId: 't1',
+                type: 'Gübreleme',
+                note: '',
+                timestamp: DateTime(2026, 9, 1),
+                dueDate: null,
+                isCompleted: true,
+              ),
+            ]),
+            // Production contract: getPlanliGorevler açık Task kayıtlarını döner
+            planliGorevlerFuture: Future.value([
+              Faaliyet(
+                id: 't1',
+                tarlaId: 't1',
+                type: 'Sulama',
+                note: '',
+                timestamp: DateTime(2026, 9, 2),
+                dueDate: DateTime(2027, 5, 1),
+                isCompleted: false,
+              ),
+            ]),
+          );
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository(Future.value([_tarla('t1')])),
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+              faaliyetRepo: faaliyetRepo,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Planlı görev olan Sulama Yaklaşan İşler listesinde gösterilmeli
+          expect(find.text('Sulama'), findsAtLeastNWidgets(1));
+          expect(faaliyetRepo.getPlanliGorevlerCallCount, greaterThanOrEqualTo(1));
+        },
+      );
+
+      testWidgets(
+        'FarmSummaryRepository sağlandığında tek getFarmSummary çağrısı ile tarlalar ve yaklaşan işler yüklenir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final summary = FarmSummaryResponse(
+            farms: [
+              FarmWorkSummary(
+                tarla: _tarla('t1'),
+                nextTask: null,
+                lastActivity: null,
+              ),
+            ],
+            upcomingTasks: [
+              Faaliyet(
+                id: 't1',
+                tarlaId: 't1',
+                type: 'İlaçlama',
+                note: 'Böcek ilacı',
+                timestamp: DateTime(2026, 9, 2),
+                dueDate: DateTime(2027, 5, 1),
+                isCompleted: false,
+              ),
+            ],
+          );
+
+          final summaryRepo = FakeFarmSummaryTarlaRepository(summary);
+          final faaliyetRepo = FakeFaaliyetRepository();
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: summaryRepo,
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+              faaliyetRepo: faaliyetRepo,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(summaryRepo.getFarmSummaryCallCount, 1);
+          expect(find.text('İlaçlama'), findsAtLeastNWidgets(1));
+          expect(find.text('Tarla t1'), findsWidgets);
+        },
+      );
+
       testWidgets('tamamlanmış faaliyet yaklaşan görevlerde gösterilmez', (
         tester,
       ) async {
@@ -497,14 +656,14 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.textContaining('Henüz planlanmış faaliyet bulunmuyor'),
+          find.textContaining('Planlanmış işin yok'),
           findsOneWidget,
         );
         expect(find.text('Gübreleme'), findsNothing);
       });
 
       testWidgets(
-        'faaliyet yokken boş durum ve Faaliyet Planla butonu görünür',
+        'iş yokken boş durum ve İş Planla butonu görünür',
         (tester) async {
           tester.view.physicalSize = const Size(800, 1600);
           tester.view.devicePixelRatio = 1.0;
@@ -521,10 +680,11 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(
-            find.textContaining('Henüz planlanmış faaliyet bulunmuyor'),
+            find.textContaining('Planlanmış işin yok'),
             findsOneWidget,
           );
-          expect(find.text('Faaliyet Planla'), findsOneWidget);
+          expect(find.text('İş Planla'), findsOneWidget);
+          expect(find.text('Faaliyet Planla'), findsNothing);
         },
       );
 
@@ -575,7 +735,7 @@ void main() {
         expect(find.byType(TarlaEklemeEkrani), findsOneWidget);
       });
 
-      testWidgets('tarla yokken İşlem Kaydı Ekle SnackBar gösterir', (
+      testWidgets('tarla yokken İş Ekle SnackBar gösterir', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1600);
@@ -592,14 +752,14 @@ void main() {
         );
         await tester.pumpAndSettle(); // tarla listesi yüklensin
 
-        await tester.tap(find.text('İşlem Kaydı Ekle').first);
+        await tester.tap(find.text('İş Ekle').first);
         await tester.pump();
 
         expect(find.textContaining('önce en az bir tarla'), findsOneWidget);
       });
 
       testWidgets(
-        '1 tarla varken İşlem Kaydı Ekle doğrudan FaaliyetEklemeEkrani açar',
+        '1 tarla varken İş Ekle doğrudan FaaliyetEklemeEkrani açar',
         (tester) async {
           tester.view.physicalSize = const Size(800, 1600);
           tester.view.devicePixelRatio = 1.0;
@@ -619,7 +779,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.text('İşlem Kaydı Ekle').first);
+          await tester.tap(find.text('İş Ekle').first);
           await tester.pumpAndSettle();
 
           expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
@@ -627,11 +787,12 @@ void main() {
             find.byType(FaaliyetEklemeEkrani),
           );
           expect(ekran.tarlaId, 't1');
+          expect(ekran.initialIsCompleted, isTrue);
           expect(identical(ekran.repositoryForTesting, faaliyetRepo), isTrue);
         },
       );
 
-      testWidgets('2+ tarla varken İşlem Kaydı Ekle seçim ekranı açar', (
+      testWidgets('2+ tarla varken İş Ekle seçim ekranı açar', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1600);
@@ -655,10 +816,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('İşlem Kaydı Ekle').first);
+        await tester.tap(find.text('İş Ekle').first);
         await tester.pumpAndSettle();
 
         // Bottom sheet içinde tarla isimleri görünmeli
+        expect(find.text('Hangi tarla için?'), findsOneWidget);
         expect(find.text('Kuzey Tarla'), findsOneWidget);
         expect(find.text('Güney Tarla'), findsOneWidget);
       });
@@ -686,7 +848,7 @@ void main() {
         expect(callbackCalled, isTrue);
       });
 
-      testWidgets('Tüm Faaliyetler callback çağrılır', (tester) async {
+      testWidgets('İş Planım callback çağrılır', (tester) async {
         tester.view.physicalSize = const Size(800, 1600);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -703,7 +865,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Tüm Faaliyetler'));
+        await tester.tap(find.text('İş Planım'));
         await tester.pump();
 
         expect(callbackCalled, isTrue);
@@ -729,6 +891,140 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(find.byType(TarlaListesiEkrani), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'Hızlı işlemlerde İş Ekle ve İş Planım görünür, eski buton metinleri görünmez',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository(Future.value([])),
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('İş Ekle'), findsOneWidget);
+          expect(find.text('İş Planım'), findsOneWidget);
+          expect(find.text('İşlem Kaydı Ekle'), findsNothing);
+          expect(find.text('Tüm Faaliyetler'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        '2+ tarla varken tarla seçildiğinde doğru tarlaId ile açılır ve Planla moduna geçilebilir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final tarlaRepo = FakeTarlaRepository(
+            Future.value([
+              _tarla('t1', name: 'Kuzey Tarla'),
+              _tarla('t2', name: 'Güney Tarla'),
+            ]),
+          );
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: tarlaRepo,
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+              faaliyetRepo: FakeFaaliyetRepository(),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('İş Ekle').first);
+          await tester.pumpAndSettle();
+
+          // Güney Tarla'yı seç
+          await tester.tap(find.text('Güney Tarla'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+          final ekran = tester.widget<FaaliyetEklemeEkrani>(
+            find.byType(FaaliyetEklemeEkrani),
+          );
+          expect(ekran.tarlaId, 't2');
+          expect(ekran.initialIsCompleted, isTrue);
+
+          // Kullanıcı Planla segmentine geçebilir
+          await tester.tap(find.text('Planla'));
+          await tester.pumpAndSettle();
+          expect(find.text('İşi Planla'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'boş durumdaki İş Planla butonu FaaliyetEklemeEkrani\'nı doğrudan Planla modunda açar',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository(Future.value([_tarla('t1')])),
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+              faaliyetRepo: FakeFaaliyetRepository(),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('İş Planla'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+          final ekran = tester.widget<FaaliyetEklemeEkrani>(
+            find.byType(FaaliyetEklemeEkrani),
+          );
+          expect(ekran.tarlaId, 't1');
+          expect(ekran.initialIsCompleted, isFalse);
+          expect(find.text('İşi Planla'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'İş Ekle ekranından true ile dönüldüğünde Ana Sayfa görev verilerini yeniler',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final tarlaRepo = FakeTarlaRepository(Future.value([_tarla('t1')]));
+          final faaliyetRepo = FakeFaaliyetRepository();
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: tarlaRepo,
+              weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+              faaliyetRepo: faaliyetRepo,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(faaliyetRepo.getTumFaaliyetlerCallCount, 1);
+
+          await tester.tap(find.text('İş Ekle').first);
+          await tester.pumpAndSettle();
+
+          expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+
+          // Pop with true
+          final nav = tester.state<NavigatorState>(find.byType(Navigator).last);
+          nav.pop(true);
+          await tester.pumpAndSettle();
+
+          expect(faaliyetRepo.getTumFaaliyetlerCallCount, 2);
         },
       );
     });

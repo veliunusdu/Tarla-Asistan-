@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app/theme/app_theme.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
@@ -26,12 +27,16 @@ class FakeFaaliyetRepository
   final Future<List<Faaliyet>> _planliGorevler;
   final List<String> deletedIds = [];
   final List<String> completedIds = [];
+  int addFaaliyetSayisi = 0;
+  int addPlanliGorevSayisi = 0;
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) => _future;
 
   @override
-  Future<void> addFaaliyet(Faaliyet faaliyet) async {}
+  Future<void> addFaaliyet(Faaliyet faaliyet) async {
+    addFaaliyetSayisi++;
+  }
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
@@ -40,7 +45,9 @@ class FakeFaaliyetRepository
   Future<List<Faaliyet>> getPlanliGorevler() => _planliGorevler;
 
   @override
-  Future<void> addPlanliGorev(Faaliyet gorev) async {}
+  Future<void> addPlanliGorev(Faaliyet gorev) async {
+    addPlanliGorevSayisi++;
+  }
 
   @override
   Future<void> completePlanliGorev(String id, {String? note}) async {
@@ -87,7 +94,12 @@ Faaliyet _tamamlanan() => Faaliyet(
   isCompleted: true,
 );
 
-Widget _wrap(Widget child) => MaterialApp(theme: AppTheme.light, home: child);
+Widget _wrap(Widget child) => MaterialApp(
+  theme: AppTheme.light,
+  localizationsDelegates: GlobalMaterialLocalizations.delegates,
+  supportedLocales: const [Locale('tr'), Locale('en')],
+  home: child,
+);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -161,10 +173,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Faaliyet Geçmişi'));
+      await tester.tap(find.text('Geçmiş'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Faaliyeti sil'));
+      await tester.tap(find.byTooltip('Kaydı sil'));
       await tester.pumpAndSettle();
 
       expect(repository.deletedIds, ['f2']);
@@ -308,7 +320,7 @@ void main() {
       expect(find.text('Sulama'), findsOneWidget);
     });
 
-    testWidgets('tamamlanan faaliyet Faaliyet Geçmişi sekmesinde gösterilir', (
+    testWidgets('tamamlanan faaliyet Geçmiş sekmesinde gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([_tamamlanan()]));
@@ -317,14 +329,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // switch to Faaliyet Geçmişi tab
-      await tester.tap(find.text('Faaliyet Geçmişi'));
+      // switch to Geçmiş tab
+      await tester.tap(find.text('Geçmiş'));
       await tester.pumpAndSettle();
 
       expect(find.text('Gübreleme'), findsOneWidget);
     });
 
-    testWidgets('boş Planlı İşler sekmesinde AppEmptyView gösterilir', (
+    testWidgets('boş Planlanan sekmesinde AppEmptyView gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
@@ -333,10 +345,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Planlı iş yok'), findsOneWidget);
+      expect(find.textContaining('Planlanmış iş yok'), findsOneWidget);
     });
 
-    testWidgets('boş Faaliyet Geçmişi sekmesinde AppEmptyView gösterilir', (
+    testWidgets('boş Geçmiş sekmesinde AppEmptyView gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
@@ -345,10 +357,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Faaliyet Geçmişi'));
+      await tester.tap(find.text('Geçmiş'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);
+      expect(find.textContaining('Henüz tamamlanmış iş yok'), findsOneWidget);
     });
 
     testWidgets(
@@ -368,6 +380,112 @@ void main() {
           find.byType(FaaliyetEklemeEkrani),
         );
         expect(identical(eklenenEkran.repositoryForTesting, repo), isTrue);
+      },
+    );
+
+    testWidgets(
+      'FAB kullanıcıya İş Ekle olarak görünür ve eski İşlem Kaydet metni görünmez',
+      (tester) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.widgetWithText(FloatingActionButton, 'İş Ekle'),
+          findsOneWidget,
+        );
+        expect(find.text('İşlem Kaydet'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'FAB doğru tarlaId ve varsayılan Yapıldı modu ile FaaliyetEklemeEkrani açar, Planla moduna geçilebilir',
+      (tester) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FloatingActionButton, 'İş Ekle'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+        final eklenenEkran = tester.widget<FaaliyetEklemeEkrani>(
+          find.byType(FaaliyetEklemeEkrani),
+        );
+        expect(eklenenEkran.tarlaId, 't1');
+        expect(eklenenEkran.initialIsCompleted, isTrue);
+
+        // Kullanıcı Planla segmentine geçebilir
+        expect(find.text('Planla'), findsOneWidget);
+        await tester.tap(find.text('Planla'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('İşi Planla'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'İş Ekle ekranından true ile dönüldüğünde Tarla Detayı yenilenir',
+      (tester) async {
+        final repo = FakeFaaliyetRepository(Future.value([]));
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FloatingActionButton, 'İş Ekle'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+
+        // Bir faaliyet ekleyip kaydet
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Sulama').last);
+        await tester.pumpAndSettle();
+
+        // Tarih seçimi (Yapıldı modunda)
+        await tester.tap(find.text('Tarih seçin'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Tamam'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('İşi Kaydet'));
+        await tester.pumpAndSettle();
+
+        // Ekran kapandı, liste yenilendi
+        expect(find.byType(FaaliyetEklemeEkrani), findsNothing);
+        expect(repo.addFaaliyetSayisi, 1);
+      },
+    );
+
+    testWidgets(
+      'Planlanan iş tamamlandığında completePlanliGorev çağrılır, mobil addFaaliyet çağırmaz ve İş tamamlandı bildirilir',
+      (tester) async {
+        final gorev = _yapilacak();
+        final repo = FakeFaaliyetRepository(
+          Future.value([]),
+          planliGorevler: Future.value([gorev]),
+        );
+        await tester.pumpWidget(
+          _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sulama'), findsOneWidget);
+        expect(find.text('Tamamla'), findsOneWidget);
+
+        await tester.tap(find.text('Tamamla'));
+        await tester.pumpAndSettle();
+
+        expect(repo.completedIds, contains('f1'));
+        // Kesin kural: Mobil addFaaliyet çağırmamalı, backend Activity oluşturur
+        expect(repo.addFaaliyetSayisi, 0);
+        expect(find.text('İş tamamlandı.'), findsOneWidget);
       },
     );
   });

@@ -23,13 +23,13 @@ class _OnboardingEkraniState extends State<OnboardingEkrani> {
     (
       title: 'Sahada çevrimdışı çalışın',
       description:
-          'Faaliyetlerinizi bağlantı olmasa da kaydedin; internet gelince otomatik gönderilsin.',
+          'İşlerinizi bağlantı olmasa da kaydedin; internet gelince otomatik gönderilsin.',
       icon: Icons.cloud_off_outlined,
     ),
     (
       title: 'Kritik uyarıları kaçırmayın',
       description:
-          'Görev, hava riski ve uzman cevaplarına gelen bildirimlerden doğrudan ulaşın.',
+          'Planlanan işler, hava riski ve uzman cevaplarına gelen bildirimlerden doğrudan ulaşın.',
       icon: Icons.notifications_active_outlined,
     ),
   ];

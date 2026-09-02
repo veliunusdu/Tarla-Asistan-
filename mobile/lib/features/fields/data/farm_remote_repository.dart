@@ -36,4 +36,7 @@ abstract interface class FarmRemoteRepository {
 
   /// DELETE /api/v1/farms/{farm_id} — server responds with HTTP 204.
   Future<void> archiveFarm(String farmId);
+
+  /// GET /api/v1/farms/summary — aggregate farm and work overview
+  Future<Map<String, dynamic>> getFarmSummary({int upcomingLimit = 5});
 }

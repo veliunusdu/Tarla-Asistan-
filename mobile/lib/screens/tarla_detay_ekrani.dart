@@ -6,28 +6,11 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
+import '../shared/utils/date_formatter.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
 import 'faaliyet_ekleme_ekrani.dart';
-
-const List<String> _trAylar = [
-  'Oca',
-  'Şub',
-  'Mar',
-  'Nis',
-  'May',
-  'Haz',
-  'Tem',
-  'Ağu',
-  'Eyl',
-  'Eki',
-  'Kas',
-  'Ara',
-];
-
-String _tarihStr(DateTime dt) =>
-    '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
 bool _konumYok(double? lat, double? lng) =>
     lat == null || lng == null || (lat == 0.0 && lng == 0.0);
@@ -118,7 +101,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Faaliyet silinemedi. Lütfen tekrar deneyin.'),
+          content: Text('Kayıt silinemedi. Lütfen tekrar deneyin.'),
         ),
       );
     }
@@ -220,8 +203,8 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Planlı İşler', icon: Icon(Icons.event_note)),
-            Tab(text: 'Faaliyet Geçmişi', icon: Icon(Icons.history)),
+            Tab(text: 'Planlanan', icon: Icon(Icons.event_note)),
+            Tab(text: 'Geçmiş', icon: Icon(Icons.history)),
           ],
         ),
       ),
@@ -249,10 +232,10 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
               ),
             ),
           );
-          if (result == true) _yenile();
+          if (result == true && mounted) _yenile();
         },
         icon: const Icon(Icons.add),
-        label: const Text('İşlem Kaydet'),
+        label: const Text('İş Ekle'),
       ),
     );
   }
@@ -262,7 +245,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
       future: _veri,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const AppLoadingView(message: 'Faaliyetler yükleniyor…');
+          return const AppLoadingView(message: 'İşler yükleniyor…');
         }
 
         if (snapshot.hasError) {
@@ -343,7 +326,7 @@ class _TarlaBilgiKarti extends StatelessWidget {
               icon: Icons.calendar_today,
               label: 'Ekim Tarihi',
               deger: tarla.plantingDate != null
-                  ? _tarihStr(tarla.plantingDate!)
+                  ? formatTarih(tarla.plantingDate!)
                   : 'Ekim tarihi yok',
             ),
             _InfoSatiri(
@@ -426,11 +409,11 @@ class _FaaliyetListesi extends StatelessWidget {
       return AppEmptyView(
         icon: isGecmis ? Icons.history : Icons.event_note,
         title: isGecmis
-            ? 'Henüz geçmiş faaliyet yok.'
-            : 'Planlı iş yok.',
+            ? 'Henüz tamamlanmış iş yok.'
+            : 'Planlanmış iş yok.',
         description: isGecmis
-            ? 'Tamamlanan faaliyetler burada görünecek.'
-            : 'İş Planım ekranından yeni iş ekleyebilirsiniz.',
+            ? 'Tamamlanan işler burada görünecek.'
+            : 'Bu tarla için yeni bir iş planlayabilirsin.',
       );
     }
 
@@ -506,7 +489,7 @@ class _FaaliyetKarti extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
-                _tarihStr(faaliyet.timestamp),
+                formatTarih(faaliyet.timestamp),
                 style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13),
               ),
             ),
@@ -514,7 +497,7 @@ class _FaaliyetKarti extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  'Plan: ${_tarihStr(faaliyet.dueDate!)}',
+                  'Plan: ${formatTarih(faaliyet.dueDate!)}',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: AppColors.warning,
                     fontSize: 13,
@@ -527,7 +510,7 @@ class _FaaliyetKarti extends StatelessWidget {
             ? onDelete == null
                   ? null
                   : IconButton(
-                      tooltip: 'Faaliyeti sil',
+                      tooltip: 'Kaydı sil',
                       icon: const Icon(Icons.delete_outline),
                       color: AppColors.textDisabled,
                       onPressed: () => onDelete!(faaliyet.id),

@@ -7,6 +7,7 @@ import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/models/faaliyet.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/screens/faaliyet_ekleme_ekrani.dart';
 import 'package:mobile/screens/tarla_detay_ekrani.dart';
 import 'package:mobile/screens/tarla_ekleme_ekrani.dart';
 import 'package:mobile/screens/tarla_gunlugu_ekrani.dart';
@@ -264,26 +265,35 @@ void main() {
 
     // ── UI yapısı ─────────────────────────────────────────────────────────
     group('UI yapısı', () {
-      testWidgets('Yeni Görev formu ve etiketleri görünür', (tester) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+      testWidgets(
+        'Gömülü görev formu ve inputları görünmez, tek İş Ekle FAB görünür',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
 
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
-            faaliyetRepo: FakeFaaliyetRepository(),
-          ),
-        );
-        await tester.pumpAndSettle();
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
+              faaliyetRepo: FakeFaaliyetRepository(),
+            ),
+          );
+          await tester.pumpAndSettle();
 
-        expect(find.text('Yeni Görev'), findsOneWidget);
-        expect(find.text('Tarla'), findsWidgets);
-        expect(find.text('Görev'), findsWidgets);
-        expect(find.text('Not (isteğe bağlı)'), findsOneWidget);
-        expect(find.text('Görevi Ekle'), findsOneWidget);
-      });
+          expect(find.text('Yeni Görev'), findsNothing);
+          expect(find.text('Görevi Ekle'), findsNothing);
+          expect(find.widgetWithText(TextFormField, 'Görev'), findsNothing);
+          expect(
+            find.widgetWithText(TextFormField, 'Not (isteğe bağlı)'),
+            findsNothing,
+          );
+          expect(
+            find.widgetWithText(FloatingActionButton, 'İş Ekle'),
+            findsOneWidget,
+          );
+        },
+      );
 
       testWidgets('Dört FilterChip görünür, SegmentedButton bulunmaz', (
         tester,
@@ -448,30 +458,37 @@ void main() {
 
         expect(find.text('Sulama'), findsNothing);
         expect(
-          find.textContaining('Bugün için görev bulunmuyor'),
+          find.textContaining('Bugün için planlanmış iş bulunmuyor'),
           findsOneWidget,
         );
       });
 
-      testWidgets('Bugün filtresi boş durumda Görev Ekle butonu gösterir', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+      testWidgets(
+        'Bugün filtresi boş durumda açıklama ve İş Ekle FAB gösterir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
 
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
-            faaliyetRepo: FakeFaaliyetRepository(),
-          ),
-        );
-        await tester.pumpAndSettle();
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
+              faaliyetRepo: FakeFaaliyetRepository(),
+            ),
+          );
+          await tester.pumpAndSettle();
 
-        // "Görev Ekle" is in the empty-state action; "Görevi Ekle" is in the form button
-        expect(find.text('Görev Ekle'), findsOneWidget);
-      });
+          expect(
+            find.text('Bugün için planlanmış iş bulunmuyor.'),
+            findsOneWidget,
+          );
+          expect(
+            find.widgetWithText(FloatingActionButton, 'İş Ekle'),
+            findsOneWidget,
+          );
+        },
+      );
 
       testWidgets('Yaklaşan filtresi yalnızca ileri tarihli işleri gösterir', (
         tester,
@@ -650,7 +667,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(repo.tamamlananGorevler, ['task-1']);
-        expect(find.text('Görev tamamlandı.'), findsOneWidget);
+        expect(find.text('İş tamamlandı.'), findsOneWidget);
       });
     });
 
@@ -864,107 +881,9 @@ void main() {
       });
     });
 
-    // ── Form doğrulaması ──────────────────────────────────────────────────
-    group('form doğrulaması', () {
-      testWidgets('tarla seçmeden kayıt yapılamaz', (tester) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
-            faaliyetRepo: FakeFaaliyetRepository(),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Görev adını doldur ama tarla seçme
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Görev'),
-          'Sulama',
-        );
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pumpAndSettle();
-
-        expect(find.textContaining('Tarla seçimi zorunludur'), findsOneWidget);
-      });
-
-      testWidgets('boş görev adı kaydedilemiyor', (tester) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        final t = _tarla('t1', name: 'Örnek Tarla');
-
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: FakeFaaliyetRepository(),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Tarla seç
-        await tester.tap(
-          find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Örnek Tarla').last);
-        await tester.pumpAndSettle();
-
-        // Görev alanı boş → kaydet
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pumpAndSettle();
-
-        expect(find.textContaining('Görev adı boş olamaz'), findsOneWidget);
-      });
-
-      testWidgets(
-        'geçerli görev isCompleted:false ile repository\'ye gönderilir',
-        (tester) async {
-          tester.view.physicalSize = const Size(800, 1400);
-          tester.view.devicePixelRatio = 1.0;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-
-          final t = _tarla('t1', name: 'Örnek Tarla');
-          final repo = FakeFaaliyetRepository();
-
-          await tester.pumpWidget(
-            _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
-          );
-          await tester.pumpAndSettle();
-
-          // Tarla seç
-          await tester.tap(
-            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('Örnek Tarla').last);
-          await tester.pumpAndSettle();
-
-          // Görev adı gir
-          await tester.enterText(
-            find.widgetWithText(TextFormField, 'Görev'),
-            'Sulama',
-          );
-
-          // Kaydet
-          await tester.tap(find.text('Görevi Ekle'));
-          await tester.pumpAndSettle();
-
-          expect(repo.eklenenler, hasLength(1));
-          expect(repo.eklenenler.first.isCompleted, isFalse);
-          expect(repo.eklenenler.first.type, 'Sulama');
-          expect(repo.eklenenler.first.tarlaId, 't1');
-          expect(repo.planliGorevEklemeSayisi, 1);
-        },
-      );
-
-      testWidgets('kayıt sonrası liste yenilenir ve yeni görev görünür', (
+    // ── Yeni İş Ekleme Akışı ──────────────────────────────────────────────────
+    group('yeni iş ekleme akışı', () {
+      testWidgets('tek tarla varsa İş Ekle doğrudan FaaliyetEklemeEkrani açar', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1400);
@@ -972,38 +891,28 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
 
-        final t = _tarla('t1', name: 'Örnek Tarla');
         final repo = FakeFaaliyetRepository();
-
         await tester.pumpWidget(
-          _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
+          _wrap(
+            tarlaRepo: FakeTarlaRepository([_tarla('t1', name: 'Tek Tarla')]),
+            faaliyetRepo: repo,
+          ),
         );
         await tester.pumpAndSettle();
 
-        // Tarla seç
-        await tester.tap(
-          find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
+        await tester.tap(find.widgetWithText(FloatingActionButton, 'İş Ekle'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+        final ekran = tester.widget<FaaliyetEklemeEkrani>(
+          find.byType(FaaliyetEklemeEkrani),
         );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Örnek Tarla').last);
-        await tester.pumpAndSettle();
-
-        // Görev adı gir
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Görev'),
-          'SulamaGörev',
-        );
-
-        // Kaydet
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pumpAndSettle();
-
-        // Yeni görev bugün planlı olduğundan Bugün filtresinde görünmeli
-        expect(find.text('SulamaGörev'), findsOneWidget);
+        expect(ekran.tarlaId, 't1');
+        expect(ekran.initialIsCompleted, isFalse);
       });
 
       testWidgets(
-        'liste yenilendiğinde seçili tarla yeni API nesnesiyle eşleşir',
+        'birden fazla tarla varsa seçim bottom sheet açılır ve seçilen tarlanın ekranı açılır',
         (tester) async {
           tester.view.physicalSize = const Size(800, 1400);
           tester.view.devicePixelRatio = 1.0;
@@ -1013,32 +922,82 @@ void main() {
           final repo = FakeFaaliyetRepository();
           await tester.pumpWidget(
             _wrap(
-              tarlaRepo: RefreshingTarlaRepository(),
+              tarlaRepo: FakeTarlaRepository([
+                _tarla('t1', name: 'Birinci Tarla'),
+                _tarla('t2', name: 'İkinci Tarla'),
+              ]),
               faaliyetRepo: repo,
             ),
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(
-            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('Örnek Tarla').last);
-          await tester.pumpAndSettle();
-          await tester.enterText(
-            find.widgetWithText(TextFormField, 'Görev'),
-            'Yenilenen görev',
-          );
-
-          await tester.tap(find.text('Görevi Ekle'));
+          await tester.tap(find.widgetWithText(FloatingActionButton, 'İş Ekle'));
           await tester.pumpAndSettle();
 
-          expect(repo.eklenenler, hasLength(1));
-          expect(tester.takeException(), isNull);
+          // Bottom sheet açılmış olmalı
+          expect(find.text('Hangi tarla için?'), findsOneWidget);
+          expect(find.text('Birinci Tarla'), findsOneWidget);
+          expect(find.text('İkinci Tarla'), findsOneWidget);
+
+          // İkinci tarlayı seç
+          await tester.tap(find.text('İkinci Tarla'));
+          await tester.pumpAndSettle();
+
+          // FaaliyetEklemeEkrani t2 ile açılmış olmalı
+          expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+          final ekran = tester.widget<FaaliyetEklemeEkrani>(
+            find.byType(FaaliyetEklemeEkrani),
+          );
+          expect(ekran.tarlaId, 't2');
+          expect(ekran.initialIsCompleted, isFalse);
         },
       );
 
-      testWidgets('kayıt sonrası Görev eklendi SnackBar gösterilir', (
+      testWidgets(
+        'yeni planlı iş eklenip true dönüldüğünde liste yenilenir ve onDataChanged tetiklenir',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          bool onDataChangedCagirildi = false;
+          final repo = FakeFaaliyetRepository();
+
+          await tester.pumpWidget(
+            _wrap(
+              tarlaRepo: FakeTarlaRepository([_tarla('t1', name: 'Tek Tarla')]),
+              faaliyetRepo: repo,
+              onDataChanged: () => onDataChangedCagirildi = true,
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // İş Ekle butonuna bas
+          await tester.tap(find.widgetWithText(FloatingActionButton, 'İş Ekle'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
+
+          // İş türü seç, tarih bugün kalsın, İşi Planla'ya bas
+          await tester.tap(find.byType(DropdownButtonFormField<String>));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Sulama').last);
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.text('İşi Planla'));
+          await tester.pumpAndSettle();
+
+          // Ekran kapandı, liste yenilendi
+          expect(find.byType(FaaliyetEklemeEkrani), findsNothing);
+          expect(find.text('Sulama'), findsOneWidget);
+          expect(onDataChangedCagirildi, isTrue);
+          expect(repo.eklenenler, hasLength(1));
+          expect(repo.planliGorevEklemeSayisi, 1);
+        },
+      );
+
+      testWidgets('tamamlama işlemi ekstra addFaaliyet çağırmaz ve completePlanliGorev çağırır', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1400);
@@ -1046,77 +1005,34 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
 
-        final t = _tarla('t1', name: 'Örnek Tarla');
+        final planliGorev = _faaliyet(
+          id: 'task-complete-1',
+          tarlaId: 't1',
+          type: 'Ot Temizliği',
+          dueDate: _today(),
+        );
+
+        final repo = FakeFaaliyetRepository(planliGorevler: [planliGorev]);
 
         await tester.pumpWidget(
           _wrap(
-            tarlaRepo: FakeTarlaRepository([t]),
-            faaliyetRepo: FakeFaaliyetRepository(),
+            tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
+            faaliyetRepo: repo,
           ),
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-        );
+        expect(find.text('Ot Temizliği'), findsOneWidget);
+        expect(find.text('Tamamla'), findsOneWidget);
+
+        await tester.tap(find.text('Tamamla'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Örnek Tarla').last);
-        await tester.pumpAndSettle();
 
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Görev'),
-          'Sulama',
-        );
-
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pump(); // microtask flush
-        await tester.pump(); // render SnackBar
-
-        expect(find.text('Görev eklendi.'), findsOneWidget);
+        expect(repo.tamamlananGorevler, contains('task-complete-1'));
+        // Kesin kural: addFaaliyet veya addPlanliGorev çağrılmamalı
+        expect(repo.eklenenler, isEmpty);
+        expect(find.text('İş tamamlandı.'), findsOneWidget);
       });
-
-      testWidgets(
-        'backend hatası olduğunda hata SnackBar gösterilir ve kayıt başarılı sayılmaz',
-        (tester) async {
-          tester.view.physicalSize = const Size(800, 1400);
-          tester.view.devicePixelRatio = 1.0;
-          addTearDown(tester.view.resetPhysicalSize);
-          addTearDown(tester.view.resetDevicePixelRatio);
-
-          final t = _tarla('t1', name: 'Örnek Tarla');
-          final repo = FakeFaaliyetRepository(
-            addFaaliyetHata: Exception('Backend network error'),
-          );
-
-          await tester.pumpWidget(
-            _wrap(tarlaRepo: FakeTarlaRepository([t]), faaliyetRepo: repo),
-          );
-          await tester.pumpAndSettle();
-
-          await tester.tap(
-            find.widgetWithText(DropdownButtonFormField<Tarla>, 'Tarla seç'),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('Örnek Tarla').last);
-          await tester.pumpAndSettle();
-
-          await tester.enterText(
-            find.widgetWithText(TextFormField, 'Görev'),
-            'Sulama',
-          );
-
-          await tester.tap(find.text('Görevi Ekle'));
-          await tester.pumpAndSettle();
-
-          expect(
-            find.text(
-              'Görev eklenirken bir hata oluştu. Lütfen tekrar deneyin.',
-            ),
-            findsOneWidget,
-          );
-          expect(repo.eklenenler, isEmpty);
-        },
-      );
     });
 
     // ── Overflow / responsive ─────────────────────────────────────────────
@@ -1212,48 +1128,6 @@ void main() {
           expect(tester.takeException(), isNull);
         },
       );
-    });
-
-    // ── onDataChanged callback ────────────────────────────────────────────────
-    group('onDataChanged', () {
-      testWidgets('görev başarıyla eklenince onDataChanged çağrılır', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(800, 1400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        bool called = false;
-        final repo = FakeFaaliyetRepository();
-
-        await tester.pumpWidget(
-          _wrap(
-            tarlaRepo: FakeTarlaRepository([_tarla('t1', name: 'Tarla 1')]),
-            faaliyetRepo: repo,
-            onDataChanged: () => called = true,
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Tarla seç
-        await tester.tap(find.byType(DropdownButtonFormField<Tarla>));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Tarla 1').last);
-        await tester.pumpAndSettle();
-
-        // Görev adı yaz
-        await tester.enterText(
-          find.widgetWithText(TextFormField, 'Görev'),
-          'Test görevi',
-        );
-
-        // Görevi Ekle butonuna bas
-        await tester.tap(find.text('Görevi Ekle'));
-        await tester.pumpAndSettle();
-
-        expect(called, isTrue);
-      });
     });
   });
 }
