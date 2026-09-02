@@ -1,6 +1,10 @@
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
@@ -26,6 +30,7 @@ import 'services/sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _configureDevelopmentErrorLogging();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   final prefs = await SharedPreferences.getInstance();
   var firebaseReady = false;
@@ -40,6 +45,19 @@ Future<void> main() async {
       firebaseReady: firebaseReady,
     ),
   );
+}
+
+void _configureDevelopmentErrorLogging() {
+  if (!kDebugMode) return;
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('Flutter framework error: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    debugPrint('Unhandled application error: $error\n$stackTrace');
+    return false;
+  };
 }
 
 class TarimAsistaniApp extends StatefulWidget {
@@ -155,6 +173,9 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: const Locale('tr'),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('tr'), Locale('en')],
       navigatorKey: _navigatorKey,
       scaffoldMessengerKey: _messengerKey,
       title: 'Tarla Asistanı',
