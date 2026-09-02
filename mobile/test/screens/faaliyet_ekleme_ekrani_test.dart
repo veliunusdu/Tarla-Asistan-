@@ -12,8 +12,10 @@ import 'package:uuid/uuid.dart';
 // Fake repository
 // ---------------------------------------------------------------------------
 
-class FakeFaaliyetRepository implements FaaliyetRepository {
+class FakeFaaliyetRepository
+    implements FaaliyetRepository, PlanliGorevRepository {
   final List<Faaliyet> kayitlar = [];
+  final List<Faaliyet> planliGorevler = [];
   Object? _hataNeden;
 
   void hatayiAyarla(Object neden) => _hataNeden = neden;
@@ -26,6 +28,15 @@ class FakeFaaliyetRepository implements FaaliyetRepository {
     if (_hataNeden != null) throw _hataNeden!;
     kayitlar.add(faaliyet);
   }
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {
+    if (_hataNeden != null) throw _hataNeden!;
+    planliGorevler.add(gorev);
+  }
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() async => planliGorevler;
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
@@ -59,7 +70,7 @@ Future<void> _secilenTur(WidgetTester tester, String tur) async {
 void main() {
   group('FaaliyetEklemeEkrani', () {
     group('form doğrulama', () {
-      testWidgets('varsayılan olarak Tamamlandı seçilidir ve Planlandı butonu devre dışıdır', (
+      testWidgets('varsayılan olarak Tamamlandı seçilidir ve iki durum da seçilebilir', (
         tester,
       ) async {
         final repo = FakeFaaliyetRepository();
@@ -77,7 +88,7 @@ void main() {
           find.byType(SegmentedButton<bool>),
         );
         expect(segmentedBtn.selected, {true});
-        expect(segmentedBtn.segments[0].enabled, isFalse);
+        expect(segmentedBtn.segments[0].enabled, isTrue);
         expect(segmentedBtn.segments[1].enabled, isTrue);
       });
 
@@ -205,7 +216,7 @@ void main() {
 
     group('kaydetme davranışı', () {
       testWidgets(
-        'Planlandı modunda kayıt engellenir ve Planlı görev özelliği henüz kullanılamıyor uyarısı verilir',
+        'Planlandı modunda görev dueDate ile planlı görev repositorysine kaydedilir',
         (tester) async {
           final repo = FakeFaaliyetRepository();
           final yarin = DateTime.now().add(const Duration(days: 1));
@@ -231,10 +242,13 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(repo.kayitlar, isEmpty);
-          expect(
-            find.text('Planlı görev özelliği henüz kullanılamıyor.'),
-            findsOneWidget,
-          );
+          expect(repo.planliGorevler, hasLength(1));
+          final gorev = repo.planliGorevler.single;
+          expect(gorev.tarlaId, _tarlaId);
+          expect(gorev.type, 'Sulama');
+          expect(gorev.note, 'Planlanan sulama');
+          expect(gorev.isCompleted, isFalse);
+          expect(gorev.dueDate, beklenenGun);
         },
       );
 

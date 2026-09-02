@@ -147,32 +147,35 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
   Future<void> _kaydet() async {
     if (_kaydediliyor) return;
-    if (!_isCompleted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Planlı görev özelliği henüz kullanılamıyor.'),
-        ),
-      );
-      return;
-    }
     if (!_formKey.currentState!.validate()) return;
 
     if (_secilenTarih == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Lütfen gerçekleşme tarihini seçin.'),
+        SnackBar(
+          content: Text(
+            _isCompleted
+                ? 'Lütfen gerçekleşme tarihini seçin.'
+                : 'Lütfen planlanan tarihi seçin.',
+          ),
         ),
       );
       return;
     }
 
-    // Tarih aralığı kontrolü (yalnızca geçmiş veya bugün)
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (_secilenTarih!.isAfter(today)) {
+    if (_isCompleted && _secilenTarih!.isAfter(today)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gerçekleşme tarihi gelecek bir tarih olamaz.'),
+        ),
+      );
+      return;
+    }
+    if (!_isCompleted && _secilenTarih!.isBefore(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Planlanan tarih geçmiş bir tarih olamaz.'),
         ),
       );
       return;
@@ -185,20 +188,32 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       tarlaId: widget.tarlaId,
       type: _secilenTur!,
       note: _noteController.text.trim(),
-      timestamp: _secilenTarih!,
-      dueDate: null,
-      isCompleted: true,
+      timestamp: _isCompleted ? _secilenTarih! : DateTime.now(),
+      dueDate: _isCompleted ? null : _secilenTarih!,
+      isCompleted: _isCompleted,
     );
 
     try {
-      await widget._repo.addFaaliyet(faaliyet);
+      if (_isCompleted) {
+        await widget._repo.addFaaliyet(faaliyet);
+      } else {
+        final repository = widget._repo;
+        if (repository is! PlanliGorevRepository) {
+          throw StateError('Planlı görev kaydı desteklenmiyor.');
+        }
+        await (repository as PlanliGorevRepository).addPlanliGorev(faaliyet);
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (_) {
       if (mounted) {
         setState(() => _kaydediliyor = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Faaliyet kaydedilemedi. Lütfen tekrar deneyin.'),
+          SnackBar(
+            content: Text(
+              _isCompleted
+                  ? 'Faaliyet kaydedilemedi. Lütfen tekrar deneyin.'
+                  : 'Planlı görev kaydedilemedi. Lütfen tekrar deneyin.',
+            ),
           ),
         );
       }
@@ -274,10 +289,8 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                 segments: const [
                   ButtonSegment(
                     value: false,
-                    enabled: false,
                     label: Text('Planlandı'),
                     icon: Icon(Icons.event_note),
-                    tooltip: 'Planlı görev özelliği henüz kullanılamıyor',
                   ),
                   ButtonSegment(
                     value: true,
