@@ -74,7 +74,7 @@ class _AnaEkranState extends State<AnaEkran> {
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,
       ),
-      // 1 — Günlüğüm
+      // 1 — İş Planım
       TarlaGunluguEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
@@ -173,7 +173,7 @@ class _AnaEkranState extends State<AnaEkran> {
             NavigationDestination(
               icon: Icon(Icons.event_note_outlined),
               selectedIcon: Icon(Icons.event_note),
-              label: 'Günlüğüm',
+              label: 'İş Planım',
             ),
             NavigationDestination(
               icon: Icon(Icons.grass_outlined),

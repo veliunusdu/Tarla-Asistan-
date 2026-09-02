@@ -90,6 +90,31 @@ export type CaseStatus =
 
 export type CasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type TaskConfidence = "LOW" | "MEDIUM" | "HIGH";
+
+export type FarmTask = {
+  id: string;
+  farm_id: string;
+  title: string;
+  description: string;
+  reason: string;
+  priority: TaskPriority;
+  confidence: TaskConfidence;
+  due_date: string;
+  status: string;
+  source: "MANUAL" | "EXPERT";
+};
+
+export type CreateFarmTaskInput = {
+  title: string;
+  description: string;
+  reason: string;
+  priority: TaskPriority;
+  confidence: TaskConfidence;
+  dueDate: string;
+};
+
 export type MediaAsset = {
   id: string;
   kind: "IMAGE" | "AUDIO";
@@ -209,6 +234,20 @@ export function sendExpertResponse(caseId: string, body: string, closeCase: bool
       client_operation_id: crypto.randomUUID(),
       body,
       close_case: closeCase,
+    }),
+  });
+}
+
+export function createFarmTask(farmId: string, input: CreateFarmTaskInput) {
+  return authenticatedRequest<FarmTask>(`/farms/${farmId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify({
+      title: input.title,
+      description: input.description,
+      reason: input.reason,
+      priority: input.priority,
+      confidence: input.confidence,
+      dueDate: input.dueDate,
     }),
   });
 }

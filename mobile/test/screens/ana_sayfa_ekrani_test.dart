@@ -575,7 +575,7 @@ void main() {
         expect(find.byType(TarlaEklemeEkrani), findsOneWidget);
       });
 
-      testWidgets('tarla yokken Faaliyet Ekle SnackBar gösterir', (
+      testWidgets('tarla yokken İşlem Kaydı Ekle SnackBar gösterir', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1600);
@@ -592,14 +592,14 @@ void main() {
         );
         await tester.pumpAndSettle(); // tarla listesi yüklensin
 
-        await tester.tap(find.text('Faaliyet Ekle').first);
+        await tester.tap(find.text('İşlem Kaydı Ekle').first);
         await tester.pump();
 
         expect(find.textContaining('önce en az bir tarla'), findsOneWidget);
       });
 
       testWidgets(
-        '1 tarla varken Faaliyet Ekle doğrudan FaaliyetEklemeEkrani açar',
+        '1 tarla varken İşlem Kaydı Ekle doğrudan FaaliyetEklemeEkrani açar',
         (tester) async {
           tester.view.physicalSize = const Size(800, 1600);
           tester.view.devicePixelRatio = 1.0;
@@ -619,7 +619,7 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          await tester.tap(find.text('Faaliyet Ekle').first);
+          await tester.tap(find.text('İşlem Kaydı Ekle').first);
           await tester.pumpAndSettle();
 
           expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
@@ -631,7 +631,7 @@ void main() {
         },
       );
 
-      testWidgets('2+ tarla varken Faaliyet Ekle seçim ekranı açar', (
+      testWidgets('2+ tarla varken İşlem Kaydı Ekle seçim ekranı açar', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1600);
@@ -655,7 +655,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Faaliyet Ekle').first);
+        await tester.tap(find.text('İşlem Kaydı Ekle').first);
         await tester.pumpAndSettle();
 
         // Bottom sheet içinde tarla isimleri görünmeli

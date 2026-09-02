@@ -41,7 +41,6 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
     super.key,
     required this.tarlaId,
     FaaliyetRepository? faaliyetRepository,
-    @visibleForTesting this.initialIsCompleted = true,
     @visibleForTesting this.initialSelectedDate,
   }) : _repo = faaliyetRepository ?? const LocalFaaliyetRepository();
 
@@ -50,10 +49,6 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
 
   @visibleForTesting
   FaaliyetRepository get repositoryForTesting => _repo;
-
-  /// Only used in tests to pre-set state and avoid date picker interaction.
-  @visibleForTesting
-  final bool initialIsCompleted;
 
   /// Only used in tests to pre-set a date.
   @visibleForTesting
@@ -70,14 +65,12 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
   String? _secilenTur;
   DateTime? _secilenTarih;
-  bool _isCompleted = true;
   bool _isListening = false;
   bool _kaydediliyor = false;
 
   @override
   void initState() {
     super.initState();
-    _isCompleted = widget.initialIsCompleted;
     _secilenTarih = widget.initialSelectedDate;
     _initSpeech();
   }
@@ -114,29 +107,11 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    final DateTime firstDate;
-    final DateTime lastDate;
-    final DateTime initialDate;
-
-    if (_isCompleted) {
-      // Tamamlandı: yalnızca geçmiş ya da bugün seçilebilir
-      firstDate = DateTime(2000);
-      lastDate = today;
-      initialDate = _secilenTarih ?? today;
-    } else {
-      // Planlandı: yalnızca bugün ya da gelecek seçilebilir
-      firstDate = today;
-      lastDate = DateTime(now.year + 5);
-      initialDate = (_secilenTarih != null && !_secilenTarih!.isBefore(today))
-          ? _secilenTarih!
-          : today;
-    }
-
     final secilen = await showDatePicker(
       context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
+      initialDate: _secilenTarih ?? today,
+      firstDate: DateTime(2000),
+      lastDate: today,
       locale: const Locale('tr'),
     );
 
@@ -151,12 +126,8 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
     if (_secilenTarih == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isCompleted
-                ? 'Lütfen gerçekleşme tarihini seçin.'
-                : 'Lütfen planlanan tarihi seçin.',
-          ),
+        const SnackBar(
+          content: Text('Lütfen gerçekleşme tarihini seçin.'),
         ),
       );
       return;
@@ -164,7 +135,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (_isCompleted && _secilenTarih!.isAfter(today)) {
+    if (_secilenTarih!.isAfter(today)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Gerçekleşme tarihi gelecek bir tarih olamaz.'),
@@ -172,15 +143,6 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       );
       return;
     }
-    if (!_isCompleted && _secilenTarih!.isBefore(today)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Planlanan tarih geçmiş bir tarih olamaz.'),
-        ),
-      );
-      return;
-    }
-
     setState(() => _kaydediliyor = true);
 
     final faaliyet = Faaliyet(
@@ -188,32 +150,20 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
       tarlaId: widget.tarlaId,
       type: _secilenTur!,
       note: _noteController.text.trim(),
-      timestamp: _isCompleted ? _secilenTarih! : DateTime.now(),
-      dueDate: _isCompleted ? null : _secilenTarih!,
-      isCompleted: _isCompleted,
+      timestamp: _secilenTarih!,
+      dueDate: null,
+      isCompleted: true,
     );
 
     try {
-      if (_isCompleted) {
-        await widget._repo.addFaaliyet(faaliyet);
-      } else {
-        final repository = widget._repo;
-        if (repository is! PlanliGorevRepository) {
-          throw StateError('Planlı görev kaydı desteklenmiyor.');
-        }
-        await (repository as PlanliGorevRepository).addPlanliGorev(faaliyet);
-      }
+      await widget._repo.addFaaliyet(faaliyet);
       if (mounted) Navigator.pop(context, true);
     } catch (_) {
       if (mounted) {
         setState(() => _kaydediliyor = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isCompleted
-                  ? 'Faaliyet kaydedilemedi. Lütfen tekrar deneyin.'
-                  : 'Planlı görev kaydedilemedi. Lütfen tekrar deneyin.',
-            ),
+          const SnackBar(
+            content: Text('Faaliyet kaydedilemedi. Lütfen tekrar deneyin.'),
           ),
         );
       }
@@ -229,7 +179,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Faaliyet Ekle')),
+      appBar: AppBar(title: const Text('İşlem Kaydı Ekle')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Form(
@@ -282,42 +232,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // ── Durum seçimi ──────────────────────────────────────────────
-              Text('Durum', style: theme.textTheme.labelLarge),
-              const SizedBox(height: AppSpacing.xs),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                    value: false,
-                    label: Text('Planlandı'),
-                    icon: Icon(Icons.event_note),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    label: Text('Tamamlandı'),
-                    icon: Icon(Icons.check_circle_outline),
-                  ),
-                ],
-                selected: {_isCompleted},
-                onSelectionChanged: _kaydediliyor
-                    ? null
-                    : (Set<bool> s) => setState(() {
-                        _isCompleted = s.first;
-                        _secilenTarih = null;
-                      }),
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
               // ── Tarih seçimi ──────────────────────────────────────────────
               InkWell(
                 onTap: _kaydediliyor ? null : _tarihSec,
                 borderRadius: BorderRadius.circular(12),
                 child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: _isCompleted
-                        ? 'Gerçekleşme Tarihi'
-                        : 'Planlanan Tarih',
+                  decoration: const InputDecoration(
+                    labelText: 'Gerçekleşme Tarihi',
                     prefixIcon: const Icon(Icons.calendar_today),
                   ),
                   child: Text(

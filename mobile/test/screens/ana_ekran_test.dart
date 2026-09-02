@@ -113,7 +113,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Günlüğüm'),
+          matching: find.text('İş Planım'),
         ),
         findsOneWidget,
       );
@@ -147,7 +147,7 @@ void main() {
     });
 
     testWidgets(
-      'Günlüğüm sekmesine geçilince TarlaGunluguEkrani gösterilir (index 1)',
+      'İş Planım sekmesine geçilince TarlaGunluguEkrani gösterilir (index 1)',
       (tester) async {
         await tester.pumpWidget(_wrap());
         await tester.pump();
@@ -155,7 +155,7 @@ void main() {
         await tester.tap(
           find.descendant(
             of: find.byType(NavigationBar),
-            matching: find.text('Günlüğüm'),
+            matching: find.text('İş Planım'),
           ),
         );
         await tester.pumpAndSettle();
@@ -217,11 +217,11 @@ void main() {
         0,
       );
 
-      // Günlüğüm → 1
+      // İş Planım → 1
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Günlüğüm'),
+          matching: find.text('İş Planım'),
         ),
       );
       await tester.pumpAndSettle();
@@ -343,7 +343,7 @@ void main() {
     );
 
     testWidgets(
-      'onGunlukSekme callback\'i Günlüğüm sekmesine (index 1) geçer',
+      'onGunlukSekme callback\'i İş Planım sekmesine (index 1) geçer',
       (tester) async {
         await tester.pumpWidget(_wrap());
         await tester.pump();
@@ -351,7 +351,7 @@ void main() {
         await tester.tap(
           find.descendant(
             of: find.byType(NavigationBar),
-            matching: find.text('Günlüğüm'),
+            matching: find.text('İş Planım'),
           ),
         );
         await tester.pumpAndSettle();

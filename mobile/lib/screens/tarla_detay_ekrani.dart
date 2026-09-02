@@ -32,6 +32,16 @@ String _tarihStr(DateTime dt) =>
 bool _konumYok(double? lat, double? lng) =>
     lat == null || lng == null || (lat == 0.0 && lng == 0.0);
 
+class _TarlaDetayVerisi {
+  const _TarlaDetayVerisi({
+    required this.faaliyetler,
+    required this.planliGorevler,
+  });
+
+  final List<Faaliyet> faaliyetler;
+  final List<Faaliyet> planliGorevler;
+}
+
 class TarlaDetayEkrani extends StatefulWidget {
   const TarlaDetayEkrani({
     super.key,
@@ -57,14 +67,15 @@ class TarlaDetayEkrani extends StatefulWidget {
 class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  late Future<List<Faaliyet>> _faaliyetler;
+  late Future<_TarlaDetayVerisi> _veri;
   bool _archiving = false;
+  String? _tamamlananGorevId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _faaliyetler = widget._faaliyetRepository.getFaaliyetler(widget.tarla.id);
+    _veri = _yukle();
   }
 
   @override
@@ -75,8 +86,26 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
 
   void _yenile() {
     setState(() {
-      _faaliyetler = widget._faaliyetRepository.getFaaliyetler(widget.tarla.id);
+      _veri = _yukle();
     });
+  }
+
+  Future<_TarlaDetayVerisi> _yukle() async {
+    final repository = widget._faaliyetRepository;
+    final faaliyetlerFuture = repository.getFaaliyetler(widget.tarla.id);
+    final planliGorevlerFuture = repository is PlanliGorevRepository
+        ? (repository as PlanliGorevRepository).getPlanliGorevler()
+        : Future.value(<Faaliyet>[]);
+
+    final faaliyetler = await faaliyetlerFuture;
+    final planliGorevler = (await planliGorevlerFuture)
+        .where((gorev) => gorev.tarlaId == widget.tarla.id)
+        .toList();
+
+    return _TarlaDetayVerisi(
+      faaliyetler: faaliyetler.where((faaliyet) => faaliyet.isCompleted).toList(),
+      planliGorevler: planliGorevler,
+    );
   }
 
   Future<void> _deleteFaaliyet(String id) async {
@@ -92,6 +121,31 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           content: Text('Faaliyet silinemedi. Lütfen tekrar deneyin.'),
         ),
       );
+    }
+  }
+
+  Future<void> _goreviTamamla(Faaliyet gorev) async {
+    final repository = widget._faaliyetRepository;
+    if (repository is! PlanliGorevCompletionRepository) return;
+
+    setState(() => _tamamlananGorevId = gorev.id);
+    try {
+      await (repository as PlanliGorevCompletionRepository)
+          .completePlanliGorev(gorev.id, note: gorev.note);
+      if (!mounted) return;
+      _yenile();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('İş tamamlandı.')));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('İş tamamlanamadı. Lütfen tekrar deneyin.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _tamamlananGorevId = null);
     }
   }
 
@@ -166,8 +220,8 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Yapılacaklar', icon: Icon(Icons.event_note)),
-            Tab(text: 'Geçmiş', icon: Icon(Icons.history)),
+            Tab(text: 'Planlı İşler', icon: Icon(Icons.event_note)),
+            Tab(text: 'Faaliyet Geçmişi', icon: Icon(Icons.history)),
           ],
         ),
       ),
@@ -182,7 +236,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           Expanded(child: _faaliyetTabView()),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         onPressed: () async {
@@ -197,14 +251,15 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           );
           if (result == true) _yenile();
         },
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('İşlem Kaydet'),
       ),
     );
   }
 
   Widget _faaliyetTabView() {
-    return FutureBuilder<List<Faaliyet>>(
-      future: _faaliyetler,
+    return FutureBuilder<_TarlaDetayVerisi>(
+      future: _veri,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const AppLoadingView(message: 'Faaliyetler yükleniyor…');
@@ -214,22 +269,24 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
           return AppErrorView(onRetry: _yenile);
         }
 
-        final all = snapshot.data ?? [];
-        final yapilacaklar = all.where((f) => !f.isCompleted).toList();
-        final gecmis = all.where((f) => f.isCompleted).toList();
+        final veri = snapshot.data;
+        if (veri == null) return const SizedBox.shrink();
 
         return TabBarView(
           controller: _tabController,
           children: [
             _FaaliyetListesi(
-              faaliyetler: yapilacaklar,
+              faaliyetler: veri.planliGorevler,
               isGecmis: false,
-              onDelete: widget._faaliyetRepository is FaaliyetDeleteRepository
-                  ? _deleteFaaliyet
+              onDelete: null,
+              completingId: _tamamlananGorevId,
+              onComplete: widget._faaliyetRepository
+                      is PlanliGorevCompletionRepository
+                  ? _goreviTamamla
                   : null,
             ),
             _FaaliyetListesi(
-              faaliyetler: gecmis,
+              faaliyetler: veri.faaliyetler,
               isGecmis: true,
               onDelete: widget._faaliyetRepository is FaaliyetDeleteRepository
                   ? _deleteFaaliyet
@@ -353,11 +410,15 @@ class _FaaliyetListesi extends StatelessWidget {
     required this.faaliyetler,
     required this.isGecmis,
     required this.onDelete,
+    this.onComplete,
+    this.completingId,
   });
 
   final List<Faaliyet> faaliyetler;
   final bool isGecmis;
   final Future<void> Function(String id)? onDelete;
+  final Future<void> Function(Faaliyet faaliyet)? onComplete;
+  final String? completingId;
 
   @override
   Widget build(BuildContext context) {
@@ -366,10 +427,10 @@ class _FaaliyetListesi extends StatelessWidget {
         icon: isGecmis ? Icons.history : Icons.event_note,
         title: isGecmis
             ? 'Henüz geçmiş faaliyet yok.'
-            : 'Planlanmış faaliyet yok.',
+            : 'Planlı iş yok.',
         description: isGecmis
             ? 'Tamamlanan faaliyetler burada görünecek.'
-            : 'Faaliyet eklemek için + butonuna dokunun.',
+            : 'İş Planım ekranından yeni iş ekleyebilirsiniz.',
       );
     }
 
@@ -384,6 +445,8 @@ class _FaaliyetListesi extends StatelessWidget {
           faaliyet: faaliyetler[index],
           isGecmis: isGecmis,
           onDelete: onDelete,
+          onComplete: onComplete,
+          completing: completingId == faaliyetler[index].id,
         );
       },
     );
@@ -395,11 +458,15 @@ class _FaaliyetKarti extends StatelessWidget {
     required this.faaliyet,
     required this.isGecmis,
     required this.onDelete,
+    this.onComplete,
+    this.completing = false,
   });
 
   final Faaliyet faaliyet;
   final bool isGecmis;
   final Future<void> Function(String id)? onDelete;
+  final Future<void> Function(Faaliyet faaliyet)? onComplete;
+  final bool completing;
 
   @override
   Widget build(BuildContext context) {
@@ -456,13 +523,26 @@ class _FaaliyetKarti extends StatelessWidget {
               ),
           ],
         ),
-        trailing: onDelete == null
+        trailing: isGecmis
+            ? onDelete == null
+                  ? null
+                  : IconButton(
+                      tooltip: 'Faaliyeti sil',
+                      icon: const Icon(Icons.delete_outline),
+                      color: AppColors.textDisabled,
+                      onPressed: () => onDelete!(faaliyet.id),
+                    )
+            : onComplete == null
             ? null
-            : IconButton(
-                tooltip: 'Faaliyeti sil',
-                icon: const Icon(Icons.delete_outline),
-                color: AppColors.textDisabled,
-                onPressed: () => onDelete!(faaliyet.id),
+            : TextButton.icon(
+                onPressed: completing ? null : () => onComplete!(faaliyet),
+                icon: completing
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: const Text('Tamamla'),
               ),
       ),
     );

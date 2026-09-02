@@ -57,11 +57,18 @@ class FakeFaaliyetRepository
         PlanliGorevCompletionRepository {
   FakeFaaliyetRepository({
     List<Faaliyet>? faaliyetler,
+    List<Faaliyet>? planliGorevler,
     this.hata,
     this.addFaaliyetHata,
-  }) : _faaliyetler = faaliyetler?.toList() ?? [];
+  }) : _faaliyetler = faaliyetler?.toList() ?? [],
+       _planliGorevler =
+           planliGorevler?.toList() ??
+           (faaliyetler ?? const <Faaliyet>[])
+               .where((faaliyet) => !faaliyet.isCompleted)
+               .toList();
 
   final List<Faaliyet> _faaliyetler;
+  final List<Faaliyet> _planliGorevler;
   final Object? hata;
   final Object? addFaaliyetHata;
 
@@ -87,7 +94,10 @@ class FakeFaaliyetRepository
   }
 
   @override
-  Future<List<Faaliyet>> getPlanliGorevler() async => [];
+  Future<List<Faaliyet>> getPlanliGorevler() async => [
+    ..._planliGorevler,
+    ...eklenenler,
+  ];
 
   @override
   Future<void> completePlanliGorev(String id, {String? note}) async {
@@ -293,8 +303,8 @@ void main() {
 
         expect(find.byType(FilterChip), findsNWidgets(4));
         expect(find.text('Bugün'), findsOneWidget);
-        expect(find.text('Planlanan'), findsOneWidget);
-        expect(find.text('Tamamlanan'), findsOneWidget);
+        expect(find.text('Yaklaşan'), findsOneWidget);
+        expect(find.text('Geciken'), findsOneWidget);
         expect(find.text('Tümü'), findsOneWidget);
         expect(find.byType(SegmentedButton), findsNothing);
       });
@@ -331,6 +341,43 @@ void main() {
 
     // ── Filtreler ─────────────────────────────────────────────────────────
     group('filtreler', () {
+      testWidgets('İş Planım tamamlanmış faaliyetleri göstermez', (tester) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final planliGorev = _faaliyet(
+          id: 'task-1',
+          tarlaId: 't1',
+          type: 'Yarın sulama',
+          dueDate: _tomorrow(),
+        );
+        final tamamlanmisFaaliyet = _faaliyet(
+          id: 'activity-1',
+          tarlaId: 't1',
+          type: 'Dün gübreleme',
+          isCompleted: true,
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            tarlaRepo: FakeTarlaRepository([_tarla('t1')]),
+            faaliyetRepo: FakeFaaliyetRepository(
+              faaliyetler: [tamamlanmisFaaliyet],
+              planliGorevler: [planliGorev],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Tümü'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Yarın sulama'), findsOneWidget);
+        expect(find.text('Dün gübreleme'), findsNothing);
+      });
+
       testWidgets('Bugün filtresi varsayılan seçilidir', (tester) async {
         await tester.pumpWidget(
           _wrap(
@@ -426,7 +473,7 @@ void main() {
         expect(find.text('Görev Ekle'), findsOneWidget);
       });
 
-      testWidgets('Planlanan filtresi yalnızca isCompleted=false gösterir', (
+      testWidgets('Yaklaşan filtresi yalnızca ileri tarihli işleri gösterir', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1400);
@@ -450,8 +497,7 @@ void main() {
                   id: 'f2',
                   tarlaId: 't1',
                   type: 'Gübreleme',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
+                  dueDate: _today().subtract(const Duration(days: 1)),
                 ),
               ],
             ),
@@ -459,14 +505,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Planlanan'));
+        await tester.tap(find.text('Yaklaşan'));
         await tester.pumpAndSettle();
 
         expect(find.text('Sulama'), findsOneWidget);
         expect(find.text('Gübreleme'), findsNothing);
       });
 
-      testWidgets('Tamamlanan filtresi yalnızca isCompleted=true gösterir', (
+      testWidgets('Geciken filtresi yalnızca gecikmiş işleri gösterir', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1400);
@@ -483,15 +529,13 @@ void main() {
                   id: 'f1',
                   tarlaId: 't1',
                   type: 'Sulama',
-                  isCompleted: false,
                   dueDate: _tomorrow(),
                 ),
                 _faaliyet(
                   id: 'f2',
                   tarlaId: 't1',
                   type: 'Gübreleme',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
+                  dueDate: _today().subtract(const Duration(days: 1)),
                 ),
               ],
             ),
@@ -499,14 +543,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Tamamlanan'));
+        await tester.tap(find.text('Geciken'));
         await tester.pumpAndSettle();
 
         expect(find.text('Gübreleme'), findsOneWidget);
         expect(find.text('Sulama'), findsNothing);
       });
 
-      testWidgets('Tümü filtresi tüm kayıtları gösterir', (tester) async {
+      testWidgets('Tümü filtresi tüm açık planlı işleri gösterir', (tester) async {
         tester.view.physicalSize = const Size(800, 1400);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -528,8 +572,7 @@ void main() {
                   id: 'f2',
                   tarlaId: 't1',
                   type: 'Gübreleme',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
+                  dueDate: _today().subtract(const Duration(days: 1)),
                 ),
               ],
             ),
@@ -544,7 +587,7 @@ void main() {
         expect(find.text('Gübreleme'), findsOneWidget);
       });
 
-      testWidgets('Tamamlanan boş durumda uygun mesaj gösterilir', (
+      testWidgets('Geciken boş durumda uygun mesaj gösterilir', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(800, 1400);
@@ -569,11 +612,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Tamamlanan'));
+        await tester.tap(find.text('Geciken'));
         await tester.pumpAndSettle();
 
         expect(
-          find.textContaining('Henüz tamamlanmış faaliyet bulunmuyor'),
+          find.textContaining('Geciken iş bulunmuyor'),
           findsOneWidget,
         );
       });
@@ -613,7 +656,7 @@ void main() {
 
     // ── Sıralama ──────────────────────────────────────────────────────────
     group('sıralama', () {
-      testWidgets('Tamamlanan en yeniden eskiye sıralanır', (tester) async {
+      testWidgets('Geciken işler en eski tarihten başlayarak sıralanır', (tester) async {
         tester.view.physicalSize = const Size(800, 1400);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(tester.view.resetPhysicalSize);
@@ -623,15 +666,13 @@ void main() {
           id: 'f1',
           tarlaId: 't1',
           type: 'Sulama',
-          isCompleted: true,
-          timestamp: DateTime(2024, 1),
+          dueDate: _today().subtract(const Duration(days: 2)),
         );
         final yeni = _faaliyet(
           id: 'f2',
           tarlaId: 't1',
           type: 'Gübreleme',
-          isCompleted: true,
-          timestamp: DateTime(2024, 6),
+          dueDate: _today().subtract(const Duration(days: 1)),
         );
 
         await tester.pumpWidget(
@@ -642,13 +683,13 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Tamamlanan'));
+        await tester.tap(find.text('Geciken'));
         await tester.pumpAndSettle();
 
         final sulamaPos = tester.getTopLeft(find.text('Sulama')).dy;
         final gubrePos = tester.getTopLeft(find.text('Gübreleme')).dy;
-        // Gübreleme (yeni) daha yukarıda olmalı
-        expect(gubrePos, lessThan(sulamaPos));
+        // Sulama daha eski tarihli olduğu için daha yukarıda olmalı.
+        expect(sulamaPos, lessThan(gubrePos));
       });
     });
 
@@ -674,15 +715,13 @@ void main() {
                   id: 'f1',
                   tarlaId: 't1',
                   type: 'Sulama',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
+                  dueDate: _tomorrow(),
                 ),
                 _faaliyet(
                   id: 'f2',
                   tarlaId: 't2',
                   type: 'Gübreleme',
-                  isCompleted: true,
-                  timestamp: DateTime(2024, 6),
+                  dueDate: _tomorrow(),
                 ),
               ],
             ),
@@ -714,8 +753,7 @@ void main() {
                   id: 'f1',
                   tarlaId: 'yok',
                   type: 'Test',
-                  isCompleted: true,
-                  timestamp: DateTime(2024),
+                  dueDate: _tomorrow(),
                 ),
               ],
             ),
@@ -745,8 +783,7 @@ void main() {
               id: 'f1',
               tarlaId: 't1',
               type: 'Sulama',
-              isCompleted: true,
-              timestamp: DateTime(2024, 6),
+              dueDate: _tomorrow(),
             ),
           ],
         );
@@ -810,7 +847,7 @@ void main() {
         expect(find.byType(TarlaEklemeEkrani), findsOneWidget);
       });
 
-      testWidgets('Günlüğümden eklenen tarla supplied repositoryye kaydolur', (
+      testWidgets('İş Planım ekranından eklenen tarla supplied repositoryye kaydolur', (
         tester,
       ) async {
         final farms = RecordingTarlaRepository();
@@ -1225,7 +1262,8 @@ void main() {
 // Helper fakes
 // ---------------------------------------------------------------------------
 
-class _SlowFaaliyetRepository implements FaaliyetRepository {
+class _SlowFaaliyetRepository
+    implements FaaliyetRepository, PlanliGorevRepository {
   _SlowFaaliyetRepository(this._future);
   final Future<List<Faaliyet>> _future;
 
@@ -1234,14 +1272,19 @@ class _SlowFaaliyetRepository implements FaaliyetRepository {
   @override
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
   @override
-  Future<List<Faaliyet>> getTumFaaliyetler() => _future;
+  Future<List<Faaliyet>> getTumFaaliyetler() => Future.value([]);
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() => _future;
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {}
   @override
   Future<void> deleteFaaliyet(String id) async {}
   @override
   Future<void> markAsCompleted(String id) async {}
 }
 
-class _CountingFaaliyetRepo implements FaaliyetRepository {
+class _CountingFaaliyetRepo
+    implements FaaliyetRepository, PlanliGorevRepository {
   _CountingFaaliyetRepo(this._fn);
   final Future<List<Faaliyet>> Function() _fn;
 
@@ -1250,7 +1293,11 @@ class _CountingFaaliyetRepo implements FaaliyetRepository {
   @override
   Future<void> addFaaliyet(Faaliyet faaliyet) async {}
   @override
-  Future<List<Faaliyet>> getTumFaaliyetler() => _fn();
+  Future<List<Faaliyet>> getTumFaaliyetler() => Future.value([]);
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() => _fn();
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {}
   @override
   Future<void> deleteFaaliyet(String id) async {}
   @override

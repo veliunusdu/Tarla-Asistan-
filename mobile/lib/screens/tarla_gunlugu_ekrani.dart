@@ -51,7 +51,7 @@ bool _bugunMu(DateTime dt) {
 // Filtre
 // ---------------------------------------------------------------------------
 
-enum _Filtre { bugun, planlanan, tamamlanan, tumu }
+enum _Filtre { bugun, yaklasan, geciken, tumu }
 
 // ---------------------------------------------------------------------------
 // Günlük kayıt — faaliyet + eşleşen tarla adı
@@ -140,16 +140,14 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   Future<(List<Tarla>, List<_GunlukKayit>)> _yukle() async {
     final repository = widget._faaliyetRepo;
     final tarlalarFuture = widget._tarlaRepo.getTarlalar();
-    final faaliyetlerFuture = repository.getTumFaaliyetler();
     final planliGorevlerFuture = repository is PlanliGorevRepository
         ? (repository as PlanliGorevRepository).getPlanliGorevler()
         : Future.value(<Faaliyet>[]);
 
     final tarlalar = await tarlalarFuture;
-    final faaliyetler = [
-      ...await faaliyetlerFuture,
-      ...await planliGorevlerFuture,
-    ];
+    // İş Planım yalnızca açık planlı görevleri gösterir. Tamamlanan işler
+    // backend tarafından faaliyet geçmişine taşınır ve burada tekrar edilmez.
+    final faaliyetler = await planliGorevlerFuture;
 
     // Seçili tarla silinmişse sıfırla
     if (_seciliTarla != null &&
@@ -192,22 +190,27 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
           }).toList()
           ..sort((a, b) => a.faaliyet.dueDate!.compareTo(b.faaliyet.dueDate!));
 
-      case _Filtre.planlanan:
-        return kayitlar.where((k) => !k.faaliyet.isCompleted).toList()
+      case _Filtre.yaklasan:
+        return kayitlar.where((k) {
+            final due = k.faaliyet.dueDate;
+            return due != null && due.isAfter(_todayDate());
+          }).toList()
           ..sort((a, b) {
             final da = a.faaliyet.dueDate ?? a.faaliyet.timestamp;
             final db = b.faaliyet.dueDate ?? b.faaliyet.timestamp;
             return da.compareTo(db);
           });
 
-      case _Filtre.tamamlanan:
-        return kayitlar.where((k) => k.faaliyet.isCompleted).toList()..sort(
-          (a, b) => b.faaliyet.timestamp.compareTo(a.faaliyet.timestamp),
-        );
+      case _Filtre.geciken:
+        return kayitlar.where((k) {
+            final due = k.faaliyet.dueDate;
+            return due != null && due.isBefore(_todayDate());
+          }).toList()
+          ..sort((a, b) => a.faaliyet.dueDate!.compareTo(b.faaliyet.dueDate!));
 
       case _Filtre.tumu:
         return List<_GunlukKayit>.from(kayitlar)
-          ..sort((a, b) => b.referansTarih.compareTo(a.referansTarih));
+          ..sort((a, b) => a.referansTarih.compareTo(b.referansTarih));
     }
   }
 
@@ -329,7 +332,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Günlüğüm')),
+      appBar: AppBar(title: const Text('İş Planım')),
       body: FutureBuilder<(List<Tarla>, List<_GunlukKayit>)>(
         future: _veri,
         builder: (context, snapshot) {
@@ -441,7 +444,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Günlük işlerini planla ve faaliyet geçmişini takip et.',
+          'Yaklaşan işlerini planla ve takip et.',
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -463,7 +466,7 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
-                    'Planlı görevler ve tamamlanan faaliyetler hesabınızla eşitlenir.',
+                    'Planlı işler hesabınla eşitlenir. Tamamlanan işler faaliyet geçmişine eklenir.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSecondaryContainer,
                     ),
@@ -481,10 +484,10 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
 
   String _listeBasligi() {
     return switch (_filtre) {
-      _Filtre.bugun => 'Bugünün Görevleri',
-      _Filtre.planlanan => 'Planlanan Görevler',
-      _Filtre.tamamlanan => 'Tamamlanan Görevler',
-      _Filtre.tumu => 'Tüm Faaliyetler',
+      _Filtre.bugun => 'Bugünün İşleri',
+      _Filtre.yaklasan => 'Yaklaşan İşler',
+      _Filtre.geciken => 'Geciken İşler',
+      _Filtre.tumu => 'Tüm Planlı İşler',
     };
   }
 
@@ -498,20 +501,20 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
         actionLabel: 'Görev Ekle',
         onAction: _scrollToForm,
       ),
-      _Filtre.planlanan => const AppEmptyView(
+      _Filtre.yaklasan => const AppEmptyView(
         icon: Icons.event_available,
-        title: 'Planlanmış görev bulunmuyor.',
-        description: 'Yeni bir görev ekleyerek planlama yapabilirsiniz.',
+        title: 'Yaklaşan iş bulunmuyor.',
+        description: 'Yeni bir iş ekleyerek planlama yapabilirsiniz.',
       ),
-      _Filtre.tamamlanan => const AppEmptyView(
-        icon: Icons.check_circle_outline,
-        title: 'Henüz tamamlanmış faaliyet bulunmuyor.',
-        description: 'Tamamladığınız görevler burada görünecek.',
+      _Filtre.geciken => const AppEmptyView(
+        icon: Icons.event_busy_outlined,
+        title: 'Geciken iş bulunmuyor.',
+        description: 'Planındaki işlerin tamamı güncel.',
       ),
       _Filtre.tumu => const AppEmptyView(
-        icon: Icons.book_outlined,
-        title: 'Henüz faaliyet kaydı bulunmuyor.',
-        description: 'Görev ekleyerek başlayabilirsiniz.',
+        icon: Icons.event_note_outlined,
+        title: 'Henüz planlı iş bulunmuyor.',
+        description: 'İş ekleyerek başlayabilirsiniz.',
       ),
     };
   }
@@ -726,9 +729,9 @@ class _FiltreCubugu extends StatelessWidget {
         children: [
           _chip(_Filtre.bugun, 'Bugün'),
           const SizedBox(width: AppSpacing.sm),
-          _chip(_Filtre.planlanan, 'Planlanan'),
+          _chip(_Filtre.yaklasan, 'Yaklaşan'),
           const SizedBox(width: AppSpacing.sm),
-          _chip(_Filtre.tamamlanan, 'Tamamlanan'),
+          _chip(_Filtre.geciken, 'Geciken'),
           const SizedBox(width: AppSpacing.sm),
           _chip(_Filtre.tumu, 'Tümü'),
         ],

@@ -12,10 +12,8 @@ import 'package:uuid/uuid.dart';
 // Fake repository
 // ---------------------------------------------------------------------------
 
-class FakeFaaliyetRepository
-    implements FaaliyetRepository, PlanliGorevRepository {
+class FakeFaaliyetRepository implements FaaliyetRepository {
   final List<Faaliyet> kayitlar = [];
-  final List<Faaliyet> planliGorevler = [];
   Object? _hataNeden;
 
   void hatayiAyarla(Object neden) => _hataNeden = neden;
@@ -28,15 +26,6 @@ class FakeFaaliyetRepository
     if (_hataNeden != null) throw _hataNeden!;
     kayitlar.add(faaliyet);
   }
-
-  @override
-  Future<void> addPlanliGorev(Faaliyet gorev) async {
-    if (_hataNeden != null) throw _hataNeden!;
-    planliGorevler.add(gorev);
-  }
-
-  @override
-  Future<List<Faaliyet>> getPlanliGorevler() async => planliGorevler;
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
@@ -70,7 +59,7 @@ Future<void> _secilenTur(WidgetTester tester, String tur) async {
 void main() {
   group('FaaliyetEklemeEkrani', () {
     group('form doğrulama', () {
-      testWidgets('varsayılan olarak Tamamlandı seçilidir ve iki durum da seçilebilir', (
+      testWidgets('yalnızca gerçekleşen işlem kaydeder ve planlı durum seçicisini göstermez', (
         tester,
       ) async {
         final repo = FakeFaaliyetRepository();
@@ -84,12 +73,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final segmentedBtn = tester.widget<SegmentedButton<bool>>(
-          find.byType(SegmentedButton<bool>),
-        );
-        expect(segmentedBtn.selected, {true});
-        expect(segmentedBtn.segments[0].enabled, isTrue);
-        expect(segmentedBtn.segments[1].enabled, isTrue);
+        expect(find.text('İşlem Kaydı Ekle'), findsOneWidget);
+        expect(find.byType(SegmentedButton<bool>), findsNothing);
+        expect(find.text('Gerçekleşme Tarihi'), findsOneWidget);
       });
 
       testWidgets('faaliyet türü seçilmeden kayıt yapılmaz', (tester) async {
@@ -126,7 +112,6 @@ void main() {
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: repo,
-              initialIsCompleted: true,
               initialSelectedDate: bugun,
             ),
           ),
@@ -192,7 +177,6 @@ void main() {
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: repo,
-              initialIsCompleted: true,
               initialSelectedDate: yarin,
             ),
           ),
@@ -216,43 +200,6 @@ void main() {
 
     group('kaydetme davranışı', () {
       testWidgets(
-        'Planlandı modunda görev dueDate ile planlı görev repositorysine kaydedilir',
-        (tester) async {
-          final repo = FakeFaaliyetRepository();
-          final yarin = DateTime.now().add(const Duration(days: 1));
-          final beklenenGun = DateTime(yarin.year, yarin.month, yarin.day);
-
-          await tester.pumpWidget(
-            _wrap(
-              FaaliyetEklemeEkrani(
-                tarlaId: _tarlaId,
-                faaliyetRepository: repo,
-                initialIsCompleted: false,
-                initialSelectedDate: beklenenGun,
-              ),
-            ),
-          );
-
-          await _secilenTur(tester, 'Sulama');
-          await tester.enterText(
-            find.widgetWithText(TextFormField, 'Faaliyet Açıklaması'),
-            'Planlanan sulama',
-          );
-          await tester.tap(find.text('Kaydet'));
-          await tester.pumpAndSettle();
-
-          expect(repo.kayitlar, isEmpty);
-          expect(repo.planliGorevler, hasLength(1));
-          final gorev = repo.planliGorevler.single;
-          expect(gorev.tarlaId, _tarlaId);
-          expect(gorev.type, 'Sulama');
-          expect(gorev.note, 'Planlanan sulama');
-          expect(gorev.isCompleted, isFalse);
-          expect(gorev.dueDate, beklenenGun);
-        },
-      );
-
-      testWidgets(
         'Tamamlandı faaliyeti isCompleted:true, dueDate:null ve UUID id ile kaydedilir',
         (tester) async {
           final repo = FakeFaaliyetRepository();
@@ -267,7 +214,6 @@ void main() {
               FaaliyetEklemeEkrani(
                 tarlaId: _tarlaId,
                 faaliyetRepository: repo,
-                initialIsCompleted: true,
                 initialSelectedDate: bugun,
               ),
             ),
@@ -305,7 +251,6 @@ void main() {
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: slowRepo,
-              initialIsCompleted: true,
               initialSelectedDate: bugun,
             ),
           ),
@@ -346,7 +291,6 @@ void main() {
             FaaliyetEklemeEkrani(
               tarlaId: _tarlaId,
               faaliyetRepository: repo,
-              initialIsCompleted: true,
               initialSelectedDate: bugun,
             ),
           ),

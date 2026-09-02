@@ -726,7 +726,7 @@ class _HizliIslemlerSection extends StatelessWidget {
             ),
             _HizliIslemButonu(
               icon: Icons.add_task,
-              label: 'Faaliyet Ekle',
+              label: 'İşlem Kaydı Ekle',
               onTap: onFaaliyetEkle,
             ),
             _HizliIslemButonu(

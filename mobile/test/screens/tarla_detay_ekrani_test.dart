@@ -14,11 +14,18 @@ import 'package:mobile/screens/tarla_detay_ekrani.dart';
 // ---------------------------------------------------------------------------
 
 class FakeFaaliyetRepository
-    implements FaaliyetRepository, FaaliyetDeleteRepository {
-  FakeFaaliyetRepository(this._future);
+    implements
+        FaaliyetRepository,
+        FaaliyetDeleteRepository,
+        PlanliGorevRepository,
+        PlanliGorevCompletionRepository {
+  FakeFaaliyetRepository(this._future, {Future<List<Faaliyet>>? planliGorevler})
+    : _planliGorevler = planliGorevler ?? Future.value([]);
 
   final Future<List<Faaliyet>> _future;
+  final Future<List<Faaliyet>> _planliGorevler;
   final List<String> deletedIds = [];
+  final List<String> completedIds = [];
 
   @override
   Future<List<Faaliyet>> getFaaliyetler(String tarlaId) => _future;
@@ -28,6 +35,17 @@ class FakeFaaliyetRepository
 
   @override
   Future<List<Faaliyet>> getTumFaaliyetler() async => [];
+
+  @override
+  Future<List<Faaliyet>> getPlanliGorevler() => _planliGorevler;
+
+  @override
+  Future<void> addPlanliGorev(Faaliyet gorev) async {}
+
+  @override
+  Future<void> completePlanliGorev(String id, {String? note}) async {
+    completedIds.add(id);
+  }
 
   @override
   Future<void> deleteFaaliyet(String id) async => deletedIds.add(id);
@@ -143,7 +161,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Geçmiş'));
+      await tester.tap(find.text('Faaliyet Geçmişi'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('Faaliyeti sil'));
@@ -275,10 +293,13 @@ void main() {
       expect(find.textContaining('Tekrar'), findsNothing);
     });
 
-    testWidgets('planlı faaliyet Yapılacaklar sekmesinde gösterilir', (
+    testWidgets('planlı iş görev API’sinden Planlı İşler sekmesinde gösterilir', (
       tester,
     ) async {
-      final repo = FakeFaaliyetRepository(Future.value([_yapilacak()]));
+      final repo = FakeFaaliyetRepository(
+        Future.value([]),
+        planliGorevler: Future.value([_yapilacak()]),
+      );
       await tester.pumpWidget(
         _wrap(TarlaDetayEkrani(tarla: _tarla(), faaliyetRepository: repo)),
       );
@@ -287,7 +308,7 @@ void main() {
       expect(find.text('Sulama'), findsOneWidget);
     });
 
-    testWidgets('tamamlanan faaliyet Geçmiş sekmesinde gösterilir', (
+    testWidgets('tamamlanan faaliyet Faaliyet Geçmişi sekmesinde gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([_tamamlanan()]));
@@ -296,14 +317,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // switch to Geçmiş tab
-      await tester.tap(find.text('Geçmiş'));
+      // switch to Faaliyet Geçmişi tab
+      await tester.tap(find.text('Faaliyet Geçmişi'));
       await tester.pumpAndSettle();
 
       expect(find.text('Gübreleme'), findsOneWidget);
     });
 
-    testWidgets('boş Yapılacaklar sekmesinde AppEmptyView gösterilir', (
+    testWidgets('boş Planlı İşler sekmesinde AppEmptyView gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
@@ -312,10 +333,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Planlanmış faaliyet yok'), findsOneWidget);
+      expect(find.textContaining('Planlı iş yok'), findsOneWidget);
     });
 
-    testWidgets('boş Geçmiş sekmesinde AppEmptyView gösterilir', (
+    testWidgets('boş Faaliyet Geçmişi sekmesinde AppEmptyView gösterilir', (
       tester,
     ) async {
       final repo = FakeFaaliyetRepository(Future.value([]));
@@ -324,7 +345,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Geçmiş'));
+      await tester.tap(find.text('Faaliyet Geçmişi'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Henüz geçmiş faaliyet yok'), findsOneWidget);

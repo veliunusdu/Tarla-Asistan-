@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import {
+  createFarmTask,
   fetchCase,
   fetchProtectedMedia,
   requestAdditionalInfo,
@@ -13,6 +14,8 @@ import {
   type CasePriority,
   type MediaAsset,
   type SupportCase,
+  type TaskConfidence,
+  type TaskPriority,
 } from "@/lib/api";
 import { clearSession, getSession } from "@/lib/auth";
 
@@ -32,6 +35,14 @@ export default function CaseDetailPage() {
   const [mode, setMode] = useState<"response" | "request">("response");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [taskReason, setTaskReason] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>("HIGH");
+  const [taskConfidence, setTaskConfidence] = useState<TaskConfidence>("HIGH");
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskSuccess, setTaskSuccess] = useState("");
 
   useEffect(() => {
     const session = getSession();
@@ -75,6 +86,34 @@ export default function CaseDetailPage() {
       setError(err instanceof Error ? err.message : "Öncelik güncellenemedi.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitTask(event: FormEvent) {
+    event.preventDefault();
+    if (!item || !taskTitle.trim() || !taskDescription.trim() || !taskReason.trim() || !taskDueDate) return;
+
+    setTaskBusy(true);
+    setTaskSuccess("");
+    setError("");
+    try {
+      await createFarmTask(item.farm_id, {
+        title: taskTitle.trim(),
+        description: taskDescription.trim(),
+        reason: taskReason.trim(),
+        priority: taskPriority,
+        confidence: taskConfidence,
+        dueDate: taskDueDate,
+      });
+      setTaskTitle("");
+      setTaskDescription("");
+      setTaskReason("");
+      setTaskDueDate("");
+      setTaskSuccess("Planlı iş çiftçinin İş Planım ekranına eklendi.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Planlı iş oluşturulamadı.");
+    } finally {
+      setTaskBusy(false);
     }
   }
 
@@ -158,6 +197,48 @@ export default function CaseDetailPage() {
           {item.status === "OPEN" && (
             <button disabled={busy} onClick={() => changePriority(item.priority)} type="button">İncelemeye al</button>
           )}
+          <section className="expert-task-form">
+            <h2>Planlı iş öner</h2>
+            <p className="muted">Bu iş doğrudan çiftçinin İş Planım ekranına eklenir.</p>
+            <form className="response-form" onSubmit={submitTask}>
+              <label>
+                İş başlığı
+                <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} minLength={2} maxLength={160} required />
+              </label>
+              <label>
+                Açıklama
+                <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} minLength={2} maxLength={4000} required />
+              </label>
+              <label>
+                Öneri nedeni
+                <textarea value={taskReason} onChange={(event) => setTaskReason(event.target.value)} minLength={2} maxLength={2000} required />
+              </label>
+              <label>
+                Son tarih
+                <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} required />
+              </label>
+              <label>
+                Öncelik
+                <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as TaskPriority)}>
+                  <option value="LOW">Düşük</option>
+                  <option value="MEDIUM">Orta</option>
+                  <option value="HIGH">Yüksek</option>
+                  <option value="CRITICAL">Kritik</option>
+                </select>
+              </label>
+              <label>
+                Güven düzeyi
+                <select value={taskConfidence} onChange={(event) => setTaskConfidence(event.target.value as TaskConfidence)}>
+                  <option value="LOW">Düşük</option>
+                  <option value="MEDIUM">Orta</option>
+                  <option value="HIGH">Yüksek</option>
+                </select>
+              </label>
+              {taskSuccess && <p className="success" role="status">{taskSuccess}</p>}
+              {error && <p className="error" role="alert">{error}</p>}
+              <button disabled={taskBusy} type="submit">{taskBusy ? "Ekleniyor…" : "Planlı işi ekle"}</button>
+            </form>
+          </section>
         </aside>
       </div>
     </main>
