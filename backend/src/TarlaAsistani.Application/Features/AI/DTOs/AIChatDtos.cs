@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using TarlaAsistani.Application.Features.Weather.DTOs;
 
 namespace TarlaAsistani.Application.Features.AI.DTOs;
 
@@ -13,10 +14,57 @@ public record AIChatRequestDto(
     [property: JsonPropertyName("conversation_id")] string? ConversationId = null,
     [property: JsonPropertyName("history")] List<ChatHistoryItem>? History = null,
     [property: JsonIgnore] byte[]? PhotoBytes = null,
-    [property: JsonIgnore] string? PhotoContentType = null
+    [property: JsonIgnore] string? PhotoContentType = null,
+    [property: JsonIgnore] AIAccountContext? AccountContext = null
 );
 
 public record AIChatResponseDto(
     [property: JsonPropertyName("reply")] string Reply,
     [property: JsonPropertyName("conversation_id")] string ConversationId
+);
+
+// ── AI Context DTOs ───────────────────────────────────────────────────────────
+
+/// <summary>
+/// Compact weather context for a single farm, safe to embed in AI system prompt.
+/// </summary>
+public record AIWeatherAiContext(
+    string FarmName,
+    double? CurrentTemperatureC,
+    double? HumidityPercent,
+    double? WindSpeedKmh,
+    string? Condition,
+    double? NextRainProbabilityPct,
+    double? Next24HoursPrecipitationMm,
+    bool IsStale,
+    string? StaleReason,
+    DateTime DataTime,
+    List<string> RiskSummaries
+);
+
+/// <summary>
+/// Per-farm summary for AI context. Compact: only AI-relevant fields.
+/// </summary>
+public record AIFarmSummary(
+    Guid FarmId,
+    string Name,
+    string? CurrentCrop,
+    double? AreaHa,
+    string? NextTask,
+    DateOnly? NextTaskDueDate,
+    string? LastActivity,
+    DateTime? LastActivityAt,
+    /// <summary>null = weather not fetched (no weather intent or no coordinates).</summary>
+    AIWeatherAiContext? Weather,
+    bool WeatherRequested = false,
+    FarmWorkWeatherSignal? WorkWeatherSignal = null
+);
+
+/// <summary>
+/// Full account context injected into AI system prompt per request.
+/// Built from authenticated user's data; never from client-supplied JSON.
+/// </summary>
+public record AIAccountContext(
+    string? DisplayName,
+    List<AIFarmSummary> Farms
 );

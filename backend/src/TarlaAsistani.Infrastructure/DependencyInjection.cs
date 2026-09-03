@@ -5,6 +5,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using TarlaAsistani.Application.Common.Interfaces;
+using TarlaAsistani.Application.Features.AI.Services;
+using TarlaAsistani.Application.Features.Weather.Services;
 using TarlaAsistani.Infrastructure.BackgroundServices;
 using TarlaAsistani.Infrastructure.Persistence;
 using TarlaAsistani.Infrastructure.Services;
@@ -57,8 +59,17 @@ public static class DependencyInjection
             services.AddScoped<IMediaStorageService, FileMediaStorageService>();
         }
 
-        // 4. HTTP Integrations (Weather & AI)
-        services.AddHttpClient<IWeatherProvider, OpenMeteoWeatherProvider>();
+        // 4. Memory Cache & HTTP Integrations (Weather & AI)
+        services.AddMemoryCache();
+        services.AddHttpClient<IWeatherProvider, OpenMeteoWeatherProvider>(client =>
+        {
+            var timeoutSeconds = configuration.GetValue("Weather:TimeoutSeconds", 10);
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        });
+        var weatherActionRiskOptions = new WeatherActionRiskOptions();
+        configuration.GetSection("Weather:ActionRisk").Bind(weatherActionRiskOptions);
+        services.AddSingleton(weatherActionRiskOptions);
+        services.AddSingleton<FarmWorkWeatherSignalEvaluator>();
 
         var aiProvider = FirstConfiguredValue(
             configuration["AI_CHAT_PROVIDER"],
@@ -79,7 +90,10 @@ public static class DependencyInjection
             services.AddScoped<IAIChatProvider, LocalAIChatProvider>();
         }
 
-        // 5. Background Workers
+        // 5. AI Context Service (account context builder for AI requests)
+        services.AddScoped<IAIContextService, AIContextService>();
+
+        // 6. Background Workers
         services.AddHostedService<AccountDeletionBackgroundService>();
 
         return services;

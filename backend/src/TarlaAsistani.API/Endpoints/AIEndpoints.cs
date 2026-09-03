@@ -14,18 +14,23 @@ public static class AIEndpoints
     {
         var group = app.MapGroup("/api/v1/ai").WithTags("AI Chat");
 
-        // 1. POST /api/v1/ai/chat - Start or continue conversational AI chat with optional image
+        // POST /api/v1/ai/chat — Start or continue conversational AI chat with optional image.
+        // Authenticated user ID is resolved from JWT ClaimsPrincipal (production source of truth).
+        // In dev/test, X-User-Id header fallback is permitted via CurrentUserExtensions.
         group.MapPost("/chat", async (
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
             IMediator mediator,
             IValidator<SendAIChatMessageCommand> validator) =>
         {
+            // ── Auth: JWT first, header fallback only in non-production ──────
             var userId = httpContext.ResolveUserId(headerUserId: headerUserId);
             if (userId == Guid.Empty)
             {
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
+
+            // ── Parse request body ───────────────────────────────────────────
             string message = string.Empty;
             string? fieldId = null;
             string? conversationId = null;
@@ -73,6 +78,8 @@ public static class AIEndpoints
                         fieldId = req.FieldId;
                         conversationId = req.ConversationId;
                         history = req.History;
+                        // AccountContext from client is intentionally ignored here —
+                        // it is built server-side from authenticated user's DB records.
                     }
                 }
                 catch
@@ -81,6 +88,8 @@ public static class AIEndpoints
                 }
             }
 
+            // ── Build and dispatch command ────────────────────────────────────
+            // fieldId is a hint only; backend validates ownership in AIContextService.
             var command = new SendAIChatMessageCommand(
                 UserId: userId,
                 Message: message,

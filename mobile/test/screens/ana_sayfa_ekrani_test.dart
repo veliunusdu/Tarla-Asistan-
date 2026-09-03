@@ -49,7 +49,7 @@ class FakeWeatherRepository implements WeatherRepository {
   final Future<WeatherSummary> _future;
 
   @override
-  Future<WeatherSummary> getWeather() => _future;
+  Future<WeatherSummary> getWeather({String? farmId}) => _future;
 }
 
 class FakeFarmSummaryTarlaRepository
@@ -1133,7 +1133,7 @@ class _CountingWeatherRepo implements WeatherRepository {
   final Future<WeatherSummary> Function() _fn;
 
   @override
-  Future<WeatherSummary> getWeather() => _fn();
+  Future<WeatherSummary> getWeather({String? farmId}) => _fn();
 }
 
 /// Her `getTarlalar` çağrısında güncel `tarlalar` listesini döndürür.

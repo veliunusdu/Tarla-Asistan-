@@ -5,8 +5,178 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.AI.DTOs;
+using TarlaAsistani.Application.Features.Weather.DTOs;
 
 namespace TarlaAsistani.Infrastructure.Services;
+
+// ── System Prompt Builder ────────────────────────────────────────────────────
+
+public static class AISystemPromptBuilder
+{
+    /// <summary>
+    /// Builds a compact, bounded system prompt from the account context.
+    /// Never embeds raw JSON. Uses human-readable Turkish text blocks.
+    /// </summary>
+    public static string Build(AIAccountContext? ctx)
+    {
+        var sb = new StringBuilder();
+
+        // Core persona
+        sb.AppendLine("Tarla Asistanı için uzman bir ziraat mühendisisin.");
+        sb.AppendLine("Çiftçilere Türkçe, anlaşılır, bilimsel ve pratik tarımsal tavsiyeler ver.");
+        sb.AppendLine("Fotoğraf gönderildiyse yaprak, meyve, gövde veya kökteki hastalık, zararlı ya da besin eksikliği belirtilerini teşhis et;");
+        sb.AppendLine("kültürel önlemler ve etken madde bazlı çözüm önerilerini maddeler halinde açıkla.");
+        sb.AppendLine();
+
+        // Ground rules
+        sb.AppendLine("--- KURALLAR ---");
+        sb.AppendLine("- Aşağıdaki hava durumu ve tarla bilgileri backend'den alınan gerçek verilerdir.");
+        sb.AppendLine("- Context'te olmayan hava bilgisini ASLA uydurma.");
+        sb.AppendLine("- Hava durumu 'güncel değil' olarak işaretlenmişse, bu veriyi kesin güncelmiş gibi sunma.");
+        sb.AppendLine("- Hava tahmini, kesinlik değildir; 'bekleniyor / tahmin ediliyor' dilini kullan.");
+        sb.AppendLine("- Kullanıcının tarla adı ve mevcut işleriyle doğal biçimde ilişki kur.");
+        sb.AppendLine("- Kullanıcı adını her mesajda tekrarlama.");
+        sb.AppendLine("- Hava riskleri varsa bunları yanıtında dikkate al.");
+        sb.AppendLine("- Kimyasal doz veya yasal ilaç tavsiyesi üretme.");
+        sb.AppendLine("- Hava bilgisi tek başına kesin tarımsal güvenlik garantisi değildir.");
+        sb.AppendLine("- Hava durumu 'mevcut değil' ise bunu açıkça belirt.");
+        sb.AppendLine("- Backend iş-hava değerlendirmesini dikkate al; risk HIGH ise kesin şekilde 'uygundur' deme.");
+        sb.AppendLine("- SuggestedAction değerini doğal Türkçeyle açıkla; kendi meteorolojik eşiklerini üretme.");
+        sb.AppendLine("- LOW risk, koşulların kesin güvenli olduğu anlamına gelmez.");
+        sb.AppendLine();
+
+        if (ctx == null || ctx.Farms.Count == 0)
+        {
+            sb.AppendLine("--- KULLANICI TARILARI ---");
+            sb.AppendLine("Henüz kayıtlı tarla bulunamadı.");
+            return sb.ToString();
+        }
+
+        // User info
+        if (!string.IsNullOrWhiteSpace(ctx.DisplayName))
+        {
+            sb.AppendLine($"--- KULLANICI ---");
+            sb.AppendLine($"Ad: {ctx.DisplayName}");
+            sb.AppendLine();
+        }
+
+        // Farm summaries
+        sb.AppendLine("--- TARLALAR ---");
+        foreach (var farm in ctx.Farms)
+        {
+            sb.AppendLine($"Tarla: {farm.Name}");
+            if (!string.IsNullOrWhiteSpace(farm.CurrentCrop))
+                sb.AppendLine($"  Ürün: {farm.CurrentCrop}");
+            if (farm.AreaHa.HasValue)
+                sb.AppendLine($"  Alan: {farm.AreaHa:F1} ha");
+            if (!string.IsNullOrWhiteSpace(farm.NextTask))
+            {
+                var dueStr = farm.NextTaskDueDate.HasValue ? $" (Vade: {farm.NextTaskDueDate.Value:d MMM})" : "";
+                sb.AppendLine($"  Sıradaki iş: {farm.NextTask}{dueStr}");
+            }
+            if (!string.IsNullOrWhiteSpace(farm.LastActivity))
+            {
+                var atStr = farm.LastActivityAt.HasValue
+                    ? $" ({farm.LastActivityAt.Value:d MMM})"
+                    : "";
+                sb.AppendLine($"  Son faaliyet: {farm.LastActivity}{atStr}");
+            }
+
+            // Weather block (only if fetched)
+            if (farm.Weather != null)
+            {
+                var w = farm.Weather;
+                sb.AppendLine($"  HAVA — {farm.Name}");
+
+                var statusStr = w.IsStale
+                    ? $"güncel değil (son alınma: {w.DataTime:dd.MM.yyyy HH:mm} UTC)"
+                    : $"güncel ({w.DataTime:dd.MM.yyyy HH:mm} UTC)";
+                sb.AppendLine($"    Veri durumu: {statusStr}");
+
+                if (!string.IsNullOrWhiteSpace(w.Condition))
+                    sb.AppendLine($"    Durum: {w.Condition}");
+                if (w.CurrentTemperatureC.HasValue)
+                    sb.AppendLine($"    Sıcaklık: {w.CurrentTemperatureC:F1}°C");
+                if (w.HumidityPercent.HasValue)
+                    sb.AppendLine($"    Nem: %{w.HumidityPercent:F0}");
+                if (w.WindSpeedKmh.HasValue)
+                    sb.AppendLine($"    Rüzgar: {w.WindSpeedKmh:F0} km/s");
+                if (w.NextRainProbabilityPct.HasValue)
+                    sb.AppendLine($"    En yüksek yağış olasılığı (24s): %{w.NextRainProbabilityPct:F0}");
+                if (w.Next24HoursPrecipitationMm.HasValue && w.Next24HoursPrecipitationMm > 0)
+                    sb.AppendLine($"    Önümüzdeki 24 saat yağış: {w.Next24HoursPrecipitationMm:F1} mm");
+                if (w.IsStale && !string.IsNullOrWhiteSpace(w.StaleReason))
+                    sb.AppendLine($"    Uyarı: {w.StaleReason}");
+
+                if (w.RiskSummaries.Count > 0)
+                {
+                    sb.AppendLine($"    Riskler:");
+                    foreach (var risk in w.RiskSummaries)
+                        sb.AppendLine($"      - {risk}");
+                }
+            }
+            else if (WeatherContextWasExpected(farm))
+            {
+                sb.AppendLine($"  HAVA — {farm.Name}: Mevcut değil");
+            }
+
+            if (farm.WorkWeatherSignal != null)
+            {
+                var signal = farm.WorkWeatherSignal;
+                sb.AppendLine("  İŞ-HAVA DEĞERLENDİRMESİ");
+                sb.AppendLine($"    İş türü: {FormatWorkType(signal.WorkType)}");
+                sb.AppendLine($"    Kod: {FormatCode(signal.Code)}");
+                if (signal.RiskLevel.HasValue)
+                    sb.AppendLine($"    Risk: {signal.RiskLevel.Value.ToString().ToUpperInvariant()}");
+                sb.AppendLine($"    Öneri: {FormatAction(signal.SuggestedAction)}");
+                sb.AppendLine($"    Güncel olmayan hava verisi: {(signal.IsBasedOnStaleWeather ? "EVET" : "HAYIR")}");
+                sb.AppendLine("    Nedenler:");
+                foreach (var reason in signal.Reasons)
+                    sb.AppendLine($"      - {reason}");
+            }
+
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool WeatherContextWasExpected(AIFarmSummary farm) =>
+        farm.WeatherRequested;
+
+    private static string FormatWorkType(FarmWorkType type) => type switch
+    {
+        FarmWorkType.Spraying => "SPRAYING",
+        FarmWorkType.Irrigation => "IRRIGATION",
+        FarmWorkType.Fertilizing => "FERTILIZING",
+        FarmWorkType.Sowing => "SOWING",
+        FarmWorkType.Harvest => "HARVEST",
+        _ => "UNKNOWN",
+    };
+
+    private static string FormatCode(WeatherActionSignalCode code) => code switch
+    {
+        WeatherActionSignalCode.SprayingConditions => "SPRAYING_CONDITIONS",
+        WeatherActionSignalCode.IrrigationTiming => "IRRIGATION_TIMING",
+        WeatherActionSignalCode.FertilizingConditions => "FERTILIZING_CONDITIONS",
+        WeatherActionSignalCode.SowingConditions => "SOWING_CONDITIONS",
+        WeatherActionSignalCode.HarvestConditions => "HARVEST_CONDITIONS",
+        WeatherActionSignalCode.WeatherUnavailable => "WEATHER_UNAVAILABLE",
+        WeatherActionSignalCode.ForecastNotAvailable => "FORECAST_NOT_AVAILABLE",
+        _ => throw new ArgumentOutOfRangeException(nameof(code), code, null),
+    };
+
+    private static string FormatAction(WeatherSuggestedAction action) => action switch
+    {
+        WeatherSuggestedAction.Proceed => "PROCEED",
+        WeatherSuggestedAction.ReviewTiming => "REVIEW_TIMING",
+        WeatherSuggestedAction.DelayConsidered => "DELAY_CONSIDERED",
+        WeatherSuggestedAction.WeatherUnavailable => "WEATHER_UNAVAILABLE",
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
+    };
+}
+
+// ── Local (fallback) Provider ────────────────────────────────────────────────
 
 public class LocalAIChatProvider : IAIChatProvider
 {
@@ -20,6 +190,8 @@ public class LocalAIChatProvider : IAIChatProvider
         return Task.FromResult(new AIChatResponseDto(reply, conversationId));
     }
 }
+
+// ── DeepSeek Provider ────────────────────────────────────────────────────────
 
 public class DeepSeekAIChatProvider : IAIChatProvider
 {
@@ -57,13 +229,14 @@ public class DeepSeekAIChatProvider : IAIChatProvider
 
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
-            // Fallback to local deterministic response if API key is not configured
             return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
         }
 
+        var systemPrompt = AISystemPromptBuilder.Build(request.AccountContext);
+
         var messages = new List<object>
         {
-            new { role = "system", content = "Tarla Asistanı için Türkçe, güvenli ve uygulanabilir tarım önerileri ver." }
+            new { role = "system", content = systemPrompt }
         };
 
         if (request.History != null)
@@ -125,6 +298,8 @@ public class DeepSeekAIChatProvider : IAIChatProvider
     }
 }
 
+// ── Gemini Provider ──────────────────────────────────────────────────────────
+
 public class GeminiAIChatProvider : IAIChatProvider
 {
     private readonly HttpClient _httpClient;
@@ -150,6 +325,8 @@ public class GeminiAIChatProvider : IAIChatProvider
         {
             return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
         }
+
+        var systemPrompt = AISystemPromptBuilder.Build(request.AccountContext);
 
         var contents = new List<object>();
 
@@ -190,14 +367,7 @@ public class GeminiAIChatProvider : IAIChatProvider
             {
                 parts = new object[]
                 {
-                    new
-                    {
-                        text = "Tarla Asistanı için uzman bir ziraat mühendisisin. " +
-                               "Çiftçilere Türkçe, anlaşılır, bilimsel ve pratik tarımsal tavsiyeler ver. " +
-                               "Fotoğraf gönderildiyse yaprak, meyve, gövde veya kökteki hastalık, " +
-                               "zararlı ya da besin eksikliği belirtilerini teşhis et; " +
-                               "kültürel önlemler ve etken madde bazlı çözüm önerilerini maddeler halinde açıkla."
-                    }
+                    new { text = systemPrompt }
                 }
             },
             contents,
@@ -248,4 +418,3 @@ public class GeminiAIChatProvider : IAIChatProvider
         return new AIChatResponseDto(reply, conversationId);
     }
 }
-
