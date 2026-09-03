@@ -82,5 +82,6 @@ public record AIFarmSummary(
 /// </summary>
 public record AIAccountContext(
     string? DisplayName,
-    List<AIFarmSummary> Farms
+    List<AIFarmSummary> Farms,
+    List<ProactiveAdvisoryDto>? Advisories = null
 );

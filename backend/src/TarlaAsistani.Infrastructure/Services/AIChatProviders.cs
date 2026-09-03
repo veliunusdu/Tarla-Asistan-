@@ -140,6 +140,21 @@ public static class AISystemPromptBuilder
             sb.AppendLine();
         }
 
+        if (ctx.Advisories != null && ctx.Advisories.Count > 0)
+        {
+            sb.AppendLine("--- AKTİF PROAKTİF UYARILAR ---");
+            sb.AppendLine("Aşağıdaki uyarılar kullanıcının tarlaları için backend analiz motoru tarafından üretilmiş proaktif tavsiyelerdir.");
+            sb.AppendLine("Kullanıcı selamlaştığında veya tarlasının durumunu sorduğunda bu tavsiyeleri proaktif, yapıcı ve samimi bir dille aktar:");
+            foreach (var adv in ctx.Advisories)
+            {
+                sb.AppendLine($"• [{adv.FarmName}] {adv.Title} ({adv.Severity.ToString().ToUpperInvariant()})");
+                sb.AppendLine($"  Özet: {adv.Summary}");
+                sb.AppendLine($"  Gerekçe: {adv.AgronomicExplanation}");
+                sb.AppendLine($"  Aksiyon: {adv.ActionRecommendation}");
+            }
+            sb.AppendLine();
+        }
+
         return sb.ToString();
     }
 

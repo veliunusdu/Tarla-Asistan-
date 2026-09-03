@@ -221,6 +221,7 @@ app.MapTaskEndpoints();
 app.MapCaseEndpoints();
 app.MapPilotEndpoints();
 app.MapAIEndpoints();
+app.MapProactiveAdvisoryEndpoints();
 
 // 6. Apply EF Core Migrations automatically on startup (in Production container or when AUTO_MIGRATE=true)
 if (app.Environment.IsProduction() || Environment.GetEnvironmentVariable("AUTO_MIGRATE") == "true")

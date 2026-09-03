@@ -44,8 +44,9 @@ public interface IApplicationDbContext
     // ── Pilot ────────────────────────────────────────────────
     DbSet<PilotFeedback> PilotFeedbacks { get; }
 
-    // ── AI Usage & Cost ──────────────────────────────────────
+    // ── AI Usage, Cost & Proactive Advisories ────────────────
     DbSet<AiUsageLog> AiUsageLogs { get; }
+    DbSet<ProactiveAdvisory> ProactiveAdvisories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);

@@ -52,8 +52,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // ── Pilot ────────────────────────────────────────────────
     public DbSet<PilotFeedback> PilotFeedbacks => Set<PilotFeedback>();
 
-    // ── AI Usage & Cost ──────────────────────────────────────
+    // ── AI Usage, Cost & Proactive Advisories ────────────────
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+    public DbSet<ProactiveAdvisory> ProactiveAdvisories => Set<ProactiveAdvisory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -653,6 +654,53 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithMany()
                   .HasForeignKey(l => l.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // PROACTIVE ADVISORY
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<ProactiveAdvisory>(entity =>
+        {
+            entity.ToTable("proactive_advisories");
+            entity.HasKey(a => a.Id);
+
+            entity.HasIndex(a => a.DedupeKey)
+                  .IsUnique()
+                  .HasDatabaseName("ix_proactive_advisories_dedupe");
+            entity.HasIndex(a => new { a.FarmId, a.IsDismissed, a.ValidUntilUtc })
+                  .HasDatabaseName("ix_proactive_advisories_farm_active");
+            entity.HasIndex(a => new { a.UserId, a.IsDismissed })
+                  .HasDatabaseName("ix_proactive_advisories_user_active");
+
+            entity.Property(a => a.Title).HasMaxLength(160).IsRequired();
+            entity.Property(a => a.Summary).HasMaxLength(500).IsRequired();
+            entity.Property(a => a.AgronomicExplanation).IsRequired();
+            entity.Property(a => a.ActionRecommendation).IsRequired();
+            entity.Property(a => a.DedupeKey).HasMaxLength(160).IsRequired();
+
+            entity.Property(a => a.AdvisoryType).HasConversion<string>();
+            entity.Property(a => a.Severity).HasConversion<string>();
+            entity.Property(a => a.ActionType).HasConversion<string>();
+
+            entity.HasOne(a => a.Farm)
+                  .WithMany()
+                  .HasForeignKey(a => a.FarmId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.User)
+                  .WithMany()
+                  .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.CropPeriod)
+                  .WithMany()
+                  .HasForeignKey(a => a.CropPeriodId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(a => a.RelatedTask)
+                  .WithMany()
+                  .HasForeignKey(a => a.RelatedTaskId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 

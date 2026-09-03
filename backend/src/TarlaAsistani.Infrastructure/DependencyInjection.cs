@@ -90,13 +90,16 @@ public static class DependencyInjection
             services.AddScoped<IAIChatProvider, LocalAIChatProvider>();
         }
 
-        // 5. AI Services (Cost Calculator, Quota & Context)
+        // 5. AI Services (Cost Calculator, Quota, Context & Proactive Advisories)
         services.AddSingleton<IAICostCalculator, AICostCalculator>();
         services.AddScoped<IAIQuotaService, AIQuotaService>();
         services.AddScoped<IAIContextService, AIContextService>();
+        services.AddSingleton<IProactiveAdvisoryEngine, ProactiveAdvisoryEngine>();
+        services.AddScoped<IProactiveAdvisoryService, ProactiveAdvisoryService>();
 
         // 6. Background Workers
         services.AddHostedService<AccountDeletionBackgroundService>();
+        services.AddHostedService<ProactiveAdvisoryBackgroundService>();
 
         return services;
     }

@@ -38,10 +38,17 @@ public class MockDbContextBuilder
 
     private List<PilotFeedback> _pilotFeedbacks = new();
     private List<AiUsageLog> _aiUsageLogs = new();
+    private List<ProactiveAdvisory> _proactiveAdvisories = new();
 
     public MockDbContextBuilder WithAiUsageLogs(params AiUsageLog[] logs)
     {
         _aiUsageLogs.AddRange(logs);
+        return this;
+    }
+
+    public MockDbContextBuilder WithProactiveAdvisories(params ProactiveAdvisory[] advisories)
+    {
+        _proactiveAdvisories.AddRange(advisories);
         return this;
     }
 
@@ -195,6 +202,7 @@ public class MockDbContextBuilder
 
         SetupDbSet(_mockDb, db => db.PilotFeedbacks, _pilotFeedbacks);
         SetupDbSet(_mockDb, db => db.AiUsageLogs, _aiUsageLogs);
+        SetupDbSet(_mockDb, db => db.ProactiveAdvisories, _proactiveAdvisories);
 
         _mockDb.Setup(db => db.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);

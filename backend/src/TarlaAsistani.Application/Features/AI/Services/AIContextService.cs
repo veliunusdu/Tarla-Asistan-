@@ -167,7 +167,33 @@ public class AIContextService : IAIContextService
             );
         }).ToList();
 
-        return new AIAccountContext(displayName, summaries);
+        var activeAdvisories = await _db.ProactiveAdvisories
+            .Include(a => a.Farm)
+            .AsNoTracking()
+            .Where(a => a.UserId == userId && !a.IsDismissed && (a.ValidUntilUtc == null || a.ValidUntilUtc > DateTime.UtcNow))
+            .OrderByDescending(a => a.Severity)
+            .Take(5)
+            .Select(a => new ProactiveAdvisoryDto(
+                a.Id,
+                a.FarmId,
+                a.Farm != null ? a.Farm.Name : string.Empty,
+                a.UserId,
+                a.RelatedTaskId,
+                a.AdvisoryType,
+                a.Severity,
+                a.ActionType,
+                a.Title,
+                a.Summary,
+                a.AgronomicExplanation,
+                a.ActionRecommendation,
+                a.RecommendedDate,
+                a.MetricsJson,
+                a.IsApplied,
+                a.IsDismissed,
+                a.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return new AIAccountContext(displayName, summaries, activeAdvisories);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────

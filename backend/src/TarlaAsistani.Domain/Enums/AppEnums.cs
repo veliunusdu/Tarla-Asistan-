@@ -1,4 +1,4 @@
-﻿namespace TarlaAsistani.Domain.Enums;
+namespace TarlaAsistani.Domain.Enums;
 
 public enum UserRole
 {
@@ -141,6 +141,33 @@ public enum NotificationType
     TaskAssigned,
     CriticalWeather,
     ExpertResponse,
+    ProactiveAdvisory,
+}
+
+public enum ProactiveAdvisoryType
+{
+    FertilizerDelay,
+    IrrigationSuppression,
+    SprayingWindow,
+    FrostAlert,
+    FungalDiseaseRisk,
+    HeatStressAlert,
+}
+
+public enum AdvisorySeverity
+{
+    Info,
+    Warning,
+    Critical,
+}
+
+public enum ProactiveActionType
+{
+    PostponeTask,
+    CancelOrPostponeIrrigation,
+    RescheduleSpraying,
+    EmergencyProtection,
+    FieldScouting,
 }
 
 public enum NotificationStatus
