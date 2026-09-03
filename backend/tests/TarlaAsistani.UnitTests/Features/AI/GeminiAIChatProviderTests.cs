@@ -110,4 +110,42 @@ public class GeminiAIChatProviderTests
                 req.Headers.GetValues("x-goog-api-key").First() == "fake-gemini-key"),
             ItExpr.IsAny<CancellationToken>());
     }
+
+    [Fact]
+    public async Task GenerateAsync_WhenGemini25FlashConfigured_ShouldUseConfiguredModel()
+    {
+        // Arrange
+        var handlerMock = new Mock<HttpMessageHandler>();
+        handlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync(new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.OK,
+                Content = new StringContent(
+                    "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Yanıt\"}]}}]}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["GEMINI_API_KEY"] = "fake-gemini-key",
+            ["GEMINI_MODEL"] = "gemini-2.5-flash"
+        }).Build();
+        var provider = new GeminiAIChatProvider(new HttpClient(handlerMock.Object), config);
+
+        // Act
+        await provider.GenerateAsync(new AIChatRequestDto("Merhaba", null, null, null));
+
+        // Assert
+        handlerMock.Protected().Verify(
+            "SendAsync",
+            Times.Once(),
+            ItExpr.Is<HttpRequestMessage>(request =>
+                request.RequestUri!.ToString().Contains("gemini-2.5-flash:generateContent")),
+            ItExpr.IsAny<CancellationToken>());
+    }
 }

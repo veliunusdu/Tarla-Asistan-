@@ -47,21 +47,26 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
         _logger = logger ?? NullLogger<SendAIChatMessageCommandHandler>.Instance;
         _config = config;
 
-        _providerName = config["AI:Provider"]
-            ?? config["AI_CHAT_PROVIDER"]
-            ?? Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER")
+        _providerName = FirstConfiguredValue(
+            config["AI_CHAT_PROVIDER"],
+            Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER"),
+            config["AI__Provider"],
+            Environment.GetEnvironmentVariable("AI__Provider"),
+            config["AI:Provider"])
             ?? "local";
 
         _modelName = _providerName.ToLowerInvariant().Contains("gemini")
-            ? (config["AI:GeminiModel"] ?? config["GEMINI_MODEL"] ?? Environment.GetEnvironmentVariable("GEMINI_MODEL") ?? "gemini-1.5-flash")
+            ? (FirstConfiguredValue(config["GEMINI_MODEL"], Environment.GetEnvironmentVariable("GEMINI_MODEL"), config["AI:GeminiModel"], config["AI__GeminiModel"]) ?? "gemini-1.5-flash")
             : _providerName.ToLowerInvariant().Contains("deepseek")
-                ? (config["AI:DeepSeekModel"] ?? config["DEEPSEEK_MODEL"] ?? Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-chat")
+                ? (FirstConfiguredValue(config["DEEPSEEK_MODEL"], Environment.GetEnvironmentVariable("DEEPSEEK_MODEL"), config["AI:DeepSeekModel"], config["AI__DeepSeekModel"]) ?? "deepseek-chat")
                 : "local";
 
         var isLocal = _providerName.Equals("local", StringComparison.OrdinalIgnoreCase);
-        var agentEnabledConfig = config["AI:AgentEnabled"]
-            ?? config["AI_AGENT_ENABLED"]
-            ?? Environment.GetEnvironmentVariable("AI_AGENT_ENABLED");
+        var agentEnabledConfig = FirstConfiguredValue(
+            config["AI_AGENT_ENABLED"],
+            Environment.GetEnvironmentVariable("AI_AGENT_ENABLED"),
+            config["AI:AgentEnabled"],
+            config["AI__AgentEnabled"]);
 
         if (bool.TryParse(agentEnabledConfig, out var parsedEnabled))
         {
@@ -71,7 +76,14 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
         {
             _agentEnabled = !isLocal;
         }
+
+        _logger.LogInformation(
+            "AI configuration loaded. Provider={Provider}, AgentEnabled={AgentEnabled}, Model={Model}",
+            _providerName, _agentEnabled, _modelName);
     }
+
+    private static string? FirstConfiguredValue(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     public async Task<AIChatResponseDto> Handle(
         SendAIChatMessageCommand request,
@@ -113,6 +125,10 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
 
         if (runAgent)
         {
+            _logger.LogInformation(
+                "AI chat routing selected Agent mode. Provider={Provider}, Model={Model}",
+                _providerName, _modelName);
+
             // ── AI AGENT FLOW ────────────────────────────────────────────────────────
             var agentMessages = new List<AIAgentMessage>();
             if (request.History != null)
@@ -131,34 +147,31 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
                     // Reject/ignore untrusted client roles (system, tool, etc.)
                 }
             }
+
             agentMessages.Add(AIAgentMessage.CreateUser(request.Message.Trim()));
 
             var promptBuilder = _systemPromptBuilder ?? new AIAgentSystemPromptBuilder(TimeProvider.System, _config);
             var systemPrompt = promptBuilder.Build(accountContext);
-
             var agentRequest = new AIAgentRequest(agentMessages, systemPrompt: systemPrompt);
+
             var sw = Stopwatch.StartNew();
             var runResult = await _agentOrchestrator!.RunAsync(agentRequest, cancellationToken);
             sw.Stop();
 
-            _logger.LogInformation(
-                "AI Agent execution completed for user {UserId}. Success={Success}, Iterations={Iterations}, ProviderCalls={ProviderCalls}, DurationMs={DurationMs}",
-                request.UserId, runResult.IsSuccess, runResult.Iterations, runResult.ProviderCalls, sw.ElapsedMilliseconds);
-
             if (!runResult.IsSuccess)
             {
-                _logger.LogWarning(
-                    "AI Agent execution failed for user {UserId}. ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
-                    request.UserId, runResult.ErrorCode, runResult.ErrorMessage);
-
-                throw new AIAgentExecutionException(runResult.ErrorCode ?? "agent_execution_failed", "AI hizmeti şu anda kullanılamıyor.");
+                throw new AIAgentExecutionException(
+                    runResult.ErrorCode ?? "agent_execution_failed",
+                    runResult.ErrorMessage ?? "AI agent failed to execute successfully.");
             }
 
-            var promptTokens = runResult.PromptTokens ?? Math.Max(1, request.Message.Length / 4);
-            var completionTokens = runResult.CompletionTokens ?? Math.Max(1, (runResult.Content?.Length ?? 0) / 4);
+            // Aggregate token metrics across multi-turn agent execution
+            var promptTokens = runResult.PromptTokens ?? 0;
+            var completionTokens = runResult.CompletionTokens ?? 0;
             var totalTokens = runResult.TotalTokens ?? (promptTokens + completionTokens);
             var cost = _costCalculator?.CalculateCost(_providerName, _modelName, promptTokens, completionTokens) ?? 0m;
 
+            // Record aggregated usage once after agent completes
             await _quotaService.RecordUsageAsync(
                 userId: request.UserId,
                 provider: _providerName,
@@ -184,6 +197,20 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
         }
 
         // ── PASSIVE / PHOTO / LOCAL FLOW ─────────────────────────────────────────
+        var passiveReason = hasPhoto
+            ? "photo_attached"
+            : !_agentEnabled
+                ? "agent_disabled"
+                : !isSupportedAgentProvider
+                    ? $"unsupported_provider_{_providerName}"
+                    : _agentOrchestrator == null
+                        ? "orchestrator_null"
+                        : "unknown";
+
+        _logger.LogInformation(
+            "AI chat routing selected Passive mode. Reason={Reason}, Provider={Provider}",
+            passiveReason, _providerName);
+
         var aiRequest = new AIChatRequestDto(
             Message: request.Message.Trim(),
             FieldId: string.IsNullOrWhiteSpace(request.FieldId) ? null : request.FieldId.Trim(),

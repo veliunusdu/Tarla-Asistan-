@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Exceptions;
@@ -222,5 +223,233 @@ public class AIAgentIntegrationUnitTests
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*AI agent provider is unavailable*");
+    }
+
+    [Fact]
+    public async Task SendAIChatHandler_WhenProviderIsLocal_RoutesToPassiveChatProvider()
+    {
+        // Arrange
+        var mockChat = new Mock<IAIChatProvider>();
+        var mockContext = new Mock<IAIContextService>();
+        var mockQuota = new Mock<IAIQuotaService>();
+        var mockOrchestrator = new Mock<IAIAgentOrchestrator>();
+
+        mockChat.Setup(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AIChatResponseDto("Pasif yanıt", "conv1"));
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI:Provider"] = "local",
+                ["AI_AGENT_ENABLED"] = "true"
+            })
+            .Build();
+
+        var handler = new SendAIChatMessageCommandHandler(
+            mockChat.Object,
+            mockContext.Object,
+            mockQuota.Object,
+            config,
+            agentOrchestrator: mockOrchestrator.Object);
+
+        var command = new SendAIChatMessageCommand(Guid.NewGuid(), "Tarlada ne yapayım?");
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Reply.Should().Be("Pasif yanıt");
+        mockOrchestrator.Verify(o => o.RunAsync(It.IsAny<AIAgentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockChat.Verify(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendAIChatHandler_WhenAgentDisabled_RoutesToPassiveChatProvider()
+    {
+        // Arrange
+        var mockChat = new Mock<IAIChatProvider>();
+        var mockContext = new Mock<IAIContextService>();
+        var mockQuota = new Mock<IAIQuotaService>();
+        var mockOrchestrator = new Mock<IAIAgentOrchestrator>();
+
+        mockChat.Setup(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AIChatResponseDto("Pasif yanıt", "conv2"));
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI_CHAT_PROVIDER"] = "gemini",
+                ["AI_AGENT_ENABLED"] = "false"
+            })
+            .Build();
+
+        var handler = new SendAIChatMessageCommandHandler(
+            mockChat.Object,
+            mockContext.Object,
+            mockQuota.Object,
+            config,
+            agentOrchestrator: mockOrchestrator.Object);
+
+        var command = new SendAIChatMessageCommand(Guid.NewGuid(), "Sulama yap");
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Reply.Should().Be("Pasif yanıt");
+        mockOrchestrator.Verify(o => o.RunAsync(It.IsAny<AIAgentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockChat.Verify(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendAIChatHandler_WhenPhotoAttached_RoutesToPassiveChatProvider()
+    {
+        // Arrange
+        var mockChat = new Mock<IAIChatProvider>();
+        var mockContext = new Mock<IAIContextService>();
+        var mockQuota = new Mock<IAIQuotaService>();
+        var mockOrchestrator = new Mock<IAIAgentOrchestrator>();
+
+        mockChat.Setup(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AIChatResponseDto("Fotoğraf analizi yanıtı", "conv3"));
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI_CHAT_PROVIDER"] = "gemini",
+                ["AI_AGENT_ENABLED"] = "true"
+            })
+            .Build();
+
+        var handler = new SendAIChatMessageCommandHandler(
+            mockChat.Object,
+            mockContext.Object,
+            mockQuota.Object,
+            config,
+            agentOrchestrator: mockOrchestrator.Object);
+
+        var command = new SendAIChatMessageCommand(
+            UserId: Guid.NewGuid(),
+            Message: "Bu yaprakta ne var?",
+            PhotoBytes: new byte[] { 0xFF, 0xD8, 0xFF },
+            PhotoContentType: "image/jpeg");
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Reply.Should().Be("Fotoğraf analizi yanıtı");
+        mockOrchestrator.Verify(o => o.RunAsync(It.IsAny<AIAgentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        mockChat.Verify(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendAIChatHandler_Prioritizes_AI_CHAT_PROVIDER_Over_AppsettingsLocalProvider()
+    {
+        // Arrange: "AI:Provider" = "local" (from appsettings.json), but Render sets "AI_CHAT_PROVIDER" = "gemini"
+        var mockChat = new Mock<IAIChatProvider>();
+        var mockContext = new Mock<IAIContextService>();
+        var mockQuota = new Mock<IAIQuotaService>();
+        var mockOrchestrator = new Mock<IAIAgentOrchestrator>();
+
+        mockOrchestrator.Setup(o => o.RunAsync(It.IsAny<AIAgentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AIAgentRunResult.Success(new AIAgentResponse("Agent yanıtı"), Array.Empty<AIAgentMessage>(), 1));
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI:Provider"] = "local",       // appsettings.json default
+                ["AI_CHAT_PROVIDER"] = "gemini", // Render flat environment variable
+                ["AI_AGENT_ENABLED"] = "true"
+            })
+            .Build();
+
+        var handler = new SendAIChatMessageCommandHandler(
+            mockChat.Object,
+            mockContext.Object,
+            mockQuota.Object,
+            config,
+            agentOrchestrator: mockOrchestrator.Object);
+
+        var command = new SendAIChatMessageCommand(Guid.NewGuid(), "Görev ekle");
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert: Orchestrator MUST be executed because AI_CHAT_PROVIDER took precedence over AI:Provider
+        result.Reply.Should().Be("Agent yanıtı");
+        mockOrchestrator.Verify(o => o.RunAsync(It.IsAny<AIAgentRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        mockChat.Verify(c => c.GenerateAsync(It.IsAny<AIChatRequestDto>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void DIRegistration_ResolvesGeminiProviders_WhenGeminiConfigured()
+    {
+        // Arrange
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI_CHAT_PROVIDER"] = "gemini",
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=test",
+                ["Auth:JwtSecret"] = "12345678901234567890123456789012"
+            })
+            .Build();
+
+        services.AddSingleton<IConfiguration>(config);
+
+        // Act
+        TarlaAsistani.Infrastructure.DependencyInjection.AddInfrastructure(services, config);
+        var sp = services.BuildServiceProvider();
+
+        // Assert
+        var agentProvider = sp.GetService<IAIAgentProvider>();
+        var chatProvider = sp.GetService<IAIChatProvider>();
+
+        agentProvider.Should().NotBeNull();
+        agentProvider.Should().BeOfType<TarlaAsistani.Infrastructure.Services.AI.Gemini.GeminiAIAgentProvider>();
+        chatProvider.Should().NotBeNull();
+        chatProvider.Should().BeOfType<TarlaAsistani.Infrastructure.Services.GeminiAIChatProvider>();
+    }
+
+    [Fact]
+    public void DIRegistration_ResolvesDeepSeekProviders_WhenDeepSeekConfigured()
+    {
+        // Arrange
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AI_CHAT_PROVIDER"] = "deepseek",
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=test",
+                ["Auth:JwtSecret"] = "12345678901234567890123456789012"
+            })
+            .Build();
+
+        services.AddSingleton<IConfiguration>(config);
+
+        // Act
+        TarlaAsistani.Infrastructure.DependencyInjection.AddInfrastructure(services, config);
+        var sp = services.BuildServiceProvider();
+
+        // Assert
+        var agentProvider = sp.GetService<IAIAgentProvider>();
+        var chatProvider = sp.GetService<IAIChatProvider>();
+
+        agentProvider.Should().NotBeNull();
+        agentProvider.Should().BeOfType<TarlaAsistani.Infrastructure.Services.AI.DeepSeek.DeepSeekAIAgentProvider>();
+        chatProvider.Should().NotBeNull();
+        chatProvider.Should().BeOfType<TarlaAsistani.Infrastructure.Services.DeepSeekAIChatProvider>();
+    }
+
+    [Fact]
+    public void PassiveSystemPrompt_ExplicitlyForbidsWriteClaims()
+    {
+        // Act
+        var prompt = TarlaAsistani.Infrastructure.Services.AISystemPromptBuilder.Build(null);
+
+        // Assert
+        prompt.Should().Contain("Bu sohbet modunda sistemde doğrudan görev, tarla veya veri oluşturma/güncelleme/tamamlama/silme yetkin yoktur");
+        prompt.Should().Contain("veritabanında işlem yaptığını veya görev oluşturduğunu ASLA söyleme");
     }
 }
