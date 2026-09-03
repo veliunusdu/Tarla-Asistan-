@@ -37,6 +37,13 @@ public class MockDbContextBuilder
     private List<Notification> _notifications = new();
 
     private List<PilotFeedback> _pilotFeedbacks = new();
+    private List<AiUsageLog> _aiUsageLogs = new();
+
+    public MockDbContextBuilder WithAiUsageLogs(params AiUsageLog[] logs)
+    {
+        _aiUsageLogs.AddRange(logs);
+        return this;
+    }
 
     public MockDbContextBuilder WithUsers(params User[] users)
     {
@@ -187,6 +194,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.Notifications, _notifications);
 
         SetupDbSet(_mockDb, db => db.PilotFeedbacks, _pilotFeedbacks);
+        SetupDbSet(_mockDb, db => db.AiUsageLogs, _aiUsageLogs);
 
         _mockDb.Setup(db => db.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);

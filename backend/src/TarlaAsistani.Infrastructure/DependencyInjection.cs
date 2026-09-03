@@ -90,7 +90,9 @@ public static class DependencyInjection
             services.AddScoped<IAIChatProvider, LocalAIChatProvider>();
         }
 
-        // 5. AI Context Service (account context builder for AI requests)
+        // 5. AI Services (Cost Calculator, Quota & Context)
+        services.AddSingleton<IAICostCalculator, AICostCalculator>();
+        services.AddScoped<IAIQuotaService, AIQuotaService>();
         services.AddScoped<IAIContextService, AIContextService>();
 
         // 6. Background Workers

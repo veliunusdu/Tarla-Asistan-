@@ -39,7 +39,7 @@ class ApiClient {
   final http.Client _http;
   final Future<String?> Function() _idTokenProvider;
   final Future<String?> Function() _forceRefreshTokenProvider;
-  static const _timeout = Duration(seconds: 12);
+  static const _timeout = Duration(seconds: 35);
 
   // -------------------------------------------------------------------------
   // Public API
@@ -107,6 +107,94 @@ class ApiClient {
   }
 
   void close() => _http.close();
+
+  Stream<String> postStream(
+    String endpoint, {
+    Map<String, dynamic>? jsonBody,
+    Map<String, String>? fields,
+    List<ApiMultipartFile>? files,
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    var token = await _idTokenProvider();
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
+    final uri = Uri.parse('$baseUrl/$normalizedEndpoint');
+
+    http.BaseRequest request;
+    if (files != null && files.isNotEmpty) {
+      final multipart = http.MultipartRequest('POST', uri)
+        ..headers['Accept'] = 'text/event-stream';
+      if (token != null && token.isNotEmpty) {
+        multipart.headers['Authorization'] = 'Bearer $token';
+      }
+      if (fields != null) multipart.fields.addAll(fields);
+      for (final file in files) {
+        multipart.files.add(file.toMultipartFile());
+      }
+      request = multipart;
+    } else {
+      final req = http.Request('POST', uri)
+        ..headers['Accept'] = 'text/event-stream'
+        ..headers['Content-Type'] = 'application/json; charset=utf-8';
+      if (token != null && token.isNotEmpty) {
+        req.headers['Authorization'] = 'Bearer $token';
+      }
+      if (jsonBody != null) {
+        req.body = jsonEncode(jsonBody);
+      }
+      request = req;
+    }
+
+    http.StreamedResponse streamed;
+    try {
+      streamed = await _http.send(request).timeout(_timeout);
+    } on TimeoutException {
+      throw const ApiException(
+        'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.',
+        retryable: true,
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.',
+        retryable: true,
+      );
+    }
+
+    if (streamed.statusCode != 200) {
+      final body = await streamed.stream.bytesToString();
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map && decoded['detail'] is String) {
+          throw ApiException(decoded['detail'] as String, statusCode: streamed.statusCode);
+        }
+      } catch (e) {
+        if (e is ApiException) rethrow;
+      }
+      throw ApiException('Sunucu hatası: ${streamed.statusCode}', statusCode: streamed.statusCode);
+    }
+
+    await for (final line in streamed.stream.toStringStream().transform(const LineSplitter())) {
+      final trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      final payload = trimmed.substring('data:'.length).trim();
+      if (payload == '[DONE]') break;
+      if (payload.isEmpty) continue;
+
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map<String, dynamic>) {
+          final convId = decoded['conversation_id']?.toString();
+          if (convId != null && convId.isNotEmpty && onConversationId != null) {
+            onConversationId(convId);
+          }
+          final content = decoded['content']?.toString();
+          if (content != null && content.isNotEmpty) {
+            yield content;
+          }
+        }
+      } catch (_) {}
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Internal

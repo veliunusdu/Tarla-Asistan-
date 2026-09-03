@@ -18,7 +18,7 @@ class AuthService {
   AuthService({http.Client? httpClient}) : _http = httpClient ?? http.Client();
 
   final http.Client _http;
-  static const _timeout = Duration(seconds: 12);
+  static const _timeout = Duration(seconds: 35);
 
   Future<bool> get isAuthenticated async {
     final prefs = await SharedPreferences.getInstance();

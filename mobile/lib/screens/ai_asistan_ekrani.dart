@@ -134,7 +134,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
     _scrollToBottom();
 
     try {
-      final response = await widget._repo.sendMessage(
+      final stream = widget._repo.streamMessage(
         message: metinKopya,
         photo: fotoKopya?.bytes,
         photoContentType: fotoKopya?.mimeType,
@@ -142,24 +142,39 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
         fieldId: widget.fieldId,
         conversationId: _conversationId,
         history: List.unmodifiable(_mesajlar.take(_mesajlar.length - 1)),
+        onConversationId: (id) {
+          if (mounted && id.isNotEmpty) {
+            _conversationId = id;
+          }
+        },
       );
 
-      if (!mounted) return;
+      var assistantText = '';
+      var hasAssistantMessage = false;
 
-      setState(() {
-        if (response.conversationId.isNotEmpty) {
-          _conversationId = response.conversationId;
-        }
-        _mesajlar.add(
-          AiChatMessage(
-            text: response.reply,
-            isUser: false,
-            timestamp: DateTime.now(),
-          ),
-        );
-      });
-
-      _scrollToBottom();
+      await for (final chunk in stream) {
+        if (!mounted) return;
+        assistantText += chunk;
+        setState(() {
+          if (!hasAssistantMessage) {
+            _mesajlar.add(
+              AiChatMessage(
+                text: assistantText,
+                isUser: false,
+                timestamp: DateTime.now(),
+              ),
+            );
+            hasAssistantMessage = true;
+          } else {
+            _mesajlar[_mesajlar.length - 1] = AiChatMessage(
+              text: assistantText,
+              isUser: false,
+              timestamp: DateTime.now(),
+            );
+          }
+        });
+        _scrollToBottom();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

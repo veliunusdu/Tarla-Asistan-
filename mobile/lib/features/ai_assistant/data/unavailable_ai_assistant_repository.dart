@@ -21,4 +21,18 @@ class UnavailableAiAssistantRepository implements AiAssistantRepository {
   }) async {
     throw Exception('AI Asistan bağlantısı henüz yapılandırılmadı.');
   }
+
+  @override
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    throw Exception('AI Asistan bağlantısı henüz yapılandırılmadı.');
+  }
 }

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using TarlaAsistani.API.Endpoints;
@@ -42,10 +44,46 @@ builder.Services.AddCors(options =>
         }
         else
         {
-            policy.WithOrigins(allowedOrigins);
+            policy.WithOrigins(allowedOrigins)
+                  .SetIsOriginAllowed(origin =>
+                  {
+                      if (Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                      {
+                          return uri.Host == "localhost" || uri.Host == "127.0.0.1" || allowedOrigins.Contains(origin);
+                      }
+                      return false;
+                  });
         }
 
         policy.AllowAnyHeader().AllowAnyMethod();
+    });
+});
+
+// 2.2 Rate Limiting (User-based sliding window)
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            "{\"detail\":\"Çok fazla istek gönderdiniz. Lütfen bir süre bekleyin.\"}", token);
+    };
+
+    options.AddPolicy("AiChatPerUser", httpContext =>
+    {
+        var userId = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? (httpContext.Request.Headers.TryGetValue("X-User-Id", out var hVal) ? hVal.ToString() : null)
+            ?? httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "anonymous";
+
+        return RateLimitPartition.GetSlidingWindowLimiter(userId, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            SegmentsPerWindow = 2,
+            QueueLimit = 0
+        });
     });
 });
 
@@ -135,6 +173,7 @@ app.UseExceptionHandler();
 app.UseMiddleware<TarlaAsistani.API.Middleware.SecurityHeadersMiddleware>();
 app.UseCors("ConfiguredOrigins");
 app.UseAuthentication();
+app.UseRateLimiter();
 
 if (app.Environment.IsProduction())
 {

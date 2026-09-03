@@ -104,6 +104,100 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
     return _parseResponse(response);
   }
 
+  @override
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    final trimmedMessage = message.trim();
+    if (trimmedMessage.isEmpty) {
+      throw const ApiException('Lütfen bir soru veya açıklama yazın.');
+    }
+
+    final trimmedFieldId = fieldId?.trim();
+    final trimmedConversationId = conversationId?.trim();
+
+    if (photo == null) {
+      final payload = <String, dynamic>{
+        'message': trimmedMessage,
+        if (trimmedFieldId != null && trimmedFieldId.isNotEmpty)
+          'field_id': trimmedFieldId,
+        if (trimmedConversationId != null && trimmedConversationId.isNotEmpty)
+          'conversation_id': trimmedConversationId,
+        if (history.isNotEmpty)
+          'history': history
+              .map(
+                (item) => {
+                  'role': item.isUser ? 'user' : 'assistant',
+                  'content': item.text,
+                },
+              )
+              .toList(),
+      };
+
+      yield* _client.postStream(
+        '/ai/chat/stream',
+        jsonBody: payload,
+        onConversationId: onConversationId,
+      );
+      return;
+    }
+
+    // Photo validation & multipart request
+    if (photo.lengthInBytes > _maxPhotoBytes) {
+      throw const ApiException('Fotoğraf en fazla 5 MB olabilir.');
+    }
+
+    final resolvedContentType = _resolveContentType(
+      photo: photo,
+      declaredType: photoContentType,
+      fileName: photoFileName,
+    );
+
+    final fields = <String, String>{
+      'message': trimmedMessage,
+      if (trimmedFieldId != null && trimmedFieldId.isNotEmpty)
+        'field_id': trimmedFieldId,
+      if (trimmedConversationId != null && trimmedConversationId.isNotEmpty)
+        'conversation_id': trimmedConversationId,
+      if (history.isNotEmpty)
+        'history': jsonEncode(
+          history
+              .map(
+                (item) => {
+                  'role': item.isUser ? 'user' : 'assistant',
+                  'content': item.text,
+                },
+              )
+              .toList(),
+        ),
+    };
+
+    final resolvedFileName = photoFileName?.trim().isNotEmpty == true
+        ? photoFileName!.trim()
+        : (resolvedContentType == 'image/png' ? 'photo.png' : 'photo.jpg');
+
+    final uploadFile = ApiMultipartFile(
+      field: 'photo',
+      bytes: photo,
+      filename: resolvedFileName,
+      contentType: resolvedContentType,
+    );
+
+    yield* _client.postStream(
+      '/ai/chat/stream',
+      fields: fields,
+      files: [uploadFile],
+      onConversationId: onConversationId,
+    );
+  }
+
   static String _resolveContentType({
     required Uint8List photo,
     String? declaredType,

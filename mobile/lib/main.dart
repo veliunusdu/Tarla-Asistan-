@@ -1,5 +1,3 @@
-import 'dart:ui' show PlatformDispatcher;
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -31,13 +29,21 @@ import 'services/sync_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _configureDevelopmentErrorLogging();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase initialization failed: $e');
+  }
   final prefs = await SharedPreferences.getInstance();
   var firebaseReady = false;
-  try {
-    firebaseReady = await initializeFirebaseMessaging();
-  } on FirebaseException {
-    firebaseReady = false;
+  if (!kIsWeb) {
+    try {
+      firebaseReady = await initializeFirebaseMessaging();
+    } catch (_) {
+      firebaseReady = false;
+    }
   }
   runApp(
     TarimAsistaniApp(
@@ -234,6 +240,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         );
                       }
                       if (initialization.hasError) {
+                        debugPrint('Authentication initialization error: ${initialization.error}');
                         return Scaffold(
                           body: Center(
                             child: Padding(
@@ -245,6 +252,17 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                                     'Hesabınız hazırlanamadı. Bağlantınızı kontrol edip tekrar deneyin.',
                                     textAlign: TextAlign.center,
                                   ),
+                                  if (kDebugMode && initialization.error != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '${initialization.error}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.error,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
                                   const SizedBox(height: 16),
                                   FilledButton(
                                     onPressed: () => setState(() {

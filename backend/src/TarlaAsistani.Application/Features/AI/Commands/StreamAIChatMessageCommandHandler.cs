@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Text;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -6,7 +8,7 @@ using TarlaAsistani.Application.Features.AI.DTOs;
 
 namespace TarlaAsistani.Application.Features.AI.Commands;
 
-public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessageCommand, AIChatResponseDto>
+public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIChatMessageCommand, AIChatStreamChunkDto>
 {
     private readonly IAIChatProvider _aiChatProvider;
     private readonly IAIContextService _contextService;
@@ -14,7 +16,7 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
     private readonly string _providerName;
     private readonly string _modelName;
 
-    public SendAIChatMessageCommandHandler(
+    public StreamAIChatMessageCommandHandler(
         IAIChatProvider aiChatProvider,
         IAIContextService contextService,
         IAIQuotaService quotaService,
@@ -36,13 +38,13 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
                 : "local";
     }
 
-    public async Task<AIChatResponseDto> Handle(
-        SendAIChatMessageCommand request,
-        CancellationToken cancellationToken)
+    public async IAsyncEnumerable<AIChatStreamChunkDto> Handle(
+        StreamAIChatMessageCommand request,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var hasPhoto = request.PhotoBytes != null && request.PhotoBytes.Length > 0;
 
-        // 1. Quota Check (Fast fail before expensive AI invocation)
+        // 1. Quota Check (Fast fail before opening stream)
         await _quotaService.CheckQuotaAsync(request.UserId, hasPhoto, cancellationToken);
 
         // Resolve optional hintFarmId (string field_id → Guid?)
@@ -54,7 +56,6 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
         }
 
         // Build account context from authenticated user's DB records.
-        // Weather included only when message is weather-relevant.
         var accountContext = await _contextService.BuildContextAsync(
             userId: request.UserId,
             message: request.Message,
@@ -72,28 +73,64 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
         );
 
         var sw = Stopwatch.StartNew();
-        var response = await _aiChatProvider.GenerateAsync(aiRequest, cancellationToken);
+        var fullReply = new StringBuilder();
+        string? conversationId = request.ConversationId;
+        int? promptTokens = null;
+        int? completionTokens = null;
+        int? totalTokens = null;
+        decimal? estimatedCost = null;
+
+        await foreach (var chunk in _aiChatProvider.GenerateStreamAsync(aiRequest, cancellationToken))
+        {
+            if (!string.IsNullOrEmpty(chunk.ConversationId))
+            {
+                conversationId = chunk.ConversationId;
+            }
+
+            if (!string.IsNullOrEmpty(chunk.Content))
+            {
+                fullReply.Append(chunk.Content);
+                yield return chunk;
+            }
+
+            if (chunk.Done)
+            {
+                promptTokens = chunk.PromptTokens;
+                completionTokens = chunk.CompletionTokens;
+                totalTokens = chunk.TotalTokens;
+                estimatedCost = chunk.EstimatedCostUsd;
+            }
+        }
+
         sw.Stop();
 
-        // 2. Record AI Token Usage & Cost
-        var promptTokens = response.PromptTokens ?? 0;
-        var completionTokens = response.CompletionTokens ?? 0;
-        var cost = response.EstimatedCostUsd ?? 0m;
+        // 2. Token & Cost resolution
+        var promptTok = promptTokens ?? Math.Max(1, request.Message.Length / 4);
+        var compTok = completionTokens ?? Math.Max(1, fullReply.Length / 4);
+        var cost = estimatedCost ?? 0m;
 
+        // 3. Record AI Token Usage & Cost in DB & structured logs
         await _quotaService.RecordUsageAsync(
             userId: request.UserId,
             provider: _providerName,
             model: _modelName,
             hasPhoto: hasPhoto,
-            promptTokens: promptTokens,
-            completionTokens: completionTokens,
+            promptTokens: promptTok,
+            completionTokens: compTok,
             durationMs: sw.ElapsedMilliseconds,
             estimatedCostUsd: cost,
             cancellationToken: cancellationToken);
 
-        // 3. Attach current quota info
+        // 4. Attach updated quota info
         var quotaInfo = await _quotaService.GetQuotaStatusAsync(request.UserId, cancellationToken);
 
-        return response with { QuotaInfo = quotaInfo };
+        yield return new AIChatStreamChunkDto(
+            Done: true,
+            ConversationId: conversationId ?? Guid.NewGuid().ToString("N"),
+            PromptTokens: promptTok,
+            CompletionTokens: compTok,
+            TotalTokens: promptTok + compTok,
+            EstimatedCostUsd: cost,
+            QuotaInfo: quotaInfo);
     }
 }

@@ -20,7 +20,23 @@ public record AIChatRequestDto(
 
 public record AIChatResponseDto(
     [property: JsonPropertyName("reply")] string Reply,
-    [property: JsonPropertyName("conversation_id")] string ConversationId
+    [property: JsonPropertyName("conversation_id")] string ConversationId,
+    [property: JsonPropertyName("prompt_tokens")] int? PromptTokens = null,
+    [property: JsonPropertyName("completion_tokens")] int? CompletionTokens = null,
+    [property: JsonPropertyName("total_tokens")] int? TotalTokens = null,
+    [property: JsonPropertyName("estimated_cost_usd")] decimal? EstimatedCostUsd = null,
+    [property: JsonPropertyName("quota_info")] AIQuotaStatusDto? QuotaInfo = null
+);
+
+public record AIChatStreamChunkDto(
+    [property: JsonPropertyName("content")] string? Content = null,
+    [property: JsonPropertyName("done")] bool Done = false,
+    [property: JsonPropertyName("conversation_id")] string? ConversationId = null,
+    [property: JsonPropertyName("prompt_tokens")] int? PromptTokens = null,
+    [property: JsonPropertyName("completion_tokens")] int? CompletionTokens = null,
+    [property: JsonPropertyName("total_tokens")] int? TotalTokens = null,
+    [property: JsonPropertyName("estimated_cost_usd")] decimal? EstimatedCostUsd = null,
+    [property: JsonPropertyName("quota_info")] AIQuotaStatusDto? QuotaInfo = null
 );
 
 // ── AI Context DTOs ───────────────────────────────────────────────────────────

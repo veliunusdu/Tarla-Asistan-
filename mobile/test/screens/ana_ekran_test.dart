@@ -62,6 +62,21 @@ class FakeAiAssistantRepository implements AiAssistantRepository {
     List<AiChatMessage> history = const [],
   }) async =>
       const AiChatResponse(reply: 'Test cevap', conversationId: 'conv-1');
+
+  @override
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    if (onConversationId != null) onConversationId('conv-1');
+    yield 'Test cevap';
+  }
 }
 
 // ---------------------------------------------------------------------------

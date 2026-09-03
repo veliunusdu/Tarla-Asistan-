@@ -52,6 +52,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // ── Pilot ────────────────────────────────────────────────
     public DbSet<PilotFeedback> PilotFeedbacks => Set<PilotFeedback>();
 
+    // ── AI Usage & Cost ──────────────────────────────────────
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -628,6 +631,28 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithMany()
                   .HasForeignKey(pf => pf.RelatedCaseId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // AI USAGE LOG
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<AiUsageLog>(entity =>
+        {
+            entity.ToTable("ai_usage_logs");
+            entity.HasKey(l => l.Id);
+            entity.HasIndex(l => new { l.UserId, l.CreatedAtUtc })
+                  .HasDatabaseName("ix_ai_usage_logs_user_created");
+            entity.HasIndex(l => l.CreatedAtUtc)
+                  .HasDatabaseName("ix_ai_usage_logs_created");
+
+            entity.Property(l => l.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(l => l.Model).HasMaxLength(100).IsRequired();
+            entity.Property(l => l.EstimatedCostUsd).HasPrecision(18, 6);
+
+            entity.HasOne(l => l.User)
+                  .WithMany()
+                  .HasForeignKey(l => l.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

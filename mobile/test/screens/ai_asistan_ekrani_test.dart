@@ -64,6 +64,30 @@ class FakeAiAssistantRepository implements AiAssistantRepository {
       conversationId: donusConversationId ?? (conversationId ?? 'conv-default'),
     );
   }
+
+  @override
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    if (hata != null) throw hata!;
+    gonderilen.add(message);
+    fotolar.add(photo);
+    photoFileNames.add(photoFileName);
+    photoContentTypes.add(photoContentType);
+    fieldIds.add(fieldId);
+    conversationIds.add(conversationId);
+    histories.add(List.of(history));
+    final resolvedConvId = donusConversationId ?? (conversationId ?? 'conv-default');
+    if (onConversationId != null) onConversationId(resolvedConvId);
+    yield cevap;
+  }
 }
 
 class FakeImagePickerService implements ImagePickerService {
@@ -94,6 +118,22 @@ class _SlowAiRepo implements AiAssistantRepository {
     String? conversationId,
     List<AiChatMessage> history = const [],
   }) => _future;
+
+  @override
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  }) async* {
+    final res = await _future;
+    if (onConversationId != null) onConversationId(res.conversationId);
+    yield res.reply;
+  }
 }
 
 // ---------------------------------------------------------------------------

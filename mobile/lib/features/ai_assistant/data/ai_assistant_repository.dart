@@ -26,4 +26,15 @@ abstract class AiAssistantRepository {
     String? conversationId,
     List<AiChatMessage> history = const [],
   });
+
+  Stream<String> streamMessage({
+    required String message,
+    Uint8List? photo,
+    String? photoContentType,
+    String? photoFileName,
+    String? fieldId,
+    String? conversationId,
+    List<AiChatMessage> history = const [],
+    void Function(String conversationId)? onConversationId,
+  });
 }
