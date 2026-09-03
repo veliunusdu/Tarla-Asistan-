@@ -52,14 +52,14 @@ public class GlobalExceptionHandlerIntegrationTests : IClassFixture<CustomWebApp
         request.Headers.Add("X-User-Id", ownerId.ToString());
         var response = await _client.SendAsync(request);
 
-        // Assert: Pipeline should have returned 409 Conflict as JSON
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        // Assert: a weather-provider outage is a temporary service failure, not a conflict.
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
 
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         doc.RootElement.GetProperty("detail").GetString().Should().Be("Hava durumu şu anda alınamıyor. Daha sonra tekrar deneyin; bu sırada saha koşullarını yerinde kontrol edin.");
-        doc.RootElement.GetProperty("status").GetInt32().Should().Be(409);
+        doc.RootElement.GetProperty("status").GetInt32().Should().Be(503);
         doc.RootElement.TryGetProperty("trace_id", out _).Should().BeTrue();
     }
 }

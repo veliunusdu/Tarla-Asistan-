@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
+import '../shared/widgets/app_logo.dart';
 
 enum _AuthMode { signIn, register }
 
@@ -98,6 +99,10 @@ class _GirisEkraniState extends State<GirisEkrani> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Center(
+                        child: AppLogo(size: 72),
+                      ),
+                      const SizedBox(height: 16),
                       Semantics(
                         header: true,
                         child: Text(

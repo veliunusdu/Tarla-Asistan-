@@ -8,7 +8,6 @@ import '../features/cases/data/case_repository.dart';
 import '../features/cases/presentation/sorun_bildir_ekrani.dart';
 import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
-import '../features/fields/data/tarla_location_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/location/data/location_service.dart';
 import '../features/weather/data/unavailable_weather_repository.dart';
@@ -313,7 +312,14 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tarım Asistanı'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.grass, color: AppColors.onPrimary),
+            SizedBox(width: AppSpacing.sm),
+            Text('Tarla Asistanı'),
+          ],
+        ),
         actions: [
           if (widget._caseRepo != null)
             IconButton(

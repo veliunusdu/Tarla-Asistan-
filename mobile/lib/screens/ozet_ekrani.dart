@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app/theme/app_colors.dart';
 import '../services/api_client.dart';
 import '../services/firestore_farm_repository.dart';
 import '../models/tarla.dart';
@@ -54,7 +55,14 @@ class _OzetEkraniState extends State<OzetEkrani> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tarla Asistanı'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.grass, color: AppColors.onPrimary),
+            SizedBox(width: 8),
+            Text('Tarla Asistanı'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Çıkış yap',

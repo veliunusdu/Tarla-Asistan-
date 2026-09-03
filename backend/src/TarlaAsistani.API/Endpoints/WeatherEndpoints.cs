@@ -30,15 +30,29 @@ public static class WeatherEndpoints
             }
 
             var resolvedRole = httpContext.ResolveUserRole(role, headerRole);
-            var result = await mediator.Send(new GetFarmWeatherQuery(farmId, queryUserId, resolvedRole));
-            return Results.Ok(result);
+            try
+            {
+                var result = await mediator.Send(new GetFarmWeatherQuery(farmId, queryUserId, resolvedRole));
+                return Results.Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Json(
+                    new
+                    {
+                        detail = ex.Message,
+                        status = StatusCodes.Status503ServiceUnavailable,
+                        trace_id = httpContext.TraceIdentifier
+                    },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         })
         .WithName("GetFarmWeather")
         .Produces<FarmWeatherResponseDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status422UnprocessableEntity)
-        .Produces(StatusCodes.Status409Conflict);
+        .Produces(StatusCodes.Status503ServiceUnavailable);
 
         return app;
     }

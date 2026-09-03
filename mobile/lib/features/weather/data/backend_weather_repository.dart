@@ -7,6 +7,15 @@ class WeatherLocationRequiredException implements Exception {
   const WeatherLocationRequiredException();
 }
 
+class WeatherUnavailableException implements Exception {
+  const WeatherUnavailableException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Backend `/api/v1/farms/{farmId}/weather` endpoint'ini kullanan implementasyon.
 ///
 /// Endpoint: GET /api/v1/farms/{farm_id}/weather
@@ -31,7 +40,13 @@ class BackendWeatherRepository implements WeatherRepository {
     try {
       final targetFarmId = farmId ?? _farmId ?? await _findFirstFarmId();
       raw = await _client.getJson('farms/$targetFarmId/weather');
-    } on ApiException {
+    } on ApiException catch (error) {
+      if (error.statusCode == 422) {
+        throw const WeatherLocationRequiredException();
+      }
+      if (error.statusCode == 503) {
+        throw WeatherUnavailableException(error.message);
+      }
       rethrow;
     }
 

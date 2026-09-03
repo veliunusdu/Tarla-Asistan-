@@ -61,7 +61,8 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
             throw new ArgumentException("Geçersiz tarla koordinatları.");
         }
 
-        var cacheKey = $"weather:{farm.Id}";
+        // A location change must not reuse a forecast cached for the old coordinates.
+        var cacheKey = $"weather:{farm.Id}:{farm.Latitude.Value:F6}:{farm.Longitude.Value:F6}";
         if (_cache.TryGetValue(cacheKey, out FarmWeatherResponseDto? cached) && cached != null)
         {
             return cached;
@@ -81,16 +82,17 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
         try
         {
             WeatherForecastData? weatherData = null;
+            var providerRequestFailed = false;
             try
             {
                 weatherData = await _weatherProvider.GetWeatherAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
             }
             catch
             {
-                // Mock or provider may only implement ForecastAsync
+                providerRequestFailed = true;
             }
 
-            if (weatherData == null || weatherData.Points == null || weatherData.Points.Count == 0)
+            if (!providerRequestFailed && (weatherData == null || weatherData.Points == null || weatherData.Points.Count == 0))
             {
                 var fallbackPoints = await _weatherProvider.ForecastAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
                 if (fallbackPoints != null && fallbackPoints.Count > 0)

@@ -187,6 +187,38 @@ void main() {
       client.close();
     });
 
+    test('maps a selected farm without coordinates to the location flow', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          '{"detail":"Hava durumu için tarlanın konumu tanımlanmalıdır."}',
+          422,
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-no-location');
+
+      await expectLater(
+        repo.getWeather(),
+        throwsA(isA<WeatherLocationRequiredException>()),
+      );
+      client.close();
+    });
+
+    test('maps a weather provider outage to a typed retryable outcome', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          '{"detail":"Hava durumu şu anda alınamıyor."}',
+          503,
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-provider-down');
+
+      await expectLater(
+        repo.getWeather(),
+        throwsA(isA<WeatherUnavailableException>()),
+      );
+      client.close();
+    });
+
     test(
       'uses farmId parameter directly without requesting farms list',
       () async {
