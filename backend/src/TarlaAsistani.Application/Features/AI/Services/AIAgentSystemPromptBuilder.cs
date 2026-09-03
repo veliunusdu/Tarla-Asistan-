@@ -18,9 +18,10 @@ public class AIAgentSystemPromptBuilder : IAIAgentSystemPromptBuilder
         IConfiguration? configuration = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _timeZoneId = configuration?["AI:TimeZone"]
-            ?? configuration?["AI_TIME_ZONE"]
+        _timeZoneId = configuration?["AI_TIME_ZONE"]
             ?? Environment.GetEnvironmentVariable("AI_TIME_ZONE")
+            ?? configuration?["AI:TimeZone"]
+            ?? configuration?["AI__TimeZone"]
             ?? "Europe/Istanbul";
     }
 

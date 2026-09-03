@@ -32,17 +32,22 @@ public class GeminiAIAgentProvider : IAIAgentProvider
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger;
 
-        _apiKey = config.GetValue<string>("AI:GeminiApiKey")
-            ?? config.GetValue<string>("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? string.Empty;
+        _apiKey = FirstConfiguredValue(
+            config["GEMINI_API_KEY"],
+            Environment.GetEnvironmentVariable("GEMINI_API_KEY"),
+            config["AI:GeminiApiKey"],
+            config["AI__GeminiApiKey"]) ?? string.Empty;
 
         // Respect explicitly configured model without legacy downgrades
-        _model = config.GetValue<string>("AI:GeminiModel")
-            ?? config.GetValue<string>("GEMINI_MODEL")
-            ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-1.5-flash";
+        _model = FirstConfiguredValue(
+            config["GEMINI_MODEL"],
+            Environment.GetEnvironmentVariable("GEMINI_MODEL"),
+            config["AI:GeminiModel"],
+            config["AI__GeminiModel"]) ?? "gemini-1.5-flash";
     }
+
+    private static string? FirstConfiguredValue(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     /// <inheritdoc />
     public async Task<AIAgentResponse> GenerateResponseAsync(

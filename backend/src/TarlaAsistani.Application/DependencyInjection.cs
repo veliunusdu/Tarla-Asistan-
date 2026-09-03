@@ -34,9 +34,10 @@ public static class DependencyInjection
             .Configure<IServiceProvider>((options, sp) =>
             {
                 var configuration = sp.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
-                var maxIterationsStr = configuration?["AI:Agent:MaxIterations"]
-                    ?? configuration?["AI_AGENT_MAX_ITERATIONS"]
-                    ?? Environment.GetEnvironmentVariable("AI_AGENT_MAX_ITERATIONS");
+                var maxIterationsStr = configuration?["AI_AGENT_MAX_ITERATIONS"]
+                    ?? Environment.GetEnvironmentVariable("AI_AGENT_MAX_ITERATIONS")
+                    ?? configuration?["AI:Agent:MaxIterations"]
+                    ?? configuration?["AI__Agent__MaxIterations"];
 
                 if (int.TryParse(maxIterationsStr, out var parsed) && parsed >= 1 && parsed <= 10)
                 {

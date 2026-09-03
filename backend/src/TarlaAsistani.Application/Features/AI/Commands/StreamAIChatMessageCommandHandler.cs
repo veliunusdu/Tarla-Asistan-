@@ -30,21 +30,26 @@ public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIC
         _quotaService = quotaService;
         _mediator = mediator;
 
-        _providerName = config["AI:Provider"]
-            ?? config["AI_CHAT_PROVIDER"]
-            ?? Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER")
+        _providerName = FirstConfiguredValue(
+            config["AI_CHAT_PROVIDER"],
+            Environment.GetEnvironmentVariable("AI_CHAT_PROVIDER"),
+            config["AI__Provider"],
+            Environment.GetEnvironmentVariable("AI__Provider"),
+            config["AI:Provider"])
             ?? "local";
 
         _modelName = _providerName.ToLowerInvariant().Contains("gemini")
-            ? (config["AI:GeminiModel"] ?? config["GEMINI_MODEL"] ?? Environment.GetEnvironmentVariable("GEMINI_MODEL") ?? "gemini-1.5-flash")
+            ? (FirstConfiguredValue(config["GEMINI_MODEL"], Environment.GetEnvironmentVariable("GEMINI_MODEL"), config["AI:GeminiModel"], config["AI__GeminiModel"]) ?? "gemini-1.5-flash")
             : _providerName.ToLowerInvariant().Contains("deepseek")
-                ? (config["AI:DeepSeekModel"] ?? config["DEEPSEEK_MODEL"] ?? Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-chat")
+                ? (FirstConfiguredValue(config["DEEPSEEK_MODEL"], Environment.GetEnvironmentVariable("DEEPSEEK_MODEL"), config["AI:DeepSeekModel"], config["AI__DeepSeekModel"]) ?? "deepseek-chat")
                 : "local";
 
         var isLocal = _providerName.Equals("local", StringComparison.OrdinalIgnoreCase);
-        var agentEnabledConfig = config["AI:AgentEnabled"]
-            ?? config["AI_AGENT_ENABLED"]
-            ?? Environment.GetEnvironmentVariable("AI_AGENT_ENABLED");
+        var agentEnabledConfig = FirstConfiguredValue(
+            config["AI_AGENT_ENABLED"],
+            Environment.GetEnvironmentVariable("AI_AGENT_ENABLED"),
+            config["AI:AgentEnabled"],
+            config["AI__AgentEnabled"]);
 
         if (bool.TryParse(agentEnabledConfig, out var parsedEnabled))
         {
@@ -55,6 +60,9 @@ public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIC
             _agentEnabled = !isLocal;
         }
     }
+
+    private static string? FirstConfiguredValue(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     public async IAsyncEnumerable<AIChatStreamChunkDto> Handle(
         StreamAIChatMessageCommand request,

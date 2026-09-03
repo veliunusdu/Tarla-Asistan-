@@ -558,16 +558,23 @@ public class GeminiAIChatProvider : IAIChatProvider
     {
         _httpClient = httpClient;
         _costCalculator = costCalculator ?? new AICostCalculator();
-        _apiKey = config.GetValue<string>("AI:GeminiApiKey")
-            ?? config.GetValue<string>("GEMINI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-            ?? string.Empty;
-        var configuredModel = config.GetValue<string>("AI:GeminiModel")
-            ?? config.GetValue<string>("GEMINI_MODEL")
-            ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-1.5-flash";
-        _model = configuredModel.Contains("2.5-flash") ? "gemini-1.5-flash" : configuredModel;
+        _apiKey = FirstConfiguredValue(
+            config["GEMINI_API_KEY"],
+            Environment.GetEnvironmentVariable("GEMINI_API_KEY"),
+            config["AI:GeminiApiKey"],
+            config["AI__GeminiApiKey"]) ?? string.Empty;
+
+        var configuredModel = FirstConfiguredValue(
+            config["GEMINI_MODEL"],
+            Environment.GetEnvironmentVariable("GEMINI_MODEL"),
+            config["AI:GeminiModel"],
+            config["AI__GeminiModel"]) ?? "gemini-1.5-flash";
+
+        _model = configuredModel;
     }
+
+    private static string? FirstConfiguredValue(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
     public async Task<AIChatResponseDto> GenerateAsync(AIChatRequestDto request, CancellationToken cancellationToken = default)
     {
