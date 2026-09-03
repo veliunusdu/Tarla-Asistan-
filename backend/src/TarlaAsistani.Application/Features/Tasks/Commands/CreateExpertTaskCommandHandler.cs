@@ -66,7 +66,7 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
 
         // 3. Generate DedupeKey
         var source = request.CreatedByRole == UserRole.Farmer ? TaskSource.Manual : TaskSource.Expert;
-        var dedupeRaw = $"{source}|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId}";
+        var dedupeRaw = $"{source}|{request.FarmId:D}|{request.DueDate:yyyy-MM-dd}|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId?.ToString("D")}";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(dedupeRaw));
         var dedupeKey = Convert.ToHexString(hashBytes).ToLowerInvariant();
         if (dedupeKey.Length > 64)
@@ -74,7 +74,18 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
             dedupeKey = dedupeKey[..64];
         }
 
-        // 4. Create FarmTask with Transactional Integrity
+        // 4. Check for duplicate task and create with transactional integrity
+        var isDuplicate = await _db.FarmTasks.AnyAsync(
+            t => t.FarmId == farm.Id
+                 && t.DueDate == request.DueDate
+                 && t.DedupeKey == dedupeKey,
+            cancellationToken);
+
+        if (isDuplicate)
+        {
+            throw new DuplicateTaskException(dedupeKey, isKey: true);
+        }
+
         using var transaction = await _db.BeginTransactionAsync(cancellationToken);
         try
         {

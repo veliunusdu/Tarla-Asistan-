@@ -45,6 +45,7 @@ public static class AISystemPromptBuilder
         sb.AppendLine("- Backend iş-hava değerlendirmesini dikkate al; risk HIGH ise kesin şekilde 'uygundur' deme.");
         sb.AppendLine("- SuggestedAction değerini doğal Türkçeyle açıkla; kendi meteorolojik eşiklerini üretme.");
         sb.AppendLine("- LOW risk, koşulların kesin güvenli olduğu anlamına gelmez.");
+        sb.AppendLine("- Bu sohbet modunda sistemde doğrudan görev, tarla veya veri oluşturma/güncelleme/tamamlama/silme yetkin yoktur; veritabanında işlem yaptığını veya görev oluşturduğunu ASLA söyleme. Kullanıcıya bu işlemi uygulamada nasıl yapabileceğini anlatabilirsin ancak bir değişiklik gerçekleşmiş gibi davranma.");
         sb.AppendLine();
 
         if (ctx == null || ctx.Farms.Count == 0)

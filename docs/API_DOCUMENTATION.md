@@ -2767,17 +2767,40 @@ curl -X GET 'http://localhost:8100/api/v1/pilot/metrics' \
 <a id="endpoint-chat-api-v1-ai-chat-post"></a>
 #### `POST /api/v1/ai/chat` — Tarla bağlamında AI sohbeti başlat veya sürdür
 
-- **Erişim:** Bearer token
+- **Erişim:** Bearer token (JWT)
 - **Operation ID:** `chat_api_v1_ai_chat_post`
+
+Bu uç nokta, hem pasif danışmanlık yanıtlarını hem de **AI Agent / Fonksiyon Çağrısı (Function Calling)** döngüsünü yürütür.
+
+##### Agent Modu ve Yetenekleri (`AI:AgentEnabled=true`):
+Metin tabanlı isteklerde ve desteklenen sağlayıcılarda (`gemini`, `deepseek`) AI Agent orkestratörü devreye girer:
+1. **`list_farms`**: Kullanıcının sahip olduğu tarlaları güvenli sunucu bağlamıyla listeler.
+2. **`get_weather`**: Belirtilen tarlanın en güncel hava durumu tahminini ve risklerini çeker.
+3. **`get_tasks`**: Belirtilen tarlaya ait aktif veya tamamlanan görevleri sorgular.
+4. **`create_task`**: Kullanıcının açık talebi üzerine veritabanına yeni görev kaydeder (yazma aracı).
+
+##### Güvenlik ve Doğruluk İlkeleri:
+- **Güvenilir Kimlik:** AI araçları istemciden veya yapay zeka modelinden gelen kullanıcı ID/rol parametrelerine asla güvenmez; JWT üzerinden doğrulanmış sunucu tarafı oturumu (`ICurrentUserContext`) kullanılır.
+- **Yetki Sınırı:** Bir çiftçi yalnızca kendi tarlalarına görev ekleyebilir. Başka kullanıcının tarlasına yazma girişimi sunucu tarafından reddedilir (`farm_not_found`).
+- **Tekilleştirme (Deduplication):** Aynı tarla, aynı tarih ve aynı içerikteki görevler tekilleştirilir (`DedupeKey`). Mükerrer isteklerde model `duplicate_task` koduyla bilgilendirilir ve kullanıcıya görevin zaten mevcut olduğunu dürüstçe açıklar.
+- **Tarih & Saat Kısıtı:** Kullanıcının 'yarın', 'pazartesi' gibi göreceli ifadeleri `Europe/Istanbul` yerel saat dilimindeki güncel tarih baz alınarak takvim gününe (`YYYY-MM-DD`) dönüştürülür. Görevler saat bilgisi saklamaz; yapay zeka yanıtında saat kaydedildiğini iddia etmez.
+- **Dürüst Yanıt Garantisi:** Yapay zeka, araçlar başarıyla tamamlanıp veritabanına yazılmadan işlemin gerçekleştiğini ASLA teyit edemez.
+- **Gizlilik:** Dahili araç çağrı kimlikleri (`call_id`), sağlayıcı iç durumları (`thought_signature`, `reasoning_content`) veya sistem promptları istemciye sızdırılmaz.
+
+##### Hata Yönetimi:
+- Yapay zeka sağlayıcısında bir kesinti veya model hatası oluştuğunda HTTP `503 Service Unavailable` döner. İstemciye iç hata metni veya API anahtarları asla iletilmez; güvenli standart mesaj (`"AI hizmeti şu anda kullanılamıyor."`) sunulur.
 
 **Request body** — `application/json` · object
 
 ```json
 {
-  "message": "string",
-  "field_id": "string",
-  "conversation_id": "string",
-  "history": "string"
+  "message": "Yarın Kuzey tarlasına damlama sulama görevi oluştur.",
+  "field_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "conversation_id": "optional-session-uuid",
+  "history": [
+    { "role": "user", "content": "Merhaba" },
+    { "role": "assistant", "content": "Merhaba, nasıl yardımcı olabilirim?" }
+  ]
 }
 ```
 
@@ -2785,30 +2808,26 @@ curl -X GET 'http://localhost:8100/api/v1/pilot/metrics' \
 
 | HTTP | Açıklama | Gövde |
 |---|---|---|
-| `200` | Başarılı yanıt | application/json · [AIChatResponse](#schema-aichatresponse) |
+| `200` | Başarılı yanıt (Görev DB'ye kaydedildi ve yanıt oluşturuldu) | application/json · [AIChatResponse](#schema-aichatresponse) |
+| `401` | Oturum açılmamış veya token geçersiz | application/json |
+| `503` | AI hizmeti veya sağlayıcı geçici olarak kullanılamıyor | application/json |
 
 **Örnek başarılı yanıt (`200`)**
 
 ```json
 {
-  "reply": "string",
-  "conversation_id": "string"
+  "reply": "Tamam, Kuzey Tarlası için yarına (2026-09-04) damlama sulama görevi oluşturdum.",
+  "conversation_id": "string",
+  "prompt_tokens": 200,
+  "completion_tokens": 30,
+  "total_tokens": 230
 }
 ```
 
-**cURL**
+<a id="endpoint-chat-stream-api-v1-ai-chat-stream-post"></a>
+#### `POST /api/v1/ai/chat/stream` — SSE Tabanlı AI Sohbet Akışı
 
-```bash
-curl -X POST 'http://localhost:8100/api/v1/ai/chat' \
-  -H 'Authorization: Bearer <access_token>' \
-  -H 'Content-Type: application/json' \
-  --data-binary '{
-  "message": "string",
-  "field_id": "string",
-  "conversation_id": "string",
-  "history": "string"
-}'
-```
+Agent modu devredeyken araç çağrılarını eksiksiz çalıştırır, veri tabanı yazma işlemlerini tamamlar ve nihai yanıtı Server-Sent Events (SSE) formatında istemciye parça parça akıtır. Akış sonunda `data: [DONE]` sinyali ve kota/kullanım bilgisi iletilir.
 
 ## Ortak Hata Cevapları
 

@@ -88,6 +88,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // 3. Register Application & Infrastructure Layers
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<TarlaAsistani.Application.Common.Interfaces.ICurrentUserContext, TarlaAsistani.API.Common.HttpCurrentUserContext>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 

@@ -13,18 +13,22 @@ public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIC
     private readonly IAIChatProvider _aiChatProvider;
     private readonly IAIContextService _contextService;
     private readonly IAIQuotaService _quotaService;
+    private readonly IMediator? _mediator;
     private readonly string _providerName;
     private readonly string _modelName;
+    private readonly bool _agentEnabled;
 
     public StreamAIChatMessageCommandHandler(
         IAIChatProvider aiChatProvider,
         IAIContextService contextService,
         IAIQuotaService quotaService,
-        IConfiguration config)
+        IConfiguration config,
+        IMediator? mediator = null)
     {
         _aiChatProvider = aiChatProvider;
         _contextService = contextService;
         _quotaService = quotaService;
+        _mediator = mediator;
 
         _providerName = config["AI:Provider"]
             ?? config["AI_CHAT_PROVIDER"]
@@ -36,6 +40,20 @@ public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIC
             : _providerName.ToLowerInvariant().Contains("deepseek")
                 ? (config["AI:DeepSeekModel"] ?? config["DEEPSEEK_MODEL"] ?? Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-chat")
                 : "local";
+
+        var isLocal = _providerName.Equals("local", StringComparison.OrdinalIgnoreCase);
+        var agentEnabledConfig = config["AI:AgentEnabled"]
+            ?? config["AI_AGENT_ENABLED"]
+            ?? Environment.GetEnvironmentVariable("AI_AGENT_ENABLED");
+
+        if (bool.TryParse(agentEnabledConfig, out var parsedEnabled))
+        {
+            _agentEnabled = parsedEnabled;
+        }
+        else
+        {
+            _agentEnabled = !isLocal;
+        }
     }
 
     public async IAsyncEnumerable<AIChatStreamChunkDto> Handle(
@@ -43,7 +61,41 @@ public class StreamAIChatMessageCommandHandler : IStreamRequestHandler<StreamAIC
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var hasPhoto = request.PhotoBytes != null && request.PhotoBytes.Length > 0;
+        var isSupportedAgentProvider = _providerName.Equals("gemini", StringComparison.OrdinalIgnoreCase) ||
+                                       _providerName.Equals("deepseek", StringComparison.OrdinalIgnoreCase);
 
+        // If Text-only and Agent is enabled on Gemini/DeepSeek, route execution through full agent loop
+        if (!hasPhoto && _agentEnabled && isSupportedAgentProvider && _mediator != null)
+        {
+            var sendCommand = new SendAIChatMessageCommand(
+                UserId: request.UserId,
+                Message: request.Message,
+                FieldId: request.FieldId,
+                ConversationId: request.ConversationId,
+                History: request.History,
+                PhotoBytes: null,
+                PhotoContentType: null);
+
+            var agentResponse = await _mediator.Send(sendCommand, cancellationToken);
+
+            yield return new AIChatStreamChunkDto(
+                Content: agentResponse.Reply,
+                Done: false,
+                ConversationId: agentResponse.ConversationId);
+
+            yield return new AIChatStreamChunkDto(
+                Done: true,
+                ConversationId: agentResponse.ConversationId,
+                PromptTokens: agentResponse.PromptTokens,
+                CompletionTokens: agentResponse.CompletionTokens,
+                TotalTokens: agentResponse.TotalTokens,
+                EstimatedCostUsd: agentResponse.EstimatedCostUsd,
+                QuotaInfo: agentResponse.QuotaInfo);
+
+            yield break;
+        }
+
+        // ── PASSIVE / MULTIMODAL STREAMING FLOW ──────────────────────────────────
         // 1. Quota Check (Fast fail before opening stream)
         await _quotaService.CheckQuotaAsync(request.UserId, hasPhoto, cancellationToken);
 

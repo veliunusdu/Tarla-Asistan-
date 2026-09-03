@@ -4,12 +4,16 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.AI.Services;
 using TarlaAsistani.Application.Features.Weather.Services;
 using TarlaAsistani.Infrastructure.BackgroundServices;
 using TarlaAsistani.Infrastructure.Persistence;
 using TarlaAsistani.Infrastructure.Services;
+using TarlaAsistani.Infrastructure.Services.AI;
+using TarlaAsistani.Infrastructure.Services.AI.DeepSeek;
+using TarlaAsistani.Infrastructure.Services.AI.Gemini;
 
 namespace TarlaAsistani.Infrastructure;
 
@@ -80,14 +84,17 @@ public static class DependencyInjection
         if (aiProvider.Equals("gemini", StringComparison.OrdinalIgnoreCase))
         {
             services.AddHttpClient<IAIChatProvider, GeminiAIChatProvider>();
+            services.AddHttpClient<IAIAgentProvider, GeminiAIAgentProvider>();
         }
         else if (aiProvider.Equals("deepseek", StringComparison.OrdinalIgnoreCase))
         {
             services.AddHttpClient<IAIChatProvider, DeepSeekAIChatProvider>();
+            services.AddHttpClient<IAIAgentProvider, DeepSeekAIAgentProvider>();
         }
         else
         {
             services.AddScoped<IAIChatProvider, LocalAIChatProvider>();
+            services.AddScoped<IAIAgentProvider, UnavailableAIAgentProvider>();
         }
 
         // 5. AI Services (Cost Calculator, Quota, Context & Proactive Advisories)
