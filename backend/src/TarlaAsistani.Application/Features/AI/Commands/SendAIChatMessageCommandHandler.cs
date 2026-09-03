@@ -30,7 +30,7 @@ public class SendAIChatMessageCommandHandler : IRequestHandler<SendAIChatMessage
             ?? "local";
 
         _modelName = _providerName.ToLowerInvariant().Contains("gemini")
-            ? (config["AI:GeminiModel"] ?? config["GEMINI_MODEL"] ?? Environment.GetEnvironmentVariable("GEMINI_MODEL") ?? "gemini-2.5-flash")
+            ? (config["AI:GeminiModel"] ?? config["GEMINI_MODEL"] ?? Environment.GetEnvironmentVariable("GEMINI_MODEL") ?? "gemini-1.5-flash")
             : _providerName.ToLowerInvariant().Contains("deepseek")
                 ? (config["AI:DeepSeekModel"] ?? config["DEEPSEEK_MODEL"] ?? Environment.GetEnvironmentVariable("DEEPSEEK_MODEL") ?? "deepseek-chat")
                 : "local";

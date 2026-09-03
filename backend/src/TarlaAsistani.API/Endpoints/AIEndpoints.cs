@@ -129,6 +129,12 @@ public static class AIEndpoints
             {
                 return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
+            catch (Exception ex)
+            {
+                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
+                logger.LogError(ex, "AIChat unexpected error for user {UserId}: {Message}", userId, ex.Message);
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         })
         .WithName("AIChat")
         .RequireRateLimiting("AiChatPerUser")
@@ -283,6 +289,9 @@ public static class AIEndpoints
             }
             catch (Exception ex)
             {
+                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
+                logger.LogError(ex, "AIChatStream unexpected error for user {UserId}: {Message}", userId, ex.Message);
+
                 if (!httpContext.Response.HasStarted)
                 {
                     return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);

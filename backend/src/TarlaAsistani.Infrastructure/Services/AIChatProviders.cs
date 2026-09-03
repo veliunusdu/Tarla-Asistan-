@@ -200,11 +200,8 @@ public class LocalAIChatProvider : IAIChatProvider
     public Task<AIChatResponseDto> GenerateAsync(AIChatRequestDto request, CancellationToken cancellationToken = default)
     {
         var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
-        var reply = request.PhotoBytes != null
-            ? "Fotoğrafınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı analiz dönecek."
-            : "Mesajınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı yanıt dönecek.";
-
-        return Task.FromResult(new AIChatResponseDto(reply, conversationId));
+        var reply = BuildLocalReply(request);
+        return Task.FromResult(new AIChatResponseDto(reply, conversationId, 10, 20, 30, 0m));
     }
 
     public async IAsyncEnumerable<AIChatStreamChunkDto> GenerateStreamAsync(
@@ -212,9 +209,7 @@ public class LocalAIChatProvider : IAIChatProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
-        var reply = request.PhotoBytes != null
-            ? "Fotoğrafınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı analiz dönecek."
-            : "Mesajınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı yanıt dönecek.";
+        var reply = BuildLocalReply(request);
 
         var words = reply.Split(' ');
         for (int i = 0; i < words.Length; i++)
@@ -229,9 +224,39 @@ public class LocalAIChatProvider : IAIChatProvider
             Done: true,
             ConversationId: conversationId,
             PromptTokens: 10,
-            CompletionTokens: 10,
-            TotalTokens: 20,
+            CompletionTokens: 20,
+            TotalTokens: 30,
             EstimatedCostUsd: 0m);
+    }
+
+    private static string BuildLocalReply(AIChatRequestDto request)
+    {
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(request.AccountContext?.DisplayName))
+        {
+            sb.Append($"Merhaba {request.AccountContext.DisplayName}. ");
+        }
+        else
+        {
+            sb.Append("Merhaba. ");
+        }
+
+        if (request.PhotoBytes != null && request.PhotoBytes.Length > 0)
+        {
+            sb.Append("Fotoğrafınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı analiz dönecek. ");
+        }
+        else
+        {
+            sb.Append("Mesajınızı aldım. AI sağlayıcısı bağlandığında ayrıntılı yanıt dönecek. ");
+        }
+
+        if (request.AccountContext?.Advisories != null && request.AccountContext.Advisories.Count > 0)
+        {
+            var topAdv = request.AccountContext.Advisories.First();
+            sb.Append($"Tarlanız için güncel bir uyarımız var: **{topAdv.Title}**. {topAdv.ActionRecommendation} ");
+        }
+
+        return sb.ToString().Trim();
     }
 }
 
@@ -309,27 +334,42 @@ public class DeepSeekAIChatProvider : IAIChatProvider
         };
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var chatResult = JsonSerializer.Deserialize<DeepSeekChatCompletionResponse>(responseJson);
-
-        var reply = chatResult?.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
-        if (string.IsNullOrWhiteSpace(reply))
+        HttpResponseMessage response;
+        try
         {
-            throw new InvalidOperationException("AI sağlayıcısı geçerli bir yanıt döndürmedi.");
+            response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
         }
 
-        int? promptTokens = chatResult?.Usage?.PromptTokens;
-        int? completionTokens = chatResult?.Usage?.CompletionTokens;
-        int? totalTokens = chatResult?.Usage?.TotalTokens;
-        decimal? cost = (promptTokens.HasValue || completionTokens.HasValue)
-            ? _costCalculator.CalculateCost("deepseek", _model, promptTokens ?? 0, completionTokens ?? 0)
-            : null;
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
+            }
 
-        var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
-        return new AIChatResponseDto(reply, conversationId, promptTokens, completionTokens, totalTokens, cost);
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var chatResult = JsonSerializer.Deserialize<DeepSeekChatCompletionResponse>(responseJson);
+
+            var reply = chatResult?.Choices?.FirstOrDefault()?.Message?.Content?.Trim();
+            if (string.IsNullOrWhiteSpace(reply))
+            {
+                return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
+            }
+
+            int? promptTokens = chatResult?.Usage?.PromptTokens;
+            int? completionTokens = chatResult?.Usage?.CompletionTokens;
+            int? totalTokens = chatResult?.Usage?.TotalTokens;
+            decimal? cost = (promptTokens.HasValue || completionTokens.HasValue)
+                ? _costCalculator.CalculateCost("deepseek", _model, promptTokens ?? 0, completionTokens ?? 0)
+                : null;
+
+            var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
+            return new AIChatResponseDto(reply, conversationId, promptTokens, completionTokens, totalTokens, cost);
+        }
     }
 
     public async IAsyncEnumerable<AIChatStreamChunkDto> GenerateStreamAsync(
@@ -373,8 +413,7 @@ public class DeepSeekAIChatProvider : IAIChatProvider
             model = _model,
             messages = messages,
             temperature = 0.2,
-            stream = true,
-            stream_options = new { include_usage = true }
+            stream = true
         };
 
         var json = JsonSerializer.Serialize(payload);
@@ -384,56 +423,91 @@ public class DeepSeekAIChatProvider : IAIChatProvider
         };
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream, Encoding.UTF8);
-
-        int? promptTokens = null;
-        int? completionTokens = null;
-        int? totalTokens = null;
-
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        HttpResponseMessage? response = null;
+        try
         {
-            var line = await reader.ReadLineAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:")) continue;
+            response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (Exception)
+        {
+            response = null;
+        }
 
-            var data = line["data:".Length..].Trim();
-            if (data == "[DONE]") break;
-
-            using var doc = JsonDocument.Parse(data);
-            if (doc.RootElement.TryGetProperty("choices", out var choices) &&
-                choices.GetArrayLength() > 0 &&
-                choices[0].TryGetProperty("delta", out var delta) &&
-                delta.TryGetProperty("content", out var contentEl))
+        if (response == null || !response.IsSuccessStatusCode)
+        {
+            response?.Dispose();
+            await foreach (var chunk in new LocalAIChatProvider().GenerateStreamAsync(request, cancellationToken))
             {
-                var content = contentEl.GetString();
-                if (!string.IsNullOrEmpty(content))
+                yield return chunk;
+            }
+            yield break;
+        }
+
+        using (response)
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+
+            int? promptTokens = null;
+            int? completionTokens = null;
+            int? totalTokens = null;
+
+            while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(cancellationToken);
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                line = line.Trim();
+                if (!line.StartsWith("data:")) continue;
+
+                var data = line["data:".Length..].Trim();
+                if (string.IsNullOrWhiteSpace(data)) continue;
+                if (data == "[DONE]") break;
+
+                JsonDocument doc;
+                try
                 {
-                    yield return new AIChatStreamChunkDto(Content: content, ConversationId: conversationId);
+                    doc = JsonDocument.Parse(data);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                using (doc)
+                {
+                    if (doc.RootElement.TryGetProperty("choices", out var choices) &&
+                        choices.GetArrayLength() > 0 &&
+                        choices[0].TryGetProperty("delta", out var delta) &&
+                        delta.TryGetProperty("content", out var contentEl))
+                    {
+                        var content = contentEl.GetString();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            yield return new AIChatStreamChunkDto(Content: content, ConversationId: conversationId);
+                        }
+                    }
+
+                    if (doc.RootElement.TryGetProperty("usage", out var usageEl))
+                    {
+                        if (usageEl.TryGetProperty("prompt_tokens", out var pt)) promptTokens = pt.GetInt32();
+                        if (usageEl.TryGetProperty("completion_tokens", out var ct)) completionTokens = ct.GetInt32();
+                        if (usageEl.TryGetProperty("total_tokens", out var tt)) totalTokens = tt.GetInt32();
+                    }
                 }
             }
 
-            if (doc.RootElement.TryGetProperty("usage", out var usageEl))
-            {
-                if (usageEl.TryGetProperty("prompt_tokens", out var pt)) promptTokens = pt.GetInt32();
-                if (usageEl.TryGetProperty("completion_tokens", out var ct)) completionTokens = ct.GetInt32();
-                if (usageEl.TryGetProperty("total_tokens", out var tt)) totalTokens = tt.GetInt32();
-            }
+            decimal? cost = (promptTokens.HasValue || completionTokens.HasValue)
+                ? _costCalculator.CalculateCost("deepseek", _model, promptTokens ?? 0, completionTokens ?? 0)
+                : null;
+
+            yield return new AIChatStreamChunkDto(
+                Done: true,
+                ConversationId: conversationId,
+                PromptTokens: promptTokens,
+                CompletionTokens: completionTokens,
+                TotalTokens: totalTokens,
+                EstimatedCostUsd: cost);
         }
-
-        decimal? cost = (promptTokens.HasValue || completionTokens.HasValue)
-            ? _costCalculator.CalculateCost("deepseek", _model, promptTokens ?? 0, completionTokens ?? 0)
-            : null;
-
-        yield return new AIChatStreamChunkDto(
-            Done: true,
-            ConversationId: conversationId,
-            PromptTokens: promptTokens,
-            CompletionTokens: completionTokens,
-            TotalTokens: totalTokens,
-            EstimatedCostUsd: cost);
     }
 
     private class DeepSeekChatCompletionResponse
@@ -487,10 +561,11 @@ public class GeminiAIChatProvider : IAIChatProvider
             ?? config.GetValue<string>("GEMINI_API_KEY")
             ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY")
             ?? string.Empty;
-        _model = config.GetValue<string>("AI:GeminiModel")
+        var configuredModel = config.GetValue<string>("AI:GeminiModel")
             ?? config.GetValue<string>("GEMINI_MODEL")
             ?? Environment.GetEnvironmentVariable("GEMINI_MODEL")
-            ?? "gemini-2.5-flash";
+            ?? "gemini-1.5-flash";
+        _model = configuredModel.Contains("2.5-flash") ? "gemini-1.5-flash" : configuredModel;
     }
 
     public async Task<AIChatResponseDto> GenerateAsync(AIChatRequestDto request, CancellationToken cancellationToken = default)
@@ -560,11 +635,25 @@ public class GeminiAIChatProvider : IAIChatProvider
         };
         httpRequest.Headers.Add("x-goog-api-key", _apiKey);
 
-        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
+        }
 
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(responseJson);
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                return await new LocalAIChatProvider().GenerateAsync(request, cancellationToken);
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(responseJson);
 
         string? reply = null;
         if (doc.RootElement.TryGetProperty("candidates", out var candidates) &&
@@ -604,6 +693,7 @@ public class GeminiAIChatProvider : IAIChatProvider
         var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
         return new AIChatResponseDto(reply, conversationId, promptTokens, completionTokens, totalTokens, cost);
     }
+}
 
     public async IAsyncEnumerable<AIChatStreamChunkDto> GenerateStreamAsync(
         AIChatRequestDto request,
@@ -679,11 +769,30 @@ public class GeminiAIChatProvider : IAIChatProvider
         };
         httpRequest.Headers.Add("x-goog-api-key", _apiKey);
 
-        using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        HttpResponseMessage? response = null;
+        try
+        {
+            response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (Exception)
+        {
+            response = null;
+        }
 
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream, Encoding.UTF8);
+        if (response == null || !response.IsSuccessStatusCode)
+        {
+            response?.Dispose();
+            await foreach (var chunk in new LocalAIChatProvider().GenerateStreamAsync(request, cancellationToken))
+            {
+                yield return chunk;
+            }
+            yield break;
+        }
+
+        using (response)
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
 
         int? promptTokens = null;
         int? completionTokens = null;
@@ -735,5 +844,6 @@ public class GeminiAIChatProvider : IAIChatProvider
             CompletionTokens: completionTokens,
             TotalTokens: totalTokens,
             EstimatedCostUsd: cost);
+        }
     }
 }

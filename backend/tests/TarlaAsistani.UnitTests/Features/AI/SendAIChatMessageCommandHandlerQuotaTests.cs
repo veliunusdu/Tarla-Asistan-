@@ -23,7 +23,7 @@ public class SendAIChatMessageCommandHandlerQuotaTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AI:Provider"] = "gemini",
-                ["AI:GeminiModel"] = "gemini-2.5-flash"
+                ["AI:GeminiModel"] = "gemini-1.5-flash"
             })
             .Build();
 
@@ -102,7 +102,7 @@ public class SendAIChatMessageCommandHandlerQuotaTests
         _mockQuotaService.Verify(q => q.RecordUsageAsync(
             _userId,
             "gemini",
-            "gemini-2.5-flash",
+            "gemini-1.5-flash",
             false,
             100,
             50,

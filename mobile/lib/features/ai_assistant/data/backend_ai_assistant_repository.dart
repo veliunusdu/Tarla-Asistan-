@@ -141,12 +141,26 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
               .toList(),
       };
 
-      yield* _client.postStream(
-        '/ai/chat/stream',
-        jsonBody: payload,
-        onConversationId: onConversationId,
-      );
-      return;
+      try {
+        yield* _client.postStream(
+          '/ai/chat/stream',
+          jsonBody: payload,
+          onConversationId: onConversationId,
+        );
+        return;
+      } catch (e) {
+        final fallback = await sendMessage(
+          message: trimmedMessage,
+          fieldId: trimmedFieldId,
+          conversationId: trimmedConversationId,
+          history: history,
+        );
+        if (onConversationId != null && fallback.conversationId.isNotEmpty) {
+          onConversationId(fallback.conversationId);
+        }
+        yield fallback.message;
+        return;
+      }
     }
 
     // Photo validation & multipart request
@@ -190,12 +204,28 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
       contentType: resolvedContentType,
     );
 
-    yield* _client.postStream(
-      '/ai/chat/stream',
-      fields: fields,
-      files: [uploadFile],
-      onConversationId: onConversationId,
-    );
+    try {
+      yield* _client.postStream(
+        '/ai/chat/stream',
+        fields: fields,
+        files: [uploadFile],
+        onConversationId: onConversationId,
+      );
+    } catch (e) {
+      final fallback = await sendMessage(
+        message: trimmedMessage,
+        photo: photo,
+        photoContentType: resolvedContentType,
+        photoFileName: resolvedFileName,
+        fieldId: trimmedFieldId,
+        conversationId: trimmedConversationId,
+        history: history,
+      );
+      if (onConversationId != null && fallback.conversationId.isNotEmpty) {
+        onConversationId(fallback.conversationId);
+      }
+      yield fallback.message;
+    }
   }
 
   static String _resolveContentType({
