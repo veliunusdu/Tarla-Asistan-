@@ -62,9 +62,9 @@ public partial class AddProactiveAdvisories : Migration
                     principalColumn: "Id",
                     onDelete: ReferentialAction.SetNull);
                 table.ForeignKey(
-                    name: "FK_proactive_advisories_farm_tasks_RelatedTaskId",
+                    name: "FK_proactive_advisories_tasks_RelatedTaskId",
                     column: x => x.RelatedTaskId,
-                    principalTable: "farm_tasks",
+                    principalTable: "tasks",
                     principalColumn: "Id",
                     onDelete: ReferentialAction.SetNull);
             });
