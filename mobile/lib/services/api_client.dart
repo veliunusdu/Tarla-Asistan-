@@ -112,6 +112,14 @@ class ApiClient {
     await _send('DELETE', endpoint);
   }
 
+  Future<Map<String, String>> getAuthHeaders() async {
+    final token = await _idTokenProvider();
+    if (token != null && token.isNotEmpty) {
+      return {'Authorization': 'Bearer $token'};
+    }
+    return {};
+  }
+
   Future<void> sendQueued({
     required String method,
     required String endpoint,

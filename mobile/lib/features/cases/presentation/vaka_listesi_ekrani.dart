@@ -180,37 +180,47 @@ class _VakaListesiEkraniState extends State<VakaListesiEkrani> {
     }
 
     if (_cases.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.assignment_outlined,
-                size: 64,
-                color: Colors.grey.shade400,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              const Text(
-                'Kayıtlı bir sorun bildiriminiz bulunmuyor.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
+      return RefreshIndicator(
+        onRefresh: _loadCases,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: 80),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.assignment_outlined,
+                  size: 64,
+                  color: Colors.grey.shade400,
                 ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Tarlanızı etkileyen bir problem olduğunda sağ alttaki butondan ziraat mühendisine danışabilirsiniz.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade600,
+                const SizedBox(height: AppSpacing.md),
+                const Text(
+                  'Kayıtlı bir sorun bildiriminiz bulunmuyor.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Tarlanızı etkileyen bir problem olduğunda sağ alttaki butondan ziraat mühendisine danışabilirsiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: _navigateToSorunBildir,
+                  icon: const Icon(Icons.add_alert_outlined),
+                  label: const Text('Sorun Bildir'),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -255,18 +265,23 @@ class _VakaListesiEkraniState extends State<VakaListesiEkrani> {
         ),
         Expanded(
           child: filtered.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      'Bu filtrede bildirim bulunmuyor.',
-                      style: TextStyle(color: Colors.grey.shade600),
+              ? RefreshIndicator(
+                  onRefresh: _loadCases,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: Center(
+                      child: Text(
+                        'Bu filtrede bildirim bulunmuyor.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
                     ),
                   ),
                 )
               : RefreshIndicator(
                   onRefresh: _loadCases,
                   child: ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(
                       AppSpacing.md,
                       0,

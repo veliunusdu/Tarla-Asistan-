@@ -14,4 +14,5 @@ abstract interface class CaseRepository {
     List<int>? imageBytes,
     String? imageFileName,
   });
+  Future<Map<String, String>> getAuthHeaders() async => {};
 }

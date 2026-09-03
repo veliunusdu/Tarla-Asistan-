@@ -30,7 +30,7 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   void initState() {
     super.initState();
     if (widget.target.type != NotificationTargetType.supportCase ||
-        widget.target.resourceId == null) {
+        widget.target.resourceId.isEmpty) {
       _reload();
     }
   }
@@ -56,9 +56,9 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.target.type == NotificationTargetType.supportCase &&
-        widget.target.resourceId != null) {
+        widget.target.resourceId.isNotEmpty) {
       return VakaDetayEkrani(
-        caseId: widget.target.resourceId!,
+        caseId: widget.target.resourceId,
         caseRepository: widget.caseRepository ??
             BackendCaseRepository(apiClient: widget.apiClient),
       );

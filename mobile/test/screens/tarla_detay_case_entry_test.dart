@@ -31,6 +31,9 @@ class DummyCaseRepo implements CaseRepository {
     String? imageFileName,
   }) =>
       throw UnimplementedError();
+
+  @override
+  Future<Map<String, String>> getAuthHeaders() async => {};
 }
 
 class DummyFaaliyetRepo implements FaaliyetRepository {

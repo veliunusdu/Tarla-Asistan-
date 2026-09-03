@@ -11,6 +11,8 @@ import '../domain/models/case_detail.dart';
 import '../domain/models/case_message.dart';
 import '../domain/models/case_status.dart';
 
+const Color _primaryLight = Color(0xFFE8F5E9);
+
 class VakaDetayEkrani extends StatefulWidget {
   const VakaDetayEkrani({
     super.key,
@@ -37,12 +39,21 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
   String? _errorMessage;
   bool _isSending = false;
   PickedImageData? _selectedImage;
+  Map<String, String> _authHeaders = const {};
 
   @override
   void initState() {
     super.initState();
     _pickerService = widget.imagePickerService ?? const DefaultImagePickerService();
+    _loadAuthHeaders();
     _loadCase();
+  }
+
+  Future<void> _loadAuthHeaders() async {
+    try {
+      final headers = await widget.caseRepository.getAuthHeaders();
+      if (mounted) setState(() => _authHeaders = headers);
+    } catch (_) {}
   }
 
   @override
@@ -143,9 +154,13 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
   }
 
   Future<void> _sendMessage() async {
-    final text = _textController.text.trim();
+    var text = _textController.text.trim();
     if (text.isEmpty && _selectedImage == null) return;
     if (_isSending) return;
+
+    if (text.isEmpty && _selectedImage != null) {
+      text = 'Fotoğraf eklendi.';
+    }
 
     setState(() => _isSending = true);
 
@@ -204,35 +219,75 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
     }
   }
 
-  Widget _buildMediaThumbnail(String url) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        url,
-        width: 72,
-        height: 72,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          width: 72,
-          height: 72,
-          color: Colors.grey.shade200,
-          child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
-        ),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            width: 72,
-            height: 72,
-            color: Colors.grey.shade100,
-            child: const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+  void _showFullscreenImage(String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            InteractiveViewer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  url,
+                  headers: _authHeaders,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => Container(
+                    color: Colors.black87,
+                    height: 200,
+                    child: const Center(
+                      child: Icon(Icons.broken_image, color: Colors.white, size: 48),
+                    ),
+                  ),
+                ),
               ),
             ),
-          );
-        },
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaThumbnail(String url) {
+    return GestureDetector(
+      onTap: () => _showFullscreenImage(url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          headers: _authHeaders,
+          width: 72,
+          height: 72,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Container(
+            width: 72,
+            height: 72,
+            color: Colors.grey.shade200,
+            child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
+          ),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              width: 72,
+              height: 72,
+              color: Colors.grey.shade100,
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -737,11 +792,33 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
             onRefresh: _loadCase,
             child: ListView(
               controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppSpacing.md),
               children: [
                 _buildHeaderCard(detail),
                 const SizedBox(height: AppSpacing.md),
-                ...detail.messages.map((m) => _buildMessageBubble(m)),
+                if (detail.messages.isEmpty)
+                  Card(
+                    margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                    color: _primaryLight.withOpacity(0.5),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.schedule, color: AppColors.primary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Sorunuz ziraat mühendislerimize iletildi. Uzman yanıtı geldiğinde burada görüntülenecektir.',
+                              style: TextStyle(color: Colors.grey.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ...detail.messages.map((m) => _buildMessageBubble(m)),
               ],
             ),
           ),

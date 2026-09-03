@@ -90,6 +90,9 @@ class MockChatCaseRepository implements CaseRepository {
     );
     return msg;
   }
+
+  @override
+  Future<Map<String, String>> getAuthHeaders() async => {};
 }
 
 class MockChatImagePickerService implements ImagePickerService {

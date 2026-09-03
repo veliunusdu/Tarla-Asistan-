@@ -58,6 +58,9 @@ class MockCaseRepository implements CaseRepository {
   }) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<Map<String, String>> getAuthHeaders() async => {};
 }
 
 class FakeTarlaRepository implements TarlaRepository {

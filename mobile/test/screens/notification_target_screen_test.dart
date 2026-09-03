@@ -45,6 +45,9 @@ class _MockCaseRepo implements CaseRepository {
   }) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<Map<String, String>> getAuthHeaders() async => {};
 }
 
 void main() {

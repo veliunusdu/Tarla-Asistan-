@@ -1,5 +1,6 @@
 import 'package:uuid/uuid.dart';
 
+import '../../../config/app_config.dart';
 import '../../../services/api_client.dart';
 import '../domain/models/case_category.dart';
 import '../domain/models/case_detail.dart';
@@ -18,6 +19,16 @@ class BackendCaseRepository implements CaseRepository {
 
   final ApiClient _api;
   final Uuid _uuid;
+
+  String? _resolveMediaUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+      return rawUrl;
+    }
+    final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final path = rawUrl.replaceFirst(RegExp(r'^/+'), '');
+    return '$baseUrl/$path';
+  }
 
   @override
   Future<String> createCase(CreateCaseInput input) async {
@@ -102,7 +113,7 @@ class BackendCaseRepository implements CaseRepository {
     );
 
     final mediaList = (m['media'] as List<dynamic>?)
-            ?.map((e) => (e as Map<String, dynamic>)['url']?.toString())
+            ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
             .whereType<String>()
             .toList() ??
         [];
@@ -110,7 +121,7 @@ class BackendCaseRepository implements CaseRepository {
     final messagesList = (m['messages'] as List<dynamic>?)?.map((rawMsg) {
           final msgMap = rawMsg as Map<String, dynamic>;
           final msgMedia = (msgMap['media'] as List<dynamic>?)
-                  ?.map((e) => (e as Map<String, dynamic>)['url']?.toString())
+                  ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
                   .whereType<String>()
                   .toList() ??
               [];
@@ -186,7 +197,7 @@ class BackendCaseRepository implements CaseRepository {
     final response = await _api.postJson('/cases/$caseId/messages', payload);
 
     final mediaUrls = (response['media'] as List<dynamic>?)
-            ?.map((e) => (e as Map<String, dynamic>)['url']?.toString())
+            ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
             .whereType<String>()
             .toList() ??
         [];
@@ -207,4 +218,7 @@ class BackendCaseRepository implements CaseRepository {
       isCurrentUser: !isFromExpert,
     );
   }
+
+  @override
+  Future<Map<String, String>> getAuthHeaders() => _api.getAuthHeaders();
 }
