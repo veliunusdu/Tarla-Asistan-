@@ -4,6 +4,10 @@ import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
+import '../features/cases/data/case_repository.dart';
+import '../features/cases/presentation/sorun_bildir_ekrani.dart';
+import '../features/fields/data/local_tarla_repository.dart';
+import '../features/fields/data/tarla_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
 import '../shared/utils/date_formatter.dart';
@@ -30,13 +34,19 @@ class TarlaDetayEkrani extends StatefulWidget {
     super.key,
     required this.tarla,
     FaaliyetRepository? faaliyetRepository,
+    TarlaRepository? tarlaRepository,
+    CaseRepository? caseRepository,
     this.onArchive,
     this.onEdit,
   }) : _faaliyetRepository =
-           faaliyetRepository ?? const LocalFaaliyetRepository();
+           faaliyetRepository ?? const LocalFaaliyetRepository(),
+       _tarlaRepository = tarlaRepository,
+       _caseRepository = caseRepository;
 
   final Tarla tarla;
   final FaaliyetRepository _faaliyetRepository;
+  final TarlaRepository? _tarlaRepository;
+  final CaseRepository? _caseRepository;
   final Future<void> Function()? onArchive;
   final Future<bool> Function()? onEdit;
 
@@ -213,7 +223,25 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
         children: [
           Flexible(
             child: SingleChildScrollView(
-              child: _TarlaBilgiKarti(tarla: widget.tarla),
+              child: _TarlaBilgiKarti(
+                tarla: widget.tarla,
+                onReportProblem: widget._caseRepository != null
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SorunBildirEkrani(
+                              initialTarlaId: widget.tarla.id,
+                              caseRepository: widget._caseRepository!,
+                              tarlaRepository:
+                                  widget._tarlaRepository ??
+                                  const LocalTarlaRepository(),
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              ),
             ),
           ),
           Expanded(child: _faaliyetTabView()),
@@ -287,9 +315,10 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
 // ---------------------------------------------------------------------------
 
 class _TarlaBilgiKarti extends StatelessWidget {
-  const _TarlaBilgiKarti({required this.tarla});
+  const _TarlaBilgiKarti({required this.tarla, this.onReportProblem});
 
   final Tarla tarla;
+  final VoidCallback? onReportProblem;
 
   @override
   Widget build(BuildContext context) {
@@ -335,6 +364,17 @@ class _TarlaBilgiKarti extends StatelessWidget {
               deger: konumMetin,
               renkli: konumYok,
             ),
+            if (onReportProblem != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton.icon(
+                icon: const Icon(
+                  Icons.report_problem_outlined,
+                  color: AppColors.error,
+                ),
+                label: const Text('Sorun Bildir'),
+                onPressed: onReportProblem,
+              ),
+            ],
           ],
         ),
       ),

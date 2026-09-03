@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/theme/app_colors.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
+import '../features/cases/data/case_repository.dart';
 import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
@@ -68,13 +69,16 @@ class TarlaListesiEkrani extends StatefulWidget {
     super.key,
     TarlaRepository? repository,
     FaaliyetRepository? faaliyetRepository,
+    CaseRepository? caseRepository,
     this.onDataChanged,
   }) : _repository = repository ?? const LocalTarlaRepository(),
        _faaliyetRepository =
-           faaliyetRepository ?? const LocalFaaliyetRepository();
+           faaliyetRepository ?? const LocalFaaliyetRepository(),
+       _caseRepository = caseRepository;
 
   final TarlaRepository _repository;
   final FaaliyetRepository _faaliyetRepository;
+  final CaseRepository? _caseRepository;
 
   @visibleForTesting
   FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepository;
@@ -313,6 +317,8 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                         builder: (context) => TarlaDetayEkrani(
                           tarla: tarla,
                           faaliyetRepository: widget._faaliyetRepository,
+                          tarlaRepository: widget._repository,
+                          caseRepository: widget._caseRepository,
                           onEdit: widget._repository is TarlaUpdateRepository
                               ? () => Navigator.push<bool>(
                                   context,

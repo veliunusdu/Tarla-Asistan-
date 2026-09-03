@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
+import '../features/cases/data/case_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
@@ -30,12 +31,14 @@ class AnaEkran extends StatefulWidget {
     WeatherRepository? weatherRepository,
     AiAssistantRepository? aiRepository,
     ProfileRepository? profileRepository,
+    CaseRepository? caseRepository,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
        _weatherRepo = weatherRepository,
        _aiRepo = aiRepository,
        _profileRepo = profileRepository,
+       _caseRepo = caseRepository,
        _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
@@ -43,6 +46,7 @@ class AnaEkran extends StatefulWidget {
   final WeatherRepository? _weatherRepo;
   final AiAssistantRepository? _aiRepo;
   final ProfileRepository? _profileRepo;
+  final CaseRepository? _caseRepo;
   final Future<void> Function()? _onLogout;
 
   @override
@@ -70,6 +74,7 @@ class _AnaEkranState extends State<AnaEkran> {
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         weatherRepository: widget._weatherRepo,
+        caseRepository: widget._caseRepo,
         onTarlalarimSekme: _gotoTarlalarim,
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,
@@ -84,6 +89,7 @@ class _AnaEkranState extends State<AnaEkran> {
       TarlaListesiEkrani(
         repository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
+        caseRepository: widget._caseRepo,
         onDataChanged: _onDataChanged,
       ),
       // 3 — Asistan

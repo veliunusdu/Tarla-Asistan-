@@ -9,6 +9,7 @@ import 'firebase_options.dart';
 import 'models/notification_target.dart';
 import 'features/activities/data/backend_faaliyet_repository.dart';
 import 'features/ai_assistant/data/backend_ai_assistant_repository.dart';
+import 'features/cases/data/backend_case_repository.dart';
 import 'features/weather/data/backend_weather_repository.dart';
 import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
@@ -320,6 +321,9 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           apiClient: _apiClient,
                         ),
                         profileRepository: BackendProfileRepository(_apiClient),
+                        caseRepository: BackendCaseRepository(
+                          apiClient: _apiClient,
+                        ),
                       );
                     },
                   );

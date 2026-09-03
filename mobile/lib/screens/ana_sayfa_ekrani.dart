@@ -4,6 +4,8 @@ import '../app/theme/app_colors.dart';
 import '../app/theme/app_spacing.dart';
 import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
+import '../features/cases/data/case_repository.dart';
+import '../features/cases/presentation/sorun_bildir_ekrani.dart';
 import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_location_repository.dart';
@@ -36,6 +38,7 @@ class AnaSayfaEkrani extends StatefulWidget {
     TarlaRepository? tarlaRepository,
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
+    CaseRepository? caseRepository,
     this.locationService,
     this.locationPicker,
     this.onTarlalarimSekme,
@@ -43,11 +46,13 @@ class AnaSayfaEkrani extends StatefulWidget {
     this.refreshNotifier,
   }) : _tarlaRepo = tarlaRepository ?? const LocalTarlaRepository(),
        _faaliyetRepo = faaliyetRepository ?? const LocalFaaliyetRepository(),
-       _weatherRepo = weatherRepository ?? const UnavailableWeatherRepository();
+       _weatherRepo = weatherRepository ?? const UnavailableWeatherRepository(),
+       _caseRepo = caseRepository;
 
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
   final WeatherRepository _weatherRepo;
+  final CaseRepository? _caseRepo;
   final LocationService? locationService;
   final FieldLocationPicker? locationPicker;
 
@@ -285,6 +290,19 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     if (result == true && mounted) _yenile();
   }
 
+  Future<void> _sorunBildir() async {
+    if (widget._caseRepo == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SorunBildirEkrani(
+          caseRepository: widget._caseRepo!,
+          tarlaRepository: widget._tarlaRepo,
+        ),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
@@ -294,7 +312,17 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tarım Asistanı')),
+      appBar: AppBar(
+        title: const Text('Tarım Asistanı'),
+        actions: [
+          if (widget._caseRepo != null)
+            IconButton(
+              icon: const Icon(Icons.report_problem_outlined),
+              tooltip: 'Sorun Bildir',
+              onPressed: _sorunBildir,
+            ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -322,6 +350,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                 future: _tarlalar,
                 onRetry: _yenile,
                 onTarlaEkle: _tarlaEkle,
+                onSorunBildir: widget._caseRepo != null ? _sorunBildir : null,
               ),
               const SizedBox(height: AppSpacing.lg),
 
@@ -455,11 +484,13 @@ class _TarlaIstatistikSection extends StatelessWidget {
     required this.future,
     required this.onRetry,
     required this.onTarlaEkle,
+    this.onSorunBildir,
   });
 
   final Future<List<Tarla>> future;
   final VoidCallback onRetry;
   final VoidCallback onTarlaEkle;
+  final VoidCallback? onSorunBildir;
 
   @override
   Widget build(BuildContext context) {
@@ -468,7 +499,25 @@ class _TarlaIstatistikSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Tarla Özeti', style: theme.textTheme.titleMedium),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Tarla Özeti', style: theme.textTheme.titleMedium),
+            if (onSorunBildir != null)
+              TextButton.icon(
+                onPressed: onSorunBildir,
+                icon: const Icon(
+                  Icons.report_problem_outlined,
+                  size: 18,
+                  color: AppColors.error,
+                ),
+                label: const Text(
+                  'Sorun Bildir',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.sm),
         FutureBuilder<List<Tarla>>(
           future: future,
