@@ -43,7 +43,17 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         ],
       ),
     );
-    if (confirmed == true) await widget.onLogout?.call();
+    if (confirmed == true) {
+      try {
+        await widget.onLogout?.call();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Çıkış yapılırken hata: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -115,13 +125,20 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                               );
                           if (mounted) {
                             setState(() => _profile = Future.value(updated));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  enabled ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.',
+                                ),
+                              ),
+                            );
                           }
-                        } catch (_) {
+                        } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Bildirim tercihi kaydedilemedi.',
+                                  'Bildirim tercihi kaydedilemedi: $e',
                                 ),
                               ),
                             );

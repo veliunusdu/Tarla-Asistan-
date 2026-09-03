@@ -73,7 +73,7 @@ class AuthService {
     if (refreshToken != null && refreshToken.isNotEmpty) {
       try {
         await _post('/auth/logout', {'refresh_token': refreshToken});
-      } on ApiException {
+      } catch (_) {
         // Local credentials are removed even when the network is unavailable.
       }
     }

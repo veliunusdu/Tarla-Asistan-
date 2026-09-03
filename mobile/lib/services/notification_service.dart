@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -123,16 +124,19 @@ class NotificationService {
 
   Future<void> _registerToken(String token) async {
     try {
+      final platformStr = kIsWeb
+          ? 'WEB'
+          : (Platform.isIOS ? 'IOS' : 'ANDROID');
       final device = await _apiClient.postJson('/notifications/devices', {
         'token': token,
-        'platform': Platform.isIOS ? 'IOS' : 'ANDROID',
+        'platform': platformStr,
       });
       final deviceId = device['id']?.toString();
       if (deviceId != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('notification_device_id', deviceId);
       }
-    } on ApiException {
+    } catch (_) {
       // Token refresh and the next authenticated launch retry registration.
     }
   }
@@ -147,9 +151,10 @@ class NotificationService {
         endpoint: '/notifications/devices/$deviceId',
         body: const <String, dynamic>{},
       );
-      await prefs.remove('notification_device_id');
-    } on ApiException {
+    } catch (_) {
       // Logout still proceeds; the server token can be replaced on the next login.
+    } finally {
+      await prefs.remove('notification_device_id');
     }
   }
 

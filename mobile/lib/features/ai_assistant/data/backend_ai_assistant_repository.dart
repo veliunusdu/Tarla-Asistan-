@@ -158,7 +158,7 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
         if (onConversationId != null && fallback.conversationId.isNotEmpty) {
           onConversationId(fallback.conversationId);
         }
-        yield fallback.message;
+        yield fallback.reply;
         return;
       }
     }
@@ -224,7 +224,7 @@ class BackendAiAssistantRepository implements AiAssistantRepository {
       if (onConversationId != null && fallback.conversationId.isNotEmpty) {
         onConversationId(fallback.conversationId);
       }
-      yield fallback.message;
+      yield fallback.reply;
     }
   }
 

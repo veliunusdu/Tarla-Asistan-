@@ -160,10 +160,36 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   }
 
   Future<void> _logout() async {
-    await _notificationService.deactivateCurrentDevice();
-    await DatabaseHelper.instance.clearUserData();
-    await _backendAuthService.logout();
-    await _authService.signOut();
+    try {
+      await _notificationService.deactivateCurrentDevice();
+    } catch (e) {
+      debugPrint('Logout: device deactivation failed: $e');
+    }
+
+    try {
+      await DatabaseHelper.instance.clearUserData();
+    } catch (e) {
+      debugPrint('Logout: clearUserData failed: $e');
+    }
+
+    try {
+      await _backendAuthService.logout();
+    } catch (e) {
+      debugPrint('Logout: backend logout failed: $e');
+    }
+
+    try {
+      await _authService.signOut();
+    } catch (e) {
+      debugPrint('Logout: auth signOut failed: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _postLoginUid = null;
+        _postLoginFuture = null;
+      });
+    }
   }
 
   @override

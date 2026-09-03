@@ -21,10 +21,9 @@ public class UpdateProfileCommandValidator : AbstractValidator<UpdateProfileComm
     public UpdateProfileCommandValidator()
     {
         RuleFor(x => x.UserId).NotEmpty();
-        RuleFor(x => x.FullName).NotEmpty().MinimumLength(2).MaximumLength(120);
-        RuleFor(x => x.Province).NotEmpty().MinimumLength(2).MaximumLength(80);
-        RuleFor(x => x.District).NotEmpty().MinimumLength(2).MaximumLength(80);
-        RuleFor(x => x.TermsAccepted).Equal(true).WithMessage("Kullanım koşulları kabul edilmelidir.");
+        RuleFor(x => x.FullName).MaximumLength(120);
+        RuleFor(x => x.Province).MaximumLength(80);
+        RuleFor(x => x.District).MaximumLength(80);
     }
 }
 
@@ -51,9 +50,9 @@ public class UpdateProfileCommandHandler : IRequestHandler<UpdateProfileCommand,
             user.Profile = new Profile
             {
                 UserId = user.Id,
-                FullName = request.FullName.Trim(),
-                Province = request.Province.Trim(),
-                District = request.District.Trim(),
+                FullName = request.FullName?.Trim() ?? string.Empty,
+                Province = request.Province?.Trim() ?? string.Empty,
+                District = request.District?.Trim() ?? string.Empty,
                 TermsAccepted = request.TermsAccepted,
                 NotificationsEnabled = request.NotificationsEnabled,
                 CreatedAtUtc = now,
@@ -63,10 +62,13 @@ public class UpdateProfileCommandHandler : IRequestHandler<UpdateProfileCommand,
         }
         else
         {
-            user.Profile.FullName = request.FullName.Trim();
-            user.Profile.Province = request.Province.Trim();
-            user.Profile.District = request.District.Trim();
-            user.Profile.TermsAccepted = request.TermsAccepted;
+            if (!string.IsNullOrWhiteSpace(request.FullName))
+                user.Profile.FullName = request.FullName.Trim();
+            if (!string.IsNullOrWhiteSpace(request.Province))
+                user.Profile.Province = request.Province.Trim();
+            if (!string.IsNullOrWhiteSpace(request.District))
+                user.Profile.District = request.District.Trim();
+            user.Profile.TermsAccepted = request.TermsAccepted || user.Profile.TermsAccepted;
             user.Profile.NotificationsEnabled = request.NotificationsEnabled;
             user.Profile.UpdatedAtUtc = now;
         }

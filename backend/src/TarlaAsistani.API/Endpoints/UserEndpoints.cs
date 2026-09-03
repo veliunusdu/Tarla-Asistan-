@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
@@ -31,10 +32,10 @@ public static class UserEndpoints
 
             var command = new UpdateProfileCommand(
                 UserId: userId,
-                FullName: req.FullName,
-                Province: req.Province,
-                District: req.District,
-                TermsAccepted: req.TermsAccepted,
+                FullName: req.FullName ?? string.Empty,
+                Province: req.Province ?? string.Empty,
+                District: req.District ?? string.Empty,
+                TermsAccepted: req.TermsAccepted ?? true,
                 NotificationsEnabled: req.NotificationsEnabled ?? true
             );
 
@@ -148,12 +149,12 @@ public static class UserEndpoints
 }
 
 public record UpdateProfileApiRequest(
-    Guid? UserId,
-    string FullName,
-    string Province,
-    string District,
-    bool TermsAccepted,
-    bool? NotificationsEnabled
+    [property: JsonPropertyName("user_id")] Guid? UserId,
+    [property: JsonPropertyName("full_name")] string? FullName,
+    [property: JsonPropertyName("province")] string? Province,
+    [property: JsonPropertyName("district")] string? District,
+    [property: JsonPropertyName("terms_accepted")] bool? TermsAccepted,
+    [property: JsonPropertyName("notifications_enabled")] bool? NotificationsEnabled
 );
 
 public record AccountDeletionApiRequest(

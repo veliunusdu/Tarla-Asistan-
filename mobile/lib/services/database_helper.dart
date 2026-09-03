@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -428,24 +429,38 @@ class DatabaseHelper implements SyncOperationStore {
     );
   }
 
-  /// Sahipsiz (userId IS NULL) kayıtların özetini döner.
   Future<OrphanedDataSummary> getOrphanedDataSummary() async {
-    final db = await database;
-    final farmRows = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL'),
-    ) ?? 0;
-    final activityRows = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM faaliyetler WHERE userId IS NULL'),
-    ) ?? 0;
-    final syncRows = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL'),
-    ) ?? 0;
+    if (kIsWeb) {
+      return const OrphanedDataSummary(
+        farmCount: 0,
+        activityCount: 0,
+        syncCount: 0,
+      );
+    }
+    try {
+      final db = await database;
+      final farmRows = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL'),
+      ) ?? 0;
+      final activityRows = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM faaliyetler WHERE userId IS NULL'),
+      ) ?? 0;
+      final syncRows = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL'),
+      ) ?? 0;
 
-    return OrphanedDataSummary(
-      farmCount: farmRows,
-      activityCount: activityRows,
-      syncCount: syncRows,
-    );
+      return OrphanedDataSummary(
+        farmCount: farmRows,
+        activityCount: activityRows,
+        syncCount: syncRows,
+      );
+    } catch (_) {
+      return const OrphanedDataSummary(
+        farmCount: 0,
+        activityCount: 0,
+        syncCount: 0,
+      );
+    }
   }
 
   /// Sahipsiz (userId IS NULL) kayıtları kontrollü şekilde siler.
@@ -454,36 +469,46 @@ class DatabaseHelper implements SyncOperationStore {
   /// kayıtlar başka kullanıcıların hesaplarına aktarılamaz (anti-hijacking).
   /// Yalnızca cihazdan güvenle temizlenebilir.
   Future<int> clearOrphanedRecords() async {
-    final db = await database;
-    var deleted = 0;
-    await db.transaction((txn) async {
-      deleted += await txn.delete('tarlalar', where: 'userId IS NULL');
-      deleted += await txn.delete('faaliyetler', where: 'userId IS NULL');
-      deleted += await txn.delete('sync_operations', where: 'userId IS NULL');
-    });
-    return deleted;
+    if (kIsWeb) return 0;
+    try {
+      final db = await database;
+      var deleted = 0;
+      await db.transaction((txn) async {
+        deleted += await txn.delete('tarlalar', where: 'userId IS NULL');
+        deleted += await txn.delete('faaliyetler', where: 'userId IS NULL');
+        deleted += await txn.delete('sync_operations', where: 'userId IS NULL');
+      });
+      return deleted;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// Kullanıcı oturumu kapattığında yerel verilerini, bekleyen sync işlemlerini
   /// ve cihazda kalmış sahipsiz karantina verilerini tamamen temizler.
   Future<void> clearUserData({String? userId}) async {
-    final activeUserId = userId ?? currentUserId;
-    final db = await database;
-    await db.transaction((txn) async {
-      if (activeUserId != null) {
-        await txn.delete('tarlalar', where: 'userId = ?', whereArgs: [activeUserId]);
-        await txn.delete('faaliyetler', where: 'userId = ?', whereArgs: [activeUserId]);
-        await txn.delete('sync_operations', where: 'userId = ?', whereArgs: [activeUserId]);
-      } else {
-        await txn.delete('tarlalar');
-        await txn.delete('faaliyetler');
-        await txn.delete('sync_operations');
-      }
-      // Sahipsiz karantina verilerini de temizle (at-rest güvenlik)
-      await txn.delete('tarlalar', where: 'userId IS NULL');
-      await txn.delete('faaliyetler', where: 'userId IS NULL');
-      await txn.delete('sync_operations', where: 'userId IS NULL');
-    });
+    if (kIsWeb) return;
+    try {
+      final activeUserId = userId ?? currentUserId;
+      final db = await database;
+      await db.transaction((txn) async {
+        if (activeUserId != null) {
+          await txn.delete('tarlalar', where: 'userId = ?', whereArgs: [activeUserId]);
+          await txn.delete('faaliyetler', where: 'userId = ?', whereArgs: [activeUserId]);
+          await txn.delete('sync_operations', where: 'userId = ?', whereArgs: [activeUserId]);
+        } else {
+          await txn.delete('tarlalar');
+          await txn.delete('faaliyetler');
+          await txn.delete('sync_operations');
+        }
+        // Sahipsiz karantina verilerini de temizle (at-rest güvenlik)
+        await txn.delete('tarlalar', where: 'userId IS NULL');
+        await txn.delete('faaliyetler', where: 'userId IS NULL');
+        await txn.delete('sync_operations', where: 'userId IS NULL');
+      });
+    } catch (_) {
+      // Ignored: Non-fatal on web or if DB is inaccessible
+    }
   }
 }
 
