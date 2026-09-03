@@ -14,16 +14,51 @@ class ProfilEkrani extends StatefulWidget {
 }
 
 class _ProfilEkraniState extends State<ProfilEkrani> {
-  late Future<UserProfile?> _profile;
+  UserProfile? _profile;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _profile = _loadProfile();
+    _loadProfile();
   }
 
-  Future<UserProfile?> _loadProfile() async =>
-      widget.repository?.getCurrentProfile();
+  Future<void> _loadProfile() async {
+    if (widget.repository == null) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    try {
+      final profile = await widget.repository!.getCurrentProfile();
+      if (mounted) {
+        setState(() {
+          _profile = profile;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Profil bilgileri yüklenemedi.';
+          _loading = false;
+        });
+      }
+    }
+  }
 
   Future<void> _confirmLogout() async {
     final confirmed = await showDialog<bool>(
@@ -56,106 +91,125 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Profil ve Ayarlar')),
-    body: FutureBuilder<UserProfile?>(
-      future: _profile,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: FilledButton(
-              onPressed: () => setState(() => _profile = _loadProfile()),
-              child: const Text('Tekrar dene'),
+  Future<void> _toggleNotifications(bool enabled) async {
+    final currentProfile = _profile;
+    if (currentProfile == null || widget.repository == null || _saving) return;
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      final updated = await widget.repository!.updateProfile(
+        UserProfileUpdate(
+          fullName: currentProfile.fullName ?? '',
+          province: currentProfile.province ?? '',
+          district: currentProfile.district ?? '',
+          termsAccepted: currentProfile.termsAccepted,
+          notificationsEnabled: enabled,
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+          _profile = updated;
+          _saving = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              enabled ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.',
             ),
-          );
-        }
-        final profile = snapshot.data;
-        final location = [
-          profile?.province,
-          profile?.district,
-        ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(
-                profile?.fullName?.trim().isNotEmpty == true
-                    ? profile!.fullName!
-                    : 'Hesabım',
-              ),
-              subtitle: Text(
-                profile?.phoneNumber ?? 'Profil bilgileri yüklenemedi.',
-              ),
-            ),
-            if (location.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.location_on_outlined),
-                title: const Text('Yaşadığınız yer'),
-                subtitle: Text(location),
-              ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.notifications_outlined),
-              title: const Text('Bildirimler'),
-              subtitle: Text(
-                profile?.notificationsEnabled == true
-                    ? 'Bildirimler açık'
-                    : 'Bildirimler kapalı',
-              ),
-              trailing: profile == null || widget.repository == null
-                  ? null
-                  : Switch(
-                      value: profile.notificationsEnabled,
-                      onChanged: (enabled) async {
-                        try {
-                          final updated = await widget.repository!
-                              .updateProfile(
-                                UserProfileUpdate(
-                                  fullName: profile.fullName ?? '',
-                                  province: profile.province ?? '',
-                                  district: profile.district ?? '',
-                                  termsAccepted: profile.termsAccepted,
-                                  notificationsEnabled: enabled,
-                                ),
-                              );
-                          if (mounted) {
-                            setState(() => _profile = Future.value(updated));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  enabled ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.',
-                                ),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Bildirim tercihi kaydedilemedi: $e',
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                    ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.tonalIcon(
-              onPressed: widget.onLogout == null ? null : _confirmLogout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Çıkış yap'),
-            ),
-          ],
+          ),
         );
-      },
-    ),
-  );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bildirim tercihi kaydedilemedi: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Profil ve Ayarlar')),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: FilledButton(
+          onPressed: _loadProfile,
+          child: const Text('Tekrar dene'),
+        ),
+      );
+    }
+
+    final profile = _profile;
+    final location = [
+      profile?.province,
+      profile?.district,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ListTile(
+          leading: const CircleAvatar(child: Icon(Icons.person)),
+          title: Text(
+            profile?.fullName?.trim().isNotEmpty == true
+                ? profile!.fullName!
+                : 'Hesabım',
+          ),
+          subtitle: Text(
+            profile?.phoneNumber ?? 'Profil bilgileri yüklenemedi.',
+          ),
+        ),
+        if (location.isNotEmpty)
+          ListTile(
+            leading: const Icon(Icons.location_on_outlined),
+            title: const Text('Yaşadığınız yer'),
+            subtitle: Text(location),
+          ),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.notifications_outlined),
+          title: const Text('Bildirimler'),
+          subtitle: Text(
+            profile?.notificationsEnabled == true
+                ? 'Bildirimler açık'
+                : 'Bildirimler kapalı',
+          ),
+          trailing: profile == null || widget.repository == null
+              ? null
+              : Switch(
+                  value: profile.notificationsEnabled,
+                  onChanged: _saving ? null : _toggleNotifications,
+                ),
+        ),
+        const SizedBox(height: 24),
+        FilledButton.tonalIcon(
+          onPressed: widget.onLogout == null ? null : _confirmLogout,
+          icon: const Icon(Icons.logout),
+          label: const Text('Çıkış yap'),
+        ),
+      ],
+    );
+  }
 }
