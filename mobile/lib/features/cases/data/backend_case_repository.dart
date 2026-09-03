@@ -33,9 +33,10 @@ class BackendCaseRepository implements CaseRepository {
         ],
       );
       final mediaId = mediaResponse['id']?.toString();
-      if (mediaId != null && mediaId.isNotEmpty) {
-        mediaIds = [mediaId];
+      if (mediaId == null || mediaId.isEmpty) {
+        throw const ApiException('Fotoğraf yüklendi ancak medya kimliği alınamadı.');
       }
+      mediaIds = [mediaId];
     }
 
     final payload = <String, dynamic>{

@@ -98,5 +98,63 @@ void main() {
       expect(requests[0].url.path, endsWith('/media'));
       expect(requests[1].url.path, endsWith('/cases'));
     });
+
+    test('createCase with media throws ApiException when media response lacks id', () async {
+      final client = ApiClient(
+        httpClient: MockHttpClient((req) async {
+          if (req.url.path.endsWith('/media')) {
+            return http.Response(
+              '{"status":"ok"}', // missing 'id'
+              201,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }
+          return http.Response('{"detail":"not found"}', 404);
+        }),
+        idTokenProvider: () async => 'dummy-token',
+      );
+
+      final repository = BackendCaseRepository(apiClient: client);
+
+      expect(
+        () => repository.createCase(
+          const CreateCaseInput(
+            farmId: 'farm-1',
+            category: CaseCategory.disease,
+            title: 'Hastalık',
+            description: 'Açıklama',
+            imageBytes: [1, 2, 3],
+          ),
+        ),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
+    test('createCase throws ApiException when server returns error', () async {
+      final client = ApiClient(
+        httpClient: MockHttpClient((req) async {
+          return http.Response(
+            '{"detail":"Sunucu hatasi"}',
+            500,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+        idTokenProvider: () async => 'dummy-token',
+      );
+
+      final repository = BackendCaseRepository(apiClient: client);
+
+      expect(
+        () => repository.createCase(
+          const CreateCaseInput(
+            farmId: 'farm-1',
+            category: CaseCategory.disease,
+            title: 'Hastalık',
+            description: 'Açıklama',
+          ),
+        ),
+        throwsA(isA<ApiException>()),
+      );
+    });
   });
 }

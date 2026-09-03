@@ -6,6 +6,7 @@ import '../../../app/theme/app_spacing.dart';
 import '../../../features/ai_assistant/data/image_picker_service.dart';
 import '../../../features/fields/data/tarla_repository.dart';
 import '../../../models/tarla.dart';
+import '../../../services/api_client.dart';
 import '../data/case_repository.dart';
 import '../domain/models/case_category.dart';
 import '../domain/models/create_case_input.dart';
@@ -131,11 +132,11 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
       return;
     }
 
-    if (description.isEmpty) {
+    if (description.length < 2) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Lütfen sorununuzu açıklayın.')),
+          const SnackBar(content: Text('Lütfen sorununuzu en az 2 karakter ile açıklayın.')),
         );
       return;
     }
@@ -166,12 +167,15 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
+      final errorMessage = e is ApiException
+          ? e.message
+          : 'Bir sorun oluştu. Lütfen bağlantınızı kontrol edip tekrar deneyin.';
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
             backgroundColor: AppColors.error,
-            content: Text('Gönderilemedi: $e'),
+            content: Text(errorMessage),
           ),
         );
     } finally {
@@ -211,6 +215,22 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                         onChanged: widget.initialTarlaId != null
                             ? null
                             : (val) => setState(() => _selectedTarlaId = val),
+                      )
+                    else if (widget.initialTarlaId == null)
+                      const Card(
+                        color: AppColors.surface,
+                        child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, color: AppColors.warning),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text('Kayıtlı tarla bulunamadı. Sorun bildirmek için önce bir tarla eklemelisiniz.'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     const SizedBox(height: AppSpacing.md),
 

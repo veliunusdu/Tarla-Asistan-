@@ -359,6 +359,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                 gorevVerisi: _gorevVerisi,
                 onRetry: _yenile,
                 onFaaliyetPlanla: () => _isEkle(isCompleted: false),
+                caseRepo: widget._caseRepo,
+                tarlaRepo: widget._tarlaRepo,
               ),
               const SizedBox(height: AppSpacing.lg),
 
@@ -610,11 +612,15 @@ class _YaklasanGorevlerSection extends StatelessWidget {
     required this.gorevVerisi,
     required this.onRetry,
     required this.onFaaliyetPlanla,
+    this.caseRepo,
+    this.tarlaRepo,
   });
 
   final Future<(List<Tarla>, List<Faaliyet>)> gorevVerisi;
   final VoidCallback onRetry;
   final VoidCallback onFaaliyetPlanla;
+  final CaseRepository? caseRepo;
+  final TarlaRepository? tarlaRepo;
 
   @override
   Widget build(BuildContext context) {
@@ -664,6 +670,8 @@ class _YaklasanGorevlerSection extends StatelessWidget {
                   faaliyet: f,
                   tarlaAdi: tarla?.name ?? 'Bilinmeyen tarla',
                   tarla: tarla,
+                  caseRepo: caseRepo,
+                  tarlaRepo: tarlaRepo,
                 );
               }).toList(),
             );
@@ -679,11 +687,15 @@ class _GorevKarti extends StatelessWidget {
     required this.faaliyet,
     required this.tarlaAdi,
     this.tarla,
+    this.caseRepo,
+    this.tarlaRepo,
   });
 
   final Faaliyet faaliyet;
   final String tarlaAdi;
   final Tarla? tarla;
+  final CaseRepository? caseRepo;
+  final TarlaRepository? tarlaRepo;
 
   @override
   Widget build(BuildContext context) {
@@ -695,7 +707,11 @@ class _GorevKarti extends StatelessWidget {
             ? () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => TarlaDetayEkrani(tarla: tarla!),
+                  builder: (_) => TarlaDetayEkrani(
+                    tarla: tarla!,
+                    caseRepository: caseRepo,
+                    tarlaRepository: tarlaRepo,
+                  ),
                 ),
               )
             : null,

@@ -170,7 +170,7 @@ void main() {
     await tester.tap(find.text('Uzmana Gönder'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Lütfen sorununuzu açıklayın.'), findsOneWidget);
+    expect(find.text('Lütfen sorununuzu en az 2 karakter ile açıklayın.'), findsOneWidget);
     expect(caseRepo.lastInput, isNull);
   });
 
