@@ -137,49 +137,71 @@ class ApiClient {
     List<ApiMultipartFile>? files,
     void Function(String conversationId)? onConversationId,
   }) async* {
-    var token = await _idTokenProvider();
     final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
     final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
     final uri = Uri.parse('$baseUrl/$normalizedEndpoint');
 
-    http.BaseRequest request;
-    if (files != null && files.isNotEmpty) {
-      final multipart = http.MultipartRequest('POST', uri)
-        ..headers['Accept'] = 'text/event-stream';
-      if (token != null && token.isNotEmpty) {
-        multipart.headers['Authorization'] = 'Bearer $token';
+    Future<http.StreamedResponse> sendWithToken(String token) async {
+      http.BaseRequest request;
+      if (files != null && files.isNotEmpty) {
+        final multipart = http.MultipartRequest('POST', uri)
+          ..headers.addAll({
+            'Accept': 'text/event-stream',
+            'Authorization': 'Bearer $token',
+          });
+        if (fields != null) multipart.fields.addAll(fields);
+        for (final file in files) {
+          multipart.files.add(file.toMultipartFile());
+        }
+        request = multipart;
+      } else {
+        final req = http.Request('POST', uri)
+          ..headers.addAll({
+            'Accept': 'text/event-stream',
+            'Content-Type': 'application/json; charset=utf-8',
+            'Authorization': 'Bearer $token',
+          });
+        if (jsonBody != null) {
+          req.body = jsonEncode(jsonBody);
+        }
+        request = req;
       }
-      if (fields != null) multipart.fields.addAll(fields);
-      for (final file in files) {
-        multipart.files.add(file.toMultipartFile());
+
+      try {
+        return await _http.send(request).timeout(_timeout);
+      } on TimeoutException {
+        throw const ApiException(
+          'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.',
+          retryable: true,
+        );
+      } on http.ClientException {
+        throw const ApiException(
+          'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.',
+          retryable: true,
+        );
       }
-      request = multipart;
-    } else {
-      final req = http.Request('POST', uri)
-        ..headers['Accept'] = 'text/event-stream'
-        ..headers['Content-Type'] = 'application/json; charset=utf-8';
-      if (token != null && token.isNotEmpty) {
-        req.headers['Authorization'] = 'Bearer $token';
-      }
-      if (jsonBody != null) {
-        req.body = jsonEncode(jsonBody);
-      }
-      request = req;
     }
 
-    http.StreamedResponse streamed;
-    try {
-      streamed = await _http.send(request).timeout(_timeout);
-    } on TimeoutException {
+    var token = await _idTokenProvider();
+    if (token == null || token.isEmpty) {
       throw const ApiException(
-        'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.',
-        retryable: true,
+        'Devam etmek için tekrar giriş yapın.',
+        statusCode: 401,
       );
-    } on http.ClientException {
-      throw const ApiException(
-        'Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.',
-        retryable: true,
-      );
+    }
+
+    var streamed = await sendWithToken(token);
+    if (streamed.statusCode == 401) {
+      // A retry must create a new HTTP request because streams are single-use.
+      await streamed.stream.drain();
+      token = await _forceRefreshTokenProvider();
+      if (token == null || token.isEmpty) {
+        throw const ApiException(
+          'Oturumunuz sona erdi. Tekrar giriş yapın.',
+          statusCode: 401,
+        );
+      }
+      streamed = await sendWithToken(token);
     }
 
     if (streamed.statusCode != 200) {

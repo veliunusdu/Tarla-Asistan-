@@ -254,6 +254,42 @@ void main() {
       expect(captured.method, 'DELETE');
       api.close();
     });
+
+    test('retries a streaming request with a refreshed backend token', () async {
+      var callCount = 0;
+      final api = ApiClient(
+        httpClient: MockClient.streaming((request, bodyStream) async {
+          callCount++;
+          if (callCount == 1) {
+            expect(request.headers['Authorization'], 'Bearer expired-token');
+            return http.StreamedResponse(
+              Stream.value(utf8.encode('{"detail":"Oturum süresi doldu."}')),
+              401,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+
+          expect(request.headers['Authorization'], 'Bearer refreshed-token');
+          return http.StreamedResponse(
+            Stream.value(
+              utf8.encode('data: {"content":"Tarla bulundu."}\n\ndata: [DONE]\n\n'),
+            ),
+            200,
+            headers: {'content-type': 'text/event-stream'},
+          );
+        }),
+        idTokenProvider: () async => 'expired-token',
+        forceRefreshTokenProvider: () async => 'refreshed-token',
+      );
+
+      final chunks = await api
+          .postStream('/ai/chat/stream', jsonBody: {'message': 'Tarlalarımı listele.'})
+          .toList();
+
+      expect(chunks, ['Tarla bulundu.']);
+      expect(callCount, 2);
+      api.close();
+    });
   });
 
   // ---------------------------------------------------------------------------
