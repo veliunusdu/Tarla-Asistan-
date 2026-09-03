@@ -125,15 +125,27 @@ public static class AIEndpoints
             {
                 return Results.UnprocessableEntity(new { detail = ex.Message });
             }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+            catch (AIAgentExecutionException ex)
+            {
+                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
+                logger.LogError(ex, "AIAgent execution error {ErrorCode} for user {UserId}", ex.ErrorCode, userId);
+                return Results.Json(new { detail = "AI hizmeti şu anda kullanılamıyor." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
             catch (InvalidOperationException ex)
             {
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
+                logger.LogError(ex, "AIChat operation error for user {UserId}", userId);
+                return Results.Json(new { detail = "AI hizmeti şu anda kullanılamıyor." }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
             catch (Exception ex)
             {
                 var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
-                logger.LogError(ex, "AIChat unexpected error for user {UserId}: {Message}", userId, ex.Message);
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+                logger.LogError(ex, "AIChat unexpected error for user {UserId}", userId);
+                return Results.Json(new { detail = "AI hizmeti şu anda kullanılamıyor." }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
         })
         .WithName("AIChat")
@@ -290,13 +302,13 @@ public static class AIEndpoints
             catch (Exception ex)
             {
                 var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AIEndpoints");
-                logger.LogError(ex, "AIChatStream unexpected error for user {UserId}: {Message}", userId, ex.Message);
+                logger.LogError(ex, "AIChatStream unexpected error for user {UserId}", userId);
 
                 if (!httpContext.Response.HasStarted)
                 {
-                    return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+                    return Results.Json(new { detail = "AI hizmeti şu anda kullanılamıyor." }, statusCode: StatusCodes.Status503ServiceUnavailable);
                 }
-                var errJson = JsonSerializer.Serialize(new { error = ex.Message }, SseJsonOptions);
+                var errJson = JsonSerializer.Serialize(new { error = "AI hizmeti şu anda kullanılamıyor." }, SseJsonOptions);
                 await httpContext.Response.WriteAsync($"data: {errJson}\n\n", cancellationToken);
                 await httpContext.Response.Body.FlushAsync(cancellationToken);
                 return Results.Empty;

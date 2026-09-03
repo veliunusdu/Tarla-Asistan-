@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
+using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Infrastructure.Persistence;
 
@@ -33,6 +34,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
     public Mock<IWeatherProvider> MockWeatherProvider { get; } = new();
     public Mock<IAIChatProvider> MockAIChatProvider { get; } = new();
+    public Mock<IAIAgentProvider> MockAIAgentProvider { get; } = new();
     public Mock<IFirebaseAuthService> MockFirebaseAuthService { get; } = new();
     public Mock<IPushNotificationService> MockPushService { get; } = new();
 
@@ -74,6 +76,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
             var aiDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IAIChatProvider));
             if (aiDescriptor != null) services.Remove(aiDescriptor);
             services.AddSingleton(MockAIChatProvider.Object);
+
+            var aiAgentDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IAIAgentProvider));
+            if (aiAgentDescriptor != null) services.Remove(aiAgentDescriptor);
+            services.AddSingleton(MockAIAgentProvider.Object);
 
             var firebaseAuthDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IFirebaseAuthService));
             if (firebaseAuthDescriptor != null) services.Remove(firebaseAuthDescriptor);
