@@ -6,6 +6,7 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../features/cases/data/case_repository.dart';
 import '../features/cases/presentation/sorun_bildir_ekrani.dart';
+import '../features/cases/presentation/vaka_listesi_ekrani.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../models/faaliyet.dart';
@@ -241,6 +242,23 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
                         );
                       }
                     : null,
+                onViewCases: widget._caseRepository != null
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => VakaListesiEkrani(
+                              farmId: widget.tarla.id,
+                              farmName: widget.tarla.name,
+                              caseRepository: widget._caseRepository!,
+                              tarlaRepository:
+                                  widget._tarlaRepository ??
+                                  const LocalTarlaRepository(),
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
               ),
             ),
           ),
@@ -315,10 +333,15 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
 // ---------------------------------------------------------------------------
 
 class _TarlaBilgiKarti extends StatelessWidget {
-  const _TarlaBilgiKarti({required this.tarla, this.onReportProblem});
+  const _TarlaBilgiKarti({
+    required this.tarla,
+    this.onReportProblem,
+    this.onViewCases,
+  });
 
   final Tarla tarla;
   final VoidCallback? onReportProblem;
+  final VoidCallback? onViewCases;
 
   @override
   Widget build(BuildContext context) {
@@ -364,15 +387,28 @@ class _TarlaBilgiKarti extends StatelessWidget {
               deger: konumMetin,
               renkli: konumYok,
             ),
-            if (onReportProblem != null) ...[
+            if (onReportProblem != null || onViewCases != null) ...[
               const SizedBox(height: AppSpacing.sm),
-              OutlinedButton.icon(
-                icon: const Icon(
-                  Icons.report_problem_outlined,
-                  color: AppColors.error,
-                ),
-                label: const Text('Sorun Bildir'),
-                onPressed: onReportProblem,
+              Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  if (onReportProblem != null)
+                    OutlinedButton.icon(
+                      icon: const Icon(
+                        Icons.report_problem_outlined,
+                        color: AppColors.error,
+                      ),
+                      label: const Text('Sorun Bildir'),
+                      onPressed: onReportProblem,
+                    ),
+                  if (onViewCases != null)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.history_outlined),
+                      label: const Text('Bildirimleri Gör'),
+                      onPressed: onViewCases,
+                    ),
+                ],
               ),
             ],
           ],

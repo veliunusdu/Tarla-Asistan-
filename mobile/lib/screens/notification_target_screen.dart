@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../features/cases/data/backend_case_repository.dart';
+import '../features/cases/data/case_repository.dart';
+import '../features/cases/presentation/vaka_detay_ekrani.dart';
 import '../models/notification_target.dart';
 import '../services/api_client.dart';
 
@@ -8,10 +11,12 @@ class NotificationTargetScreen extends StatefulWidget {
     super.key,
     required this.target,
     required this.apiClient,
+    this.caseRepository,
   });
 
   final NotificationTarget target;
   final ApiClient apiClient;
+  final CaseRepository? caseRepository;
 
   @override
   State<NotificationTargetScreen> createState() =>
@@ -24,7 +29,10 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   @override
   void initState() {
     super.initState();
-    _reload();
+    if (widget.target.type != NotificationTargetType.supportCase ||
+        widget.target.resourceId == null) {
+      _reload();
+    }
   }
 
   void _reload() {
@@ -47,6 +55,15 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.target.type == NotificationTargetType.supportCase &&
+        widget.target.resourceId != null) {
+      return VakaDetayEkrani(
+        caseId: widget.target.resourceId!,
+        caseRepository: widget.caseRepository ??
+            BackendCaseRepository(apiClient: widget.apiClient),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text(_screenTitle)),
       body: FutureBuilder<Map<String, dynamic>>(

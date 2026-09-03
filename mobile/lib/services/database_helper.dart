@@ -25,6 +25,18 @@ class DatabaseHelper implements SyncOperationStore {
   Database? _providedDatabase;
   String? Function()? currentUserIdProvider;
 
+  @visibleForTesting
+  static void setTestDatabase(Database? db) {
+    instance._providedDatabase = db;
+    _database = db;
+    instance.currentUserIdProvider = () => null;
+  }
+
+  @visibleForTesting
+  static Future<void> createTablesForTesting(Database db) async {
+    await instance._createDB(db, 5);
+  }
+
   String? get currentUserId {
     if (currentUserIdProvider != null) {
       return currentUserIdProvider!();

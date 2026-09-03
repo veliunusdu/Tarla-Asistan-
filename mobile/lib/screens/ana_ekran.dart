@@ -95,7 +95,12 @@ class _AnaEkranState extends State<AnaEkran> {
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),
       // 4 — Profil
-      ProfilEkrani(repository: widget._profileRepo, onLogout: widget._onLogout),
+      ProfilEkrani(
+        repository: widget._profileRepo,
+        caseRepository: widget._caseRepo,
+        tarlaRepository: widget._tarlaRepo,
+        onLogout: widget._onLogout,
+      ),
     ];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkOrphanedData();

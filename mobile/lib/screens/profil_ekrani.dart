@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../features/cases/data/case_repository.dart';
+import '../features/cases/presentation/vaka_listesi_ekrani.dart';
+import '../features/fields/data/local_tarla_repository.dart';
+import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/profile/domain/user_profile.dart';
 
 class ProfilEkrani extends StatefulWidget {
-  const ProfilEkrani({super.key, this.repository, this.onLogout});
+  const ProfilEkrani({
+    super.key,
+    this.repository,
+    this.caseRepository,
+    this.tarlaRepository,
+    this.onLogout,
+  });
 
   final ProfileRepository? repository;
+  final CaseRepository? caseRepository;
+  final TarlaRepository? tarlaRepository;
   final Future<void> Function()? onLogout;
 
   @override
@@ -203,6 +215,28 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                   onChanged: _saving ? null : _toggleNotifications,
                 ),
         ),
+        if (widget.caseRepository != null) ...[
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.forum_outlined),
+            title: const Text('Sorun Bildirimlerim'),
+            subtitle:
+                const Text('Ziraat mühendisi ile mesajlaşmalar ve vakalar'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => VakaListesiEkrani(
+                    caseRepository: widget.caseRepository!,
+                    tarlaRepository:
+                        widget.tarlaRepository ?? const LocalTarlaRepository(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
         const SizedBox(height: 24),
         FilledButton.tonalIcon(
           onPressed: widget.onLogout == null ? null : _confirmLogout,
