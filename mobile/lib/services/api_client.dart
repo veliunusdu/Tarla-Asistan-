@@ -45,14 +45,28 @@ class ApiClient {
   // Public API
   // -------------------------------------------------------------------------
 
-  Future<Map<String, dynamic>> getJson(String endpoint) async {
-    final response = await _send('GET', endpoint);
+  Future<Map<String, dynamic>> getJson(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final response = await _send(
+      'GET',
+      endpoint,
+      queryParameters: queryParameters,
+    );
     return _decodeObject(response);
   }
 
   /// Fetches an endpoint whose JSON response is an array.
-  Future<List<dynamic>> getJsonList(String endpoint) async {
-    final response = await _send('GET', endpoint);
+  Future<List<dynamic>> getJsonList(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final response = await _send(
+      'GET',
+      endpoint,
+      queryParameters: queryParameters,
+    );
     return _decodeList(response);
   }
 
@@ -207,6 +221,7 @@ class ApiClient {
     String method,
     String endpoint, {
     Map<String, dynamic>? body,
+    Map<String, dynamic>? queryParameters,
   }) async {
     final token = await _idTokenProvider();
     if (token == null || token.isEmpty) {
@@ -216,7 +231,13 @@ class ApiClient {
       );
     }
 
-    final response = await _execute(method, endpoint, token: token, body: body);
+    final response = await _execute(
+      method,
+      endpoint,
+      token: token,
+      body: body,
+      queryParameters: queryParameters,
+    );
 
     if (response.statusCode == 401) {
       final freshToken = await _forceRefreshTokenProvider();
@@ -231,6 +252,7 @@ class ApiClient {
         endpoint,
         token: freshToken,
         body: body,
+        queryParameters: queryParameters,
       );
       if (retried.statusCode == 401) {
         throw ApiException(_errorMessage(retried), statusCode: 401);
@@ -334,10 +356,18 @@ class ApiClient {
     String endpoint, {
     required String token,
     Map<String, dynamic>? body,
+    Map<String, dynamic>? queryParameters,
   }) async {
     final baseUrl = AppConfig.apiBaseUrl.replaceFirst(RegExp(r'/+$'), '');
     final normalizedEndpoint = endpoint.replaceFirst(RegExp(r'^/+'), '');
-    final uri = Uri.parse('$baseUrl/$normalizedEndpoint');
+    var uri = Uri.parse('$baseUrl/$normalizedEndpoint');
+    if (queryParameters != null && queryParameters.isNotEmpty) {
+      final combinedQuery = <String, dynamic>{
+        ...uri.queryParameters,
+        ...queryParameters,
+      };
+      uri = uri.replace(queryParameters: combinedQuery);
+    }
     final request = http.Request(method, uri)
       ..headers.addAll({
         'Accept': 'application/json',

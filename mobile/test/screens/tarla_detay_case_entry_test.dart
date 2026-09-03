@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/activities/data/faaliyet_repository.dart';
 import 'package:mobile/features/cases/data/case_repository.dart';
+import 'package:mobile/features/cases/domain/models/case_detail.dart';
+import 'package:mobile/features/cases/domain/models/case_message.dart';
+import 'package:mobile/features/cases/domain/models/case_status.dart';
+import 'package:mobile/features/cases/domain/models/case_summary.dart';
 import 'package:mobile/features/cases/domain/models/create_case_input.dart';
 import 'package:mobile/features/cases/presentation/sorun_bildir_ekrani.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
@@ -12,6 +16,21 @@ import 'package:mobile/screens/tarla_detay_ekrani.dart';
 class DummyCaseRepo implements CaseRepository {
   @override
   Future<String> createCase(CreateCaseInput input) async => 'case-id';
+
+  @override
+  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+
+  @override
+  Future<CaseDetail> getCaseById(String caseId) => throw UnimplementedError();
+
+  @override
+  Future<CaseMessage> sendMessage(
+    String caseId, {
+    required String body,
+    List<int>? imageBytes,
+    String? imageFileName,
+  }) =>
+      throw UnimplementedError();
 }
 
 class DummyFaaliyetRepo implements FaaliyetRepository {

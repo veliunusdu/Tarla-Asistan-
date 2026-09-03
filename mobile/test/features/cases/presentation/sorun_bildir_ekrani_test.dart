@@ -6,6 +6,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/ai_assistant/data/image_picker_service.dart';
 import 'package:mobile/features/cases/data/case_repository.dart';
 import 'package:mobile/features/cases/domain/models/case_category.dart';
+import 'package:mobile/features/cases/domain/models/case_detail.dart';
+import 'package:mobile/features/cases/domain/models/case_message.dart';
+import 'package:mobile/features/cases/domain/models/case_status.dart';
+import 'package:mobile/features/cases/domain/models/case_summary.dart';
 import 'package:mobile/features/cases/domain/models/create_case_input.dart';
 import 'package:mobile/features/cases/presentation/sorun_bildir_ekrani.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
@@ -31,6 +35,21 @@ class MockCaseRepository implements CaseRepository {
     lastInput = input;
     return 'created-case-id';
   }
+
+  @override
+  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+
+  @override
+  Future<CaseDetail> getCaseById(String caseId) => throw UnimplementedError();
+
+  @override
+  Future<CaseMessage> sendMessage(
+    String caseId, {
+    required String body,
+    List<int>? imageBytes,
+    String? imageFileName,
+  }) =>
+      throw UnimplementedError();
 }
 
 class MockTarlaRepository implements TarlaRepository {
