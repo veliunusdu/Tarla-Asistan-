@@ -7,6 +7,7 @@ import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import '../services/database_helper.dart';
+import '../services/api_client.dart';
 import 'ai_asistan_ekrani.dart';
 import 'ana_sayfa_ekrani.dart';
 import 'profil_ekrani.dart';
@@ -32,6 +33,7 @@ class AnaEkran extends StatefulWidget {
     AiAssistantRepository? aiRepository,
     ProfileRepository? profileRepository,
     CaseRepository? caseRepository,
+    ApiClient? apiClient,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
@@ -39,6 +41,7 @@ class AnaEkran extends StatefulWidget {
        _aiRepo = aiRepository,
        _profileRepo = profileRepository,
        _caseRepo = caseRepository,
+       _apiClient = apiClient,
        _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
@@ -47,6 +50,7 @@ class AnaEkran extends StatefulWidget {
   final AiAssistantRepository? _aiRepo;
   final ProfileRepository? _profileRepo;
   final CaseRepository? _caseRepo;
+  final ApiClient? _apiClient;
   final Future<void> Function()? _onLogout;
 
   @override
@@ -99,6 +103,7 @@ class _AnaEkranState extends State<AnaEkran> {
         repository: widget._profileRepo,
         caseRepository: widget._caseRepo,
         tarlaRepository: widget._tarlaRepo,
+        apiClient: widget._apiClient,
         onLogout: widget._onLogout,
       ),
     ];

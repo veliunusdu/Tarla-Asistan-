@@ -36,12 +36,32 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   }
 
   void _reload() {
-    _content = widget.apiClient.getJson(_endpoint);
+    _content = _loadContent();
+  }
+
+  Future<Map<String, dynamic>> _loadContent() async {
+    if (widget.target.type != NotificationTargetType.advisory) {
+      return widget.apiClient.getJson(_endpoint);
+    }
+
+    final advisories = await widget.apiClient.getJsonList(
+      '/ai/advisories',
+      queryParameters: {
+        if (widget.target.farmId != null) 'farm_id': widget.target.farmId,
+      },
+    );
+    for (final advisory in advisories.whereType<Map>()) {
+      if (advisory['id']?.toString() == widget.target.resourceId) {
+        return Map<String, dynamic>.from(advisory);
+      }
+    }
+    throw const ApiException('Bu uyarı artık geçerli değil.');
   }
 
   String get _endpoint => switch (widget.target.type) {
     NotificationTargetType.task => '/tasks/${widget.target.resourceId}',
     NotificationTargetType.supportCase => '/cases/${widget.target.resourceId}',
+    NotificationTargetType.advisory => '/ai/advisories',
     NotificationTargetType.weather => '/farms/${widget.target.farmId}/weather',
     NotificationTargetType.unknown => '/notifications',
   };
@@ -49,6 +69,7 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
   String get _screenTitle => switch (widget.target.type) {
     NotificationTargetType.task => 'İş Detayı',
     NotificationTargetType.supportCase => 'Vaka detayı',
+    NotificationTargetType.advisory => 'AI Tarla Uyarısı',
     NotificationTargetType.weather => 'Hava uyarısı',
     NotificationTargetType.unknown => 'Bildirim',
   };
@@ -158,6 +179,21 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
               subtitle: Text(risk['suggested_action']?.toString() ?? ''),
             ),
           ),
+      ];
+    }
+    if (widget.target.type == NotificationTargetType.advisory) {
+      return [
+        _Header(title: data['title']?.toString() ?? 'AI tarla uyarısı'),
+        _Info(label: 'Önem', value: data['severity']),
+        _Section(title: 'Özet', body: data['summary']),
+        _Section(
+          title: 'Neden',
+          body: data['agronomic_explanation'],
+        ),
+        _Section(
+          title: 'Önerilen işlem',
+          body: data['action_recommendation'],
+        ),
       ];
     }
     return const [Text('Bildirim hedefi bulunamadı.')];

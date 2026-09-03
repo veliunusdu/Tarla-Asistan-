@@ -160,21 +160,41 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
 
         _db.Notifications.Add(notification);
 
+        // Persist before delivery so retries and status changes always target a durable notification.
+        await _db.SaveChangesAsync(ct);
+
         var activeTokens = await _db.DeviceTokens
             .Where(d => d.UserId == farm.OwnerId && d.Active)
             .ToListAsync(ct);
 
+        var anySent = false;
         foreach (var device in activeTokens)
         {
             try
             {
-                await _pushService!.SendNotificationAsync(notification, device.Token, ct);
+                var sent = await _pushService!.SendNotificationAsync(notification, device.Token, ct);
+                if (sent)
+                {
+                    anySent = true;
+                }
+                else
+                {
+                    notification.AttemptCount++;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to push proactive notification to device {Token}", device.Token);
             }
         }
+
+        if (anySent)
+        {
+            notification.Status = NotificationStatus.Sent;
+            notification.SentAtUtc = DateTime.UtcNow;
+        }
+        notification.UpdatedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<ProactiveAdvisoryDto>> GetActiveAdvisoriesAsync(

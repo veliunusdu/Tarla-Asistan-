@@ -173,17 +173,10 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
 
             if (activeTokens.Count > 0)
             {
-                var sendTasks = activeTokens.Select(async device =>
+                var anySent = false;
+                foreach (var device in activeTokens)
                 {
                     var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
-                    return (device, sent);
-                });
-
-                var results = await Task.WhenAll(sendTasks);
-
-                var anySent = false;
-                foreach (var (device, sent) in results)
-                {
                     if (sent)
                     {
                         anySent = true;

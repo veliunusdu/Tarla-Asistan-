@@ -12,10 +12,14 @@ namespace TarlaAsistani.Application.Features.Cases.Commands;
 public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertResponseCommand, CaseDetailDto>
 {
     private readonly IApplicationDbContext _db;
+    private readonly IPushNotificationService? _pushService;
 
-    public CreateExpertResponseCommandHandler(IApplicationDbContext db)
+    public CreateExpertResponseCommandHandler(
+        IApplicationDbContext db,
+        IPushNotificationService? pushService = null)
     {
         _db = db;
+        _pushService = pushService;
     }
 
     public async Task<CaseDetailDto> Handle(CreateExpertResponseCommand request, CancellationToken cancellationToken)
@@ -58,6 +62,8 @@ public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertRe
 
         var supportCase = await _db.SupportCases
             .Include(sc => sc.Farm)
+                .ThenInclude(f => f.Owner)
+                    .ThenInclude(u => u.Profile)
             .Include(sc => sc.MediaLinks)
                 .ThenInclude(ml => ml.Media)
             .Include(sc => sc.Messages)
@@ -120,12 +126,42 @@ public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertRe
             DeepLink = $"tarla-asistani://cases/{supportCase.Id}",
             Data = $"{{\"case_id\":\"{supportCase.Id}\",\"message_id\":\"{message.Id}\"}}",
             DedupeKey = $"expert-response:{message.Id}",
+            Status = NotificationStatus.Pending,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
 
         _db.Notifications.Add(notification);
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (_pushService != null && (supportCase.Farm.Owner?.Profile?.NotificationsEnabled ?? true))
+        {
+            var activeTokens = await _db.DeviceTokens
+                .Where(d => d.UserId == supportCase.Farm.OwnerId && d.Active)
+                .ToListAsync(cancellationToken);
+
+            var anySent = false;
+            foreach (var device in activeTokens)
+            {
+                var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
+                if (sent)
+                {
+                    anySent = true;
+                }
+                else
+                {
+                    notification.AttemptCount++;
+                }
+            }
+
+            if (anySent)
+            {
+                notification.Status = NotificationStatus.Sent;
+                notification.SentAtUtc = DateTime.UtcNow;
+            }
+            notification.UpdatedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         // Record idempotency operation
         if (request.ClientOperationId.HasValue)

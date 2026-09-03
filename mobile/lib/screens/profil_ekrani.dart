@@ -6,6 +6,8 @@ import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/profile/domain/user_profile.dart';
+import '../services/api_client.dart';
+import 'bildirimler_ekrani.dart';
 
 class ProfilEkrani extends StatefulWidget {
   const ProfilEkrani({
@@ -13,12 +15,14 @@ class ProfilEkrani extends StatefulWidget {
     this.repository,
     this.caseRepository,
     this.tarlaRepository,
+    this.apiClient,
     this.onLogout,
   });
 
   final ProfileRepository? repository;
   final CaseRepository? caseRepository;
   final TarlaRepository? tarlaRepository;
+  final ApiClient? apiClient;
   final Future<void> Function()? onLogout;
 
   @override
@@ -215,6 +219,19 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                   onChanged: _saving ? null : _toggleNotifications,
                 ),
         ),
+        if (widget.apiClient != null)
+          ListTile(
+            leading: const Icon(Icons.notifications_none_outlined),
+            title: const Text('Bildirim Merkezi'),
+            subtitle: const Text('Görev, uzman yanıtı ve hava uyarıları'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BildirimlerEkrani(apiClient: widget.apiClient!),
+              ),
+            ),
+          ),
         if (widget.caseRepository != null) ...[
           const Divider(),
           ListTile(

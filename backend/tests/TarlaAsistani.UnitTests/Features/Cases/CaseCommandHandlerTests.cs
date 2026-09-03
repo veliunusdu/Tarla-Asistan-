@@ -145,4 +145,68 @@ public class CaseCommandHandlerTests
         result.MessageType.Should().Be(CaseMessageType.AdditionalInfoRequest);
         supportCase.Status.Should().Be(CaseStatus.WaitingFarmer);
     }
+
+    [Fact]
+    public async Task CreateExpertResponse_WhenFarmerHasActiveDevice_ShouldSendPushNotification()
+    {
+        var expertId = Guid.NewGuid();
+        var farmerId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = farmerId,
+            Name = "Tarla",
+            Owner = new User
+            {
+                Id = farmerId,
+                Profile = new Profile { NotificationsEnabled = true },
+            },
+        };
+        var supportCase = new SupportCase
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farm.Id,
+            Farm = farm,
+            Status = CaseStatus.InReview,
+        };
+        var device = new DeviceToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = farmerId,
+            Token = "farmer-device-token",
+            Active = true,
+        };
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithUsers(farm.Owner)
+            .WithProfiles(farm.Owner.Profile!)
+            .WithSupportCases(supportCase)
+            .WithDeviceTokens(device)
+            .Build();
+        Notification? dispatchedNotification = null;
+        _pushServiceMock
+            .Setup(p => p.SendNotificationAsync(It.IsAny<Notification>(), device.Token, It.IsAny<CancellationToken>()))
+            .Callback<Notification, string, CancellationToken>((notification, _, _) => dispatchedNotification = notification)
+            .ReturnsAsync(true);
+
+        var handler = new CreateExpertResponseCommandHandler(db, _pushServiceMock.Object);
+
+        await handler.Handle(
+            new CreateExpertResponseCommand(
+                supportCase.Id,
+                expertId,
+                UserRole.Agronomist,
+                "İlaçlamayı iki gün erteleyin."),
+            CancellationToken.None);
+
+        _pushServiceMock.Verify(
+            p => p.SendNotificationAsync(
+                It.Is<Notification>(n => n.NotificationType == NotificationType.ExpertResponse),
+                device.Token,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        dispatchedNotification.Should().NotBeNull();
+        dispatchedNotification!.Status.Should().Be(NotificationStatus.Sent);
+        dispatchedNotification.SentAtUtc.Should().NotBeNull();
+    }
 }

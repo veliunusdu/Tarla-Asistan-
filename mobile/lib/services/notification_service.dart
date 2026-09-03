@@ -109,6 +109,7 @@ class NotificationService {
       }
     } on FirebaseException {
       state.value = PushState.failed;
+      _initialized = false;
     }
   }
 
@@ -146,16 +147,34 @@ class NotificationService {
     final deviceId = prefs.getString('notification_device_id');
     if (deviceId == null) return;
     try {
-      await _apiClient.sendQueued(
-        method: 'DELETE',
-        endpoint: '/notifications/devices/$deviceId',
-        body: const <String, dynamic>{},
-      );
+      await _apiClient.delete('/notifications/devices/$deviceId');
     } catch (_) {
       // Logout still proceeds; the server token can be replaced on the next login.
     } finally {
       await prefs.remove('notification_device_id');
     }
+  }
+
+  /// Clears user-bound listeners so a subsequent login registers this device
+  /// for the newly authenticated account rather than the previous one.
+  Future<void> resetAfterLogout() async {
+    final initializing = _initializing;
+    if (initializing != null) {
+      try {
+        await initializing;
+      } catch (_) {
+        // A failed setup must not prevent local session cleanup.
+      }
+    }
+    await _openedSubscription?.cancel();
+    await _foregroundSubscription?.cancel();
+    await _tokenSubscription?.cancel();
+    _openedSubscription = null;
+    _foregroundSubscription = null;
+    _tokenSubscription = null;
+    _initialized = false;
+    _initializing = null;
+    state.value = _firebaseReady ? PushState.notRequested : PushState.unavailable;
   }
 
   void _openMessage(RemoteMessage message) {
@@ -201,9 +220,7 @@ class NotificationService {
   }
 
   Future<void> dispose() async {
-    await _openedSubscription?.cancel();
-    await _foregroundSubscription?.cancel();
-    await _tokenSubscription?.cancel();
+    await resetAfterLogout();
     state.dispose();
   }
 }

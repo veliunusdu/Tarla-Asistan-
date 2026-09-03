@@ -71,6 +71,11 @@ public class ProactiveAdvisoryServiceTests
         _mockEngine
             .Setup(e => e.Evaluate(It.IsAny<Farm>(), It.IsAny<IReadOnlyList<Activity>>(), It.IsAny<IReadOnlyList<FarmTask>>(), It.IsAny<WeatherForecastData>(), It.IsAny<DateTime>()))
             .Returns([evalResult]);
+        Notification? dispatchedNotification = null;
+        _mockPush
+            .Setup(p => p.SendNotificationAsync(It.IsAny<Notification>(), "fcm-token-1", It.IsAny<CancellationToken>()))
+            .Callback<Notification, string, CancellationToken>((notification, _, _) => dispatchedNotification = notification)
+            .ReturnsAsync(true);
 
         var service = new ProactiveAdvisoryService(
             db,
@@ -90,6 +95,9 @@ public class ProactiveAdvisoryServiceTests
             It.Is<Notification>(n => n.NotificationType == NotificationType.ProactiveAdvisory),
             "fcm-token-1",
             It.IsAny<CancellationToken>()), Times.Once);
+        dispatchedNotification.Should().NotBeNull();
+        dispatchedNotification!.Status.Should().Be(NotificationStatus.Sent);
+        dispatchedNotification.SentAtUtc.Should().NotBeNull();
     }
 
     [Fact]

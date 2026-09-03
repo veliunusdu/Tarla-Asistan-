@@ -167,6 +167,8 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       debugPrint('Logout: device deactivation failed: $e');
     }
 
+    await _notificationService.resetAfterLogout();
+
     try {
       await DatabaseHelper.instance.clearUserData();
     } catch (e) {
@@ -321,6 +323,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           apiClient: _apiClient,
                         ),
                         profileRepository: BackendProfileRepository(_apiClient),
+                        apiClient: _apiClient,
                         caseRepository: BackendCaseRepository(
                           apiClient: _apiClient,
                         ),

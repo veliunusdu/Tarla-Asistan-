@@ -1,4 +1,4 @@
-enum NotificationTargetType { task, supportCase, weather, unknown }
+enum NotificationTargetType { task, supportCase, advisory, weather, unknown }
 
 class NotificationTarget {
   const NotificationTarget({
@@ -32,6 +32,14 @@ class NotificationTarget {
         farmId: data['farm_id']?.toString(),
       );
     }
+    final advisoryId = data['advisory_id']?.toString();
+    if (advisoryId != null && advisoryId.isNotEmpty) {
+      return NotificationTarget(
+        type: NotificationTargetType.advisory,
+        resourceId: advisoryId,
+        farmId: data['farm_id']?.toString(),
+      );
+    }
     return null;
   }
 
@@ -58,6 +66,13 @@ class NotificationTarget {
         return NotificationTarget(
           type: NotificationTargetType.weather,
           resourceId: farmId,
+          farmId: farmId,
+        );
+      }
+      if (segments[1] == 'advisories' && segments.length >= 3) {
+        return NotificationTarget(
+          type: NotificationTargetType.advisory,
+          resourceId: segments[2],
           farmId: farmId,
         );
       }

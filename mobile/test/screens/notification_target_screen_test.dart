@@ -112,4 +112,39 @@ void main() {
     expect(find.byType(VakaDetayEkrani), findsOneWidget);
     expect(find.text('Zeytin Güvesi'), findsOneWidget);
   });
+
+  testWidgets('NotificationTargetScreen renders proactive advisory content', (
+    tester,
+  ) async {
+    final client = ApiClient(
+      httpClient: MockClient((request) async {
+        expect(request.url.path, '/api/v1/ai/advisories');
+        expect(request.url.queryParameters['farm_id'], 'farm-1');
+        return http.Response(
+          '[{"id":"advisory-1","title":"Sulamayı erteleyin","summary":"Yarın yağış bekleniyor","severity":"Warning","action_recommendation":"Sulamayı yağış sonrasına bırakın"}]',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+      idTokenProvider: () async => 'token',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationTargetScreen(
+          target: const NotificationTarget(
+            type: NotificationTargetType.advisory,
+            resourceId: 'advisory-1',
+            farmId: 'farm-1',
+          ),
+          apiClient: client,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI Tarla Uyarısı'), findsOneWidget);
+    expect(find.text('Sulamayı erteleyin'), findsOneWidget);
+    expect(find.text('Yağış bekleniyor'), findsOneWidget);
+  });
 }

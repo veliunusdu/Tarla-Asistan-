@@ -37,6 +37,23 @@ void main() {
       expect(task?.resourceId, 'task-2');
     });
 
+    test('parses proactive advisory deep link and payload ids', () {
+      final deepLink = NotificationTarget.tryParse(
+        'tarla-asistani://farms/farm-1/advisories/advisory-1',
+      );
+      final payload = NotificationTarget.fromData({
+        'farm_id': 'farm-2',
+        'advisory_id': 'advisory-2',
+      });
+
+      expect(deepLink?.type, NotificationTargetType.advisory);
+      expect(deepLink?.farmId, 'farm-1');
+      expect(deepLink?.resourceId, 'advisory-1');
+      expect(payload?.type, NotificationTargetType.advisory);
+      expect(payload?.farmId, 'farm-2');
+      expect(payload?.resourceId, 'advisory-2');
+    });
+
     test('rejects external links', () {
       expect(
         NotificationTarget.tryParse('https://example.com/tasks/1'),

@@ -134,19 +134,10 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
 
                 if (activeTokens.Count > 0)
                 {
-                    _logger.LogInformation("Dispatching push notifications in parallel for task {TaskId} to {Count} active devices", task.Id, activeTokens.Count);
-
-                    var sendTasks = activeTokens.Select(async device =>
+                    var anySent = false;
+                    foreach (var device in activeTokens)
                     {
                         var sent = await _pushService.SendNotificationAsync(notification, device.Token, cancellationToken);
-                        return (device, sent);
-                    });
-
-                    var results = await Task.WhenAll(sendTasks);
-
-                    var anySent = false;
-                    foreach (var (device, sent) in results)
-                    {
                         if (sent)
                         {
                             anySent = true;
