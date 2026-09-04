@@ -13,6 +13,7 @@ void main() {
         return http.Response(
           '{"items":[{"id":"notice-1","title":"Yeni uzman göreviniz var","body":"İlaçlama planını inceleyin","deepLink":"tarla-asistani://farms/farm-1/tasks/task-1","data":"{\\"farm_id\\":\\"farm-1\\",\\"task_id\\":\\"task-1\\"}","readAtUtc":null}]}',
           200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         );
       }),
       idTokenProvider: () async => 'token',

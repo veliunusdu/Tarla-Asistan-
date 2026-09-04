@@ -123,7 +123,7 @@ void main() {
         return http.Response(
           '[{"id":"advisory-1","title":"Sulamayı erteleyin","summary":"Yarın yağış bekleniyor","severity":"Warning","action_recommendation":"Sulamayı yağış sonrasına bırakın"}]',
           200,
-          headers: {'content-type': 'application/json'},
+          headers: {'content-type': 'application/json; charset=utf-8'},
         );
       }),
       idTokenProvider: () async => 'token',
@@ -145,6 +145,6 @@ void main() {
 
     expect(find.text('AI Tarla Uyarısı'), findsOneWidget);
     expect(find.text('Sulamayı erteleyin'), findsOneWidget);
-    expect(find.text('Yağış bekleniyor'), findsOneWidget);
+    expect(find.text('Yarın yağış bekleniyor'), findsOneWidget);
   });
 }
