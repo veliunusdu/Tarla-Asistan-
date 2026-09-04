@@ -33,6 +33,7 @@ String _formatTarih(DateTime dt, {bool isPlanlanan = false}) {
   if (dt.year != now.year) {
     return '${dt.day} ${trAylar[dt.month - 1]} ${dt.year}';
   }
+
   return '${dt.day} ${trAylar[dt.month - 1]}';
 }
 
@@ -40,7 +41,9 @@ Faaliyet? _bulSiradakiIs(List<Faaliyet> faaliyetler) {
   final acikIsler = faaliyetler
       .where((f) => !f.isCompleted && f.dueDate != null)
       .toList();
+
   if (acikIsler.isEmpty) return null;
+
   acikIsler.sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
   return acikIsler.first;
 }
@@ -49,8 +52,13 @@ Faaliyet? _bulSonIs(List<Faaliyet> faaliyetler) {
   final tamamlananlar = faaliyetler
       .where((f) => f.isCompleted)
       .toList();
+
   if (tamamlananlar.isEmpty) return null;
-  tamamlananlar.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+  tamamlananlar.sort(
+    (a, b) => b.timestamp.compareTo(a.timestamp),
+  );
+
   return tamamlananlar.first;
 }
 
@@ -71,6 +79,7 @@ class TarlaListesiEkrani extends StatefulWidget {
     FaaliyetRepository? faaliyetRepository,
     CaseRepository? caseRepository,
     this.onDataChanged,
+    this.refreshNotifier,
   }) : _repository = repository ?? const LocalTarlaRepository(),
        _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository(),
@@ -81,76 +90,143 @@ class TarlaListesiEkrani extends StatefulWidget {
   final CaseRepository? _caseRepository;
 
   @visibleForTesting
-  FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepository;
+  FaaliyetRepository get faaliyetRepositoryForTesting =>
+      _faaliyetRepository;
 
-  /// Tarla başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
+  /// Bu ekranda tarla/faaliyet değiştiğinde parent'a haber verir.
   final VoidCallback? onDataChanged;
 
+  /// Başka bir sekmede tarla/faaliyet değiştiğinde bu ekranı yeniler.
+  final ValueNotifier<int>? refreshNotifier;
+
   @override
-  State<TarlaListesiEkrani> createState() => _TarlaListesiEkraniState();
+  State<TarlaListesiEkrani> createState() =>
+      _TarlaListesiEkraniState();
 }
 
-class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
+class _TarlaListesiEkraniState
+    extends State<TarlaListesiEkrani> {
   late Future<_TarlaListesiVerisi> _veri;
 
   @override
   void initState() {
     super.initState();
+
     _veri = _yukle();
+
+    widget.refreshNotifier?.addListener(
+      _handleExternalRefresh,
+    );
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant TarlaListesiEkrani oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.refreshNotifier !=
+        widget.refreshNotifier) {
+      oldWidget.refreshNotifier?.removeListener(
+        _handleExternalRefresh,
+      );
+
+      widget.refreshNotifier?.addListener(
+        _handleExternalRefresh,
+      );
+    }
+  }
+
+  void _handleExternalRefresh() {
+    if (!mounted) return;
+
+    _yenile();
   }
 
   Future<_TarlaListesiVerisi> _yukle() async {
-    final summaryRepo = widget._repository is FarmSummaryRepository
+    final summaryRepo =
+        widget._repository is FarmSummaryRepository
         ? widget._repository as FarmSummaryRepository
         : null;
 
     if (summaryRepo != null) {
       final summary = await summaryRepo.getFarmSummary();
-      final tarlalar = summary.farms.map((f) => f.tarla).toList();
-      final byTarla = <String, List<Faaliyet>>{};
+
+      final tarlalar = summary.farms
+          .map((f) => f.tarla)
+          .toList();
+
+      final byTarla =
+          <String, List<Faaliyet>>{};
+
       for (final f in summary.farms) {
         final list = <Faaliyet>[];
-        if (f.nextTask != null) list.add(f.nextTask!);
-        if (f.lastActivity != null) list.add(f.lastActivity!);
+
+        if (f.nextTask != null) {
+          list.add(f.nextTask!);
+        }
+
+        if (f.lastActivity != null) {
+          list.add(f.lastActivity!);
+        }
+
         byTarla[f.tarla.id] = list;
       }
+
       return _TarlaListesiVerisi(
         tarlalar: tarlalar,
         faaliyetlerByTarla: byTarla,
       );
     }
 
-    final tarlalar = await widget._repository.getTarlalar();
+    final tarlalar =
+        await widget._repository.getTarlalar();
+
     final repo = widget._faaliyetRepository;
 
     List<Faaliyet> faaliyetler = [];
+
     try {
-      faaliyetler = await repo.getTumFaaliyetler();
+      faaliyetler =
+          await repo.getTumFaaliyetler();
     } catch (_) {
-      // Degrade graceful: faaliyet verisi alınamazsa tarlalar yine gösterilir
+      // Faaliyet verisi alınamazsa tarlalar
+      // yine gösterilmeye devam eder.
     }
 
     List<Faaliyet> planliGorevler = [];
+
     if (repo is PlanliGorevRepository) {
       try {
         planliGorevler =
             await (repo as PlanliGorevRepository).getPlanliGorevler();
       } catch (_) {
-        // Degrade graceful: planlı görev verisi alınamazsa tarlalar yine gösterilir
+        // Planlı görevler alınamasa da
+        // tarla listesi gösterilebilir.
       }
     }
 
-    final islerMap = <String, Faaliyet>{};
+    final islerMap =
+        <String, Faaliyet>{};
+
     for (final f in faaliyetler) {
       islerMap[f.id] = f;
     }
+
     for (final f in planliGorevler) {
       islerMap[f.id] = f;
     }
 
-    final byTarla = <String, List<Faaliyet>>{};
+    final byTarla =
+        <String, List<Faaliyet>>{};
+
     for (final f in islerMap.values) {
-      byTarla.putIfAbsent(f.tarlaId, () => []).add(f);
+      byTarla
+          .putIfAbsent(
+            f.tarlaId,
+            () => [],
+          )
+          .add(f);
     }
 
     return _TarlaListesiVerisi(
@@ -160,9 +236,38 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
   }
 
   void _yenile() {
+    if (!mounted) return;
+
     setState(() {
       _veri = _yukle();
     });
+  }
+
+  /// Bu ekranda bir veri değiştiğinde:
+  ///
+  /// AnaEkran içinde çalışıyorsak parent notifier'ı
+  /// tetikler. Notifier zaten bu ekranı da yeniler.
+  ///
+  /// Ekran tek başına kullanılıyorsa doğrudan
+  /// yerel yenileme yapılır.
+  void _veriDegisti() {
+    if (widget.onDataChanged != null &&
+        widget.refreshNotifier != null) {
+      widget.onDataChanged!.call();
+      return;
+    }
+
+    _yenile();
+    widget.onDataChanged?.call();
+  }
+
+  @override
+  void dispose() {
+    widget.refreshNotifier?.removeListener(
+      _handleExternalRefresh,
+    );
+
+    super.dispose();
   }
 
   @override
@@ -176,101 +281,176 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
       body: FutureBuilder<_TarlaListesiVerisi>(
         future: _veri,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const AppLoadingView(message: 'Tarlalar yükleniyor…');
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const AppLoadingView(
+              message: 'Tarlalar yükleniyor…',
+            );
           }
 
           if (snapshot.hasError) {
-            return AppErrorView(onRetry: _yenile);
+            return AppErrorView(
+              onRetry: _yenile,
+            );
           }
 
           final veri = snapshot.data;
-          final tarlalar = veri?.tarlalar ?? [];
-          final faaliyetlerByTarla = veri?.faaliyetlerByTarla ?? {};
+
+          final tarlalar =
+              veri?.tarlalar ?? [];
+
+          final faaliyetlerByTarla =
+              veri?.faaliyetlerByTarla ?? {};
 
           if (tarlalar.isEmpty) {
             return AppEmptyView(
               icon: Icons.grass,
-              title: 'Henüz tarla eklemediniz',
-              description: 'İlk tarlanızı ekleyerek başlayın.',
+              title:
+                  'Henüz tarla eklemediniz',
+              description:
+                  'İlk tarlanızı ekleyerek başlayın.',
               actionLabel: 'Tarla Ekle',
               onAction: () async {
-                final result = await Navigator.push<bool>(
+                final result =
+                    await Navigator.push<bool>(
                   context,
                   MaterialPageRoute(
                     builder: (context) =>
-                        TarlaEklemeEkrani(repository: widget._repository),
+                        TarlaEklemeEkrani(
+                      repository:
+                          widget._repository,
+                    ),
                   ),
                 );
-                if (result == true) {
-                  _yenile();
-                  widget.onDataChanged?.call();
+
+                if (result == true &&
+                    mounted) {
+                  _veriDegisti();
                 }
               },
             );
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(12),
+            padding:
+                const EdgeInsets.all(12),
             itemCount: tarlalar.length,
             itemBuilder: (context, index) {
-              final tarla = tarlalar[index];
+              final tarla =
+                  tarlalar[index];
+
               final tarlaFaaliyetleri =
-                  faaliyetlerByTarla[tarla.id] ?? const [];
-              final siradaki = _bulSiradakiIs(tarlaFaaliyetleri);
-              final son = _bulSonIs(tarlaFaaliyetleri);
+                  faaliyetlerByTarla[
+                          tarla.id] ??
+                      const [];
+
+              final siradaki =
+                  _bulSiradakiIs(
+                tarlaFaaliyetleri,
+              );
+
+              final son =
+                  _bulSonIs(
+                tarlaFaaliyetleri,
+              );
 
               return Card(
-                color: Colors.white.withValues(alpha: 0.8),
+                color: Colors.white
+                    .withValues(alpha: 0.8),
                 elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    16,
+                  ),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
+                  contentPadding:
+                      const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  leading: Icon(Icons.grass, color: Colors.green.shade800),
+                  leading: Icon(
+                    Icons.grass,
+                    color:
+                        Colors.green.shade800,
+                  ),
                   title: Text(
                     tarla.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
                   ),
                   subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding:
+                        const EdgeInsets.only(
+                      top: 4,
+                    ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         Text(
-                          '${tarla.cropType ?? 'Ürün bilgisi yok'} • ${tarla.size != null ? '${tarla.size} dönüm' : 'Alan bilinmiyor'}',
+                          '${tarla.cropType ?? 'Ürün bilgisi yok'} • '
+                          '${tarla.size != null ? '${tarla.size} dönüm' : 'Alan bilinmiyor'}',
                           style: TextStyle(
-                            color: Colors.grey.shade700,
+                            color: Colors
+                                .grey.shade700,
                             fontSize: 13,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        if (siradaki != null || son != null) ...[
+                        const SizedBox(
+                          height: 6,
+                        ),
+                        if (siradaki != null ||
+                            son != null) ...[
                           if (siradaki != null)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
+                              padding:
+                                  const EdgeInsets
+                                      .only(
+                                bottom: 2,
+                              ),
                               child: Row(
                                 children: [
                                   const Icon(
-                                    Icons.schedule,
+                                    Icons
+                                        .schedule,
                                     size: 14,
-                                    color: AppColors.warning,
+                                    color:
+                                        AppColors
+                                            .warning,
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(
+                                    width: 4,
+                                  ),
                                   Expanded(
                                     child: Text(
-                                      'Sıradaki: ${siradaki.type} • ${_formatTarih(siradaki.dueDate!, isPlanlanan: true)}',
-                                      style: const TextStyle(
-                                        color: AppColors.textPrimary,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
+                                      'Sıradaki: ${siradaki.type} • '
+                                      '${_formatTarih(
+                                        siradaki.dueDate!,
+                                        isPlanlanan:
+                                            true,
+                                      )}',
+                                      style:
+                                          const TextStyle(
+                                        color:
+                                            AppColors
+                                                .textPrimary,
+                                        fontSize:
+                                            12,
+                                        fontWeight:
+                                            FontWeight
+                                                .w500,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                      maxLines:
+                                          1,
+                                      overflow:
+                                          TextOverflow
+                                              .ellipsis,
                                     ),
                                   ),
                                 ],
@@ -280,20 +460,32 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                             Row(
                               children: [
                                 const Icon(
-                                  Icons.check_circle_outline,
+                                  Icons
+                                      .check_circle_outline,
                                   size: 14,
-                                  color: AppColors.primary,
+                                  color:
+                                      AppColors
+                                          .primary,
                                 ),
-                                const SizedBox(width: 4),
+                                const SizedBox(
+                                  width: 4,
+                                ),
                                 Expanded(
                                   child: Text(
-                                    'Son: ${son.type} • ${_formatTarih(son.timestamp)}',
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 12,
+                                    'Son: ${son.type} • '
+                                    '${_formatTarih(son.timestamp)}',
+                                    style:
+                                        const TextStyle(
+                                      color:
+                                          AppColors
+                                              .textSecondary,
+                                      fontSize:
+                                          12,
                                     ),
                                     maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    overflow:
+                                        TextOverflow
+                                            .ellipsis,
                                   ),
                                 ),
                               ],
@@ -301,10 +493,14 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                         ] else
                           const Text(
                             'Henüz iş kaydı yok',
-                            style: TextStyle(
-                              color: AppColors.textDisabled,
+                            style:
+                                TextStyle(
+                              color: AppColors
+                                  .textDisabled,
                               fontSize: 12,
-                              fontStyle: FontStyle.italic,
+                              fontStyle:
+                                  FontStyle
+                                      .italic,
                             ),
                           ),
                       ],
@@ -314,33 +510,60 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => TarlaDetayEkrani(
+                        builder: (context) =>
+                            TarlaDetayEkrani(
                           tarla: tarla,
-                          faaliyetRepository: widget._faaliyetRepository,
-                          tarlaRepository: widget._repository,
-                          caseRepository: widget._caseRepository,
-                          onEdit: widget._repository is TarlaUpdateRepository
-                              ? () => Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => TarlaEklemeEkrani(
-                                      repository: widget._repository,
-                                      editingTarla: tarla,
-                                    ),
-                                  ),
-                                ).then((result) => result ?? false)
-                              : null,
-                          onArchive:
-                              widget._repository is TarlaArchiveRepository
+                          faaliyetRepository:
+                              widget
+                                  ._faaliyetRepository,
+                          tarlaRepository:
+                              widget
+                                  ._repository,
+                          caseRepository:
+                              widget
+                                  ._caseRepository,
+                          onEdit: widget
+                                      ._repository
+                                  is TarlaUpdateRepository
                               ? () =>
-                                    (widget._repository
-                                            as TarlaArchiveRepository)
-                                        .archiveTarla(tarla.id)
+                                  Navigator
+                                      .push<
+                                          bool>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) =>
+                                              TarlaEklemeEkrani(
+                                        repository:
+                                            widget
+                                                ._repository,
+                                        editingTarla:
+                                            tarla,
+                                      ),
+                                    ),
+                                  ).then(
+                                    (result) =>
+                                        result ??
+                                        false,
+                                  )
+                              : null,
+                          onArchive: widget
+                                      ._repository
+                                  is TarlaArchiveRepository
+                              ? () => (widget
+                                          ._repository
+                                      as TarlaArchiveRepository)
+                                  .archiveTarla(
+                                  tarla.id,
+                                )
                               : null,
                         ),
                       ),
                     );
-                    _yenile();
+
+                    if (!mounted) return;
+
+                    _veriDegisti();
                   },
                 ),
               );
@@ -348,19 +571,26 @@ class _TarlaListesiEkraniState extends State<TarlaListesiEkrani> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.green.shade700,
+      floatingActionButton:
+          FloatingActionButton(
+        backgroundColor:
+            Colors.green.shade700,
         onPressed: () async {
-          final result = await Navigator.push<bool>(
+          final result =
+              await Navigator.push<bool>(
             context,
             MaterialPageRoute(
               builder: (context) =>
-                  TarlaEklemeEkrani(repository: widget._repository),
+                  TarlaEklemeEkrani(
+                repository:
+                    widget._repository,
+              ),
             ),
           );
-          if (result == true) {
-            _yenile();
-            widget.onDataChanged?.call();
+
+          if (result == true &&
+              mounted) {
+            _veriDegisti();
           }
         },
         child: const Icon(Icons.add),

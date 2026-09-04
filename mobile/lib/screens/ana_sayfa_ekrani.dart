@@ -321,6 +321,25 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     });
   }
 
+  /// Tarla veya iş verisi değiştiğinde tüm sekmelere sinyal gönderir.
+  ///
+  /// AnaEkran içinde çalışıyorsak [refreshNotifier]'ı artırır;
+  /// bu listener aracılığıyla Ana Sayfa + İş Planım + Tarlalarım'ı yeniler.
+  /// [havaDurumunuDaYenile] true geçilirse hava durumu da yenilenir.
+  ///
+  /// refreshNotifier yoksa (ekran bağımsız kullanılıyorsa) eski davranış
+  /// olan _yenile() korunur.
+  void _veriDegisti({bool havaDurumunuDaYenile = false}) {
+    if (!mounted) return;
+    final notifier = widget.refreshNotifier;
+    if (notifier != null) {
+      notifier.value++;
+      if (havaDurumunuDaYenile) _yenileHava();
+    } else {
+      _yenile();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Hızlı işlemler
   // ---------------------------------------------------------------------------
@@ -332,7 +351,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         builder: (_) => TarlaEklemeEkrani(repository: widget._tarlaRepo),
       ),
     );
-    if (result == true && mounted) _yenile();
+    if (result == true && mounted) {
+      _veriDegisti(havaDurumunuDaYenile: true);
+    }
   }
 
   Future<void> _konumEkle() async {
@@ -362,7 +383,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
       ),
     );
     if (result == true && mounted) {
-      _yenile();
+      _veriDegisti(havaDurumunuDaYenile: true);
     }
   }
 
@@ -403,7 +424,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         ),
       ),
     );
-    if (result == true && mounted) _yenile();
+    if (result == true && mounted) {
+      _veriDegisti();
+    }
   }
 
   Future<void> _sorunBildir() async {

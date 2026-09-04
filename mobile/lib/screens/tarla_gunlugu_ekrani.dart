@@ -69,6 +69,7 @@ class TarlaGunluguEkrani extends StatefulWidget {
     TarlaRepository? tarlaRepository,
     FaaliyetRepository? faaliyetRepository,
     this.onDataChanged,
+    this.refreshNotifier,
   }) : _tarlaRepo = tarlaRepository ?? const LocalTarlaRepository(),
        _faaliyetRepo = faaliyetRepository ?? const LocalFaaliyetRepository();
 
@@ -80,6 +81,9 @@ class TarlaGunluguEkrani extends StatefulWidget {
 
   /// Görev başarıyla eklendiğinde çağrılır (örn. Ana Sayfa'yı uyarmak için).
   final VoidCallback? onDataChanged;
+
+  /// Başka bir sekmede tarla/faaliyet değiştiğinde bu ekranı yeniler.
+  final ValueNotifier<int>? refreshNotifier;
 
   @override
   State<TarlaGunluguEkrani> createState() => _TarlaGunluguEkraniState();
@@ -105,10 +109,26 @@ class _TarlaGunluguEkraniState extends State<TarlaGunluguEkrani> {
   void initState() {
     super.initState();
     _veri = _yukle();
+    widget.refreshNotifier?.addListener(_handleExternalRefresh);
+  }
+
+  @override
+  void didUpdateWidget(covariant TarlaGunluguEkrani oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshNotifier != widget.refreshNotifier) {
+      oldWidget.refreshNotifier?.removeListener(_handleExternalRefresh);
+      widget.refreshNotifier?.addListener(_handleExternalRefresh);
+    }
+  }
+
+  void _handleExternalRefresh() {
+    if (!mounted) return;
+    _yenile();
   }
 
   @override
   void dispose() {
+    widget.refreshNotifier?.removeListener(_handleExternalRefresh);
     _scrollCtrl.dispose();
     super.dispose();
   }

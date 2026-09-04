@@ -102,6 +102,7 @@ class _AnaEkranState extends State<AnaEkran> {
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
         onDataChanged: _onDataChanged,
+        refreshNotifier: _refreshNotifier,
       ),
       // 2 — Tarlalarım
       TarlaListesiEkrani(
@@ -109,6 +110,7 @@ class _AnaEkranState extends State<AnaEkran> {
         faaliyetRepository: widget._faaliyetRepo,
         caseRepository: widget._caseRepo,
         onDataChanged: _onDataChanged,
+        refreshNotifier: _refreshNotifier,
       ),
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),
