@@ -13,11 +13,8 @@ public static class MarketEndpoints
 {
     public static IEndpointRouteBuilder MapMarketEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/market")
-                       .WithTags("Market");
-
         // GET /api/v1/market?category={category}
-        group.MapGet("/", async (
+        app.MapGet("/api/v1/market", async (
             [FromQuery] string? category,
             IMediator mediator,
             CancellationToken ct) =>
