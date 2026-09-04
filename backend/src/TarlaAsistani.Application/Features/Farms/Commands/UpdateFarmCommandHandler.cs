@@ -86,6 +86,7 @@ public class UpdateFarmCommandHandler : IRequestHandler<UpdateFarmCommand, FarmM
             .Select(cp => new CropPeriodDto(
                 cp.Id,
                 cp.FarmId,
+                cp.CropName,
                 cp.CropType,
                 cp.Variety,
                 cp.PlantedAt,

@@ -23,7 +23,7 @@ class FarmMapper {
       latitude: dto.latitude,
       longitude: dto.longitude,
       size: dto.sizeInHectares,
-      cropType: dto.currentCrop?.cropType,
+      cropType: dto.currentCrop?.cropName ?? dto.currentCrop?.cropType,
       plantingDate: dto.currentCrop?.plantedAt,
     );
   }

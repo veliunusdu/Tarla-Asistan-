@@ -76,10 +76,10 @@ Future<void> completeFarmForm(WidgetTester tester) async {
     find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
     '5',
   );
-  await tester.tap(find.byType(DropdownButtonFormField<String>));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Buğday').last);
-  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Ürün'),
+    'Buğday',
+  );
   await tester.tap(find.text('Tarih seçin'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Tamam'));

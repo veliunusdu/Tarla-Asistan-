@@ -47,10 +47,16 @@ public class CreateCropPeriodCommandHandler : IRequestHandler<CreateCropPeriodCo
         }
 
         // 3. Create new CropPeriod
+        var cropName = !string.IsNullOrWhiteSpace(request.CropName)
+            ? request.CropName.Trim()
+            : (request.CropType.HasValue ? CropTypeHelper.ToTurkishName(request.CropType.Value) : string.Empty);
+        var cropType = request.CropType ?? CropTypeHelper.TryMatchCanonical(cropName);
+
         var period = new CropPeriod
         {
             FarmId = farm.Id,
-            CropType = request.CropType,
+            CropName = cropName,
+            CropType = cropType,
             Variety = string.IsNullOrWhiteSpace(request.Variety) ? null : request.Variety.Trim(),
             PlantedAt = request.PlantedAt,
             Status = CropPeriodStatus.Active,

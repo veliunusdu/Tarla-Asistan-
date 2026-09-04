@@ -23,7 +23,8 @@ public record FarmDto(
 public record CropPeriodDto(
     Guid Id,
     Guid FarmId,
-    CropType CropType,
+    string CropName,
+    CropType? CropType,
     string? Variety,
     DateOnly PlantedAt,
     DateOnly? HarvestedAt,

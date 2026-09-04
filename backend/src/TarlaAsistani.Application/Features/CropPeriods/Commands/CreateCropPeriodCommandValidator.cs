@@ -16,6 +16,14 @@ public class CreateCropPeriodCommandValidator : AbstractValidator<CreateCropPeri
             .Must(date => date <= DateOnly.FromDateTime(DateTime.UtcNow))
             .WithMessage("Ekim tarihi gelecekte olamaz.");
 
+        RuleFor(x => x.CropName)
+            .Cascade(CascadeMode.Stop)
+            .Must(name => name == string.Empty || !string.IsNullOrWhiteSpace(name))
+            .WithMessage("Ürün adı sadece boşluk olamaz.")
+            .Must((cmd, name) => !string.IsNullOrWhiteSpace(name) || cmd.CropType.HasValue)
+            .WithMessage("Ürün adı gereklidir.")
+            .MaximumLength(100).WithMessage("Ürün adı en fazla 100 karakter olabilir.");
+
         When(x => !string.IsNullOrEmpty(x.Variety), () =>
         {
             RuleFor(x => x.Variety)

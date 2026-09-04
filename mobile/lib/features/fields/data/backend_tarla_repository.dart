@@ -22,17 +22,19 @@ class BackendTarlaRepository
 
   @override
   Future<void> addTarla(Tarla tarla) async {
-    final cropType = _cropType(tarla.cropType);
+    final cropName = tarla.cropType?.trim();
     final plantedAt = tarla.plantingDate;
-    if (cropType == null || plantedAt == null) {
+    if (cropName == null || cropName.isEmpty || plantedAt == null) {
       throw ArgumentError('Tarla ürünü ve ekim tarihi gereklidir.');
     }
+    final cropType = _cropType(cropName);
     await _remote.createFarm(
       FarmCreateRequestDto(
         name: tarla.name,
         latitude: tarla.latitude,
         longitude: tarla.longitude,
         sizeInHectares: tarla.size == null ? null : tarla.size! / 10,
+        cropName: cropName,
         cropType: cropType,
         plantedAt: _date(plantedAt),
       ),

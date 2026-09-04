@@ -28,6 +28,7 @@ void main() {
       expect(remote.created?.latitude, isNull);
       expect(remote.created?.longitude, isNull);
       expect(remote.created?.sizeInHectares, 1);
+      expect(remote.created?.cropName, 'Buğday');
       expect(remote.created?.cropType, 'WHEAT');
       expect(remote.created?.plantedAt, '2026-03-15');
     },
@@ -38,10 +39,12 @@ void main() {
       name: 'Kuzey Tarla',
       latitude: 38.42,
       longitude: 27.14,
+      cropName: 'Buğday',
       cropType: 'WHEAT',
       plantedAt: '2026-03-15',
     );
 
+    expect(request.toJson()['initial_crop_name'], 'Buğday');
     expect(request.toJson()['initial_crop_type'], 'WHEAT');
     expect(request.toJson()['initial_planted_at'], '2026-03-15');
     expect(request.toJson().containsKey('crop_type'), isFalse);

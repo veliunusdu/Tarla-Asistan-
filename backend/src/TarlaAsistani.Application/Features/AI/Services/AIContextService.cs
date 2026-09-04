@@ -414,7 +414,9 @@ public class AIContextService : IAIContextService
             .GroupBy(cp => cp.FarmId)
             .ToDictionary(
                 g => g.Key,
-                g => (string?)g.First().CropType.ToString()
+                g => !string.IsNullOrWhiteSpace(g.First().CropName)
+                    ? g.First().CropName
+                    : g.First().CropType?.ToString()
             );
     }
 }

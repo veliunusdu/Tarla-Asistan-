@@ -76,7 +76,7 @@ void main() {
       final farmSummary = response.farms.first;
       expect(farmSummary.tarla.id, 'f1');
       expect(farmSummary.tarla.name, 'Kuzey Tarla');
-      expect(farmSummary.tarla.cropType, 'WHEAT');
+      expect(farmSummary.tarla.cropType, 'Buğday');
 
       expect(farmSummary.nextTask, isNotNull);
       expect(farmSummary.nextTask!.id, 'task-1');

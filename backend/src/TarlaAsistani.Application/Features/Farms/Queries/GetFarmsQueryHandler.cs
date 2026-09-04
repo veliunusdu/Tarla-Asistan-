@@ -49,6 +49,7 @@ public class GetFarmsQueryHandler : IRequestHandler<GetFarmsQuery, List<FarmDto>
                     .Select(cp => new CropPeriodDto(
                         cp.Id,
                         cp.FarmId,
+                        cp.CropName,
                         cp.CropType,
                         cp.Variety,
                         cp.PlantedAt,

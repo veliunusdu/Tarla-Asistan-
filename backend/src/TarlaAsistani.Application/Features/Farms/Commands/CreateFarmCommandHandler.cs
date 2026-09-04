@@ -30,10 +30,16 @@ public class CreateFarmCommandHandler : IRequestHandler<CreateFarmCommand, Guid>
         _db.Farms.Add(farm);
 
         // 2. Create the Initial Crop Period (Business Rule from Python backend)
+        var cropName = !string.IsNullOrWhiteSpace(request.InitialCropName)
+            ? request.InitialCropName.Trim()
+            : (request.InitialCropType.HasValue ? CropTypeHelper.ToTurkishName(request.InitialCropType.Value) : string.Empty);
+        var cropType = request.InitialCropType ?? CropTypeHelper.TryMatchCanonical(cropName);
+
         var cropPeriod = new CropPeriod
         {
             FarmId = farm.Id,
-            CropType = request.InitialCropType,
+            CropName = cropName,
+            CropType = cropType,
             PlantedAt = request.InitialPlantedAt,
             Status = CropPeriodStatus.Active
         };

@@ -86,9 +86,7 @@ Future<void> _doldurForm(
   );
 
   if (urun.isNotEmpty) {
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(urun).last);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Ürün'), urun);
     await tester.pumpAndSettle();
   }
 
@@ -205,7 +203,7 @@ void main() {
       await tester.tap(find.text('Kaydet'));
       await tester.pump();
 
-      expect(find.text('Lütfen bir ürün seçin.'), findsWidgets);
+      expect(find.text('Ürün adı boş bırakılamaz.'), findsWidgets);
       expect(repo.addCallCount, 0);
     });
 
@@ -223,10 +221,11 @@ void main() {
         '5',
       );
 
-      // Ürün seçiyoruz ama tarih seçmiyoruz
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Buğday').last);
+      // Ürün yazıyoruz ama tarih seçmiyoruz
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Ürün'),
+        'Buğday',
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Kaydet'));

@@ -45,10 +45,13 @@ public static class TaskEngine
         if (cropPeriod != null)
         {
             var growingDay = Math.Max(targetDate.DayNumber - cropPeriod.PlantedAt.DayNumber + 1, 1);
+            var cropDisplayName = !string.IsNullOrWhiteSpace(cropPeriod.CropName)
+                ? cropPeriod.CropName
+                : cropPeriod.CropType?.ToString();
             specs.Add(new TaskSpec(
                 Title: "Ürün gelişimini sahada kontrol edin",
                 Description: "Bitki gelişimini, toprak nemini ve olağan dışı belirtileri kontrol edip gözlemlerinizi tarla günlüğüne kaydedin.",
-                Reason: $"{cropPeriod.CropType} üretim döneminin {growingDay}. günü için düzenli saha kontrolü.",
+                Reason: $"{cropDisplayName} üretim döneminin {growingDay}. günü için düzenli saha kontrolü.",
                 Priority: TaskPriority.Medium,
                 Source: TaskSource.CropCalendar,
                 Confidence: TaskConfidence.Medium,

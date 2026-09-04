@@ -7,8 +7,21 @@ namespace TarlaAsistani.Application.Features.CropPeriods.Commands;
 public record CreateCropPeriodCommand(
     Guid FarmId,
     Guid UserId,
-    CropType CropType,
-    string? Variety,
-    DateOnly PlantedAt,
+    string CropName = "",
+    CropType? CropType = null,
+    string? Variety = null,
+    DateOnly PlantedAt = default,
     bool CloseExisting = false
-) : IRequest<CropPeriodDto>;
+) : IRequest<CropPeriodDto>
+{
+    public CreateCropPeriodCommand(
+        Guid farmId,
+        Guid userId,
+        CropType cropType,
+        string? variety,
+        DateOnly plantedAt,
+        bool closeExisting = false)
+        : this(farmId, userId, CropTypeHelper.ToTurkishName(cropType), cropType, variety, plantedAt, closeExisting)
+    {
+    }
+}

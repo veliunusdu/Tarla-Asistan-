@@ -50,9 +50,14 @@ public static class CropPeriodEndpoints
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            var cropName = !string.IsNullOrWhiteSpace(req.CropName)
+                ? req.CropName.Trim()
+                : (req.CropType.HasValue ? CropTypeHelper.ToTurkishName(req.CropType.Value) : string.Empty);
+
             var command = new CreateCropPeriodCommand(
                 FarmId: farmId,
                 UserId: userId,
+                CropName: cropName,
                 CropType: req.CropType,
                 Variety: req.Variety,
                 PlantedAt: req.PlantedAt,
@@ -146,13 +151,26 @@ public static class CropPeriodEndpoints
     }
 }
 
+[method: System.Text.Json.Serialization.JsonConstructor]
 public record CreateCropPeriodApiRequest(
     Guid? UserId,
-    CropType CropType,
-    string? Variety,
-    DateOnly PlantedAt,
+    string? CropName = null,
+    CropType? CropType = null,
+    string? Variety = null,
+    DateOnly PlantedAt = default,
     bool CloseExisting = false
-);
+)
+{
+    public CreateCropPeriodApiRequest(
+        Guid? userId,
+        CropType cropType,
+        string? variety,
+        DateOnly plantedAt,
+        bool closeExisting = false)
+        : this(userId, CropTypeHelper.ToTurkishName(cropType), cropType, variety, plantedAt, closeExisting)
+    {
+    }
+}
 
 public record CloseCropPeriodApiRequest(
     Guid? UserId,

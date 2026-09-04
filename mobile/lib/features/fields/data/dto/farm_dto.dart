@@ -148,28 +148,32 @@ class FarmMutationResponseDto {
 
 /// OpenAPI: FarmCreate request body
 ///
-/// Required fields: name, latitude, longitude, crop_type, planted_at.
+/// Required fields: name, latitude, longitude, cropName/cropType, planted_at.
 /// Optional fields are null by default and omitted from [toJson] when null.
 class FarmCreateRequestDto {
   const FarmCreateRequestDto({
     required this.name,
     required this.latitude,
     required this.longitude,
-    required this.cropType,
+    String? cropName,
+    this.cropType,
     required this.plantedAt,
     this.sizeInHectares,
     this.irrigationMethod,
     this.soilType,
     this.note,
     this.variety,
-  });
+  }) : cropName = cropName ?? (cropType ?? '');
 
   final String name;
   final double? latitude;
   final double? longitude;
 
-  /// Raw CropType enum value (e.g. 'WHEAT').
-  final String cropType;
+  /// Farmer-entered product name (e.g. 'Nohut', 'Buğday').
+  final String cropName;
+
+  /// Raw CropType enum value (e.g. 'WHEAT') if applicable.
+  final String? cropType;
 
   /// ISO-8601 date string in YYYY-MM-DD format.
   final String plantedAt;
@@ -185,7 +189,8 @@ class FarmCreateRequestDto {
       'name': name,
       'latitude': latitude,
       'longitude': longitude,
-      'initial_crop_type': cropType,
+      if (cropName.isNotEmpty) 'initial_crop_name': cropName,
+      if (cropType != null) 'initial_crop_type': cropType,
       'initial_planted_at': plantedAt,
       if (sizeInHectares != null) 'size_in_hectares': sizeInHectares,
       if (irrigationMethod != null) 'irrigation_method': irrigationMethod,

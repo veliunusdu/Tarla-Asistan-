@@ -62,7 +62,9 @@ public class ListFarmsTool : IAgentTool
         var farmSummaries = farms.Select(f => new ListFarmsItemDto(
             Id: f.Id,
             Name: f.Name,
-            Crop: f.CurrentCropPeriod?.CropType.ToString(),
+            Crop: !string.IsNullOrWhiteSpace(f.CurrentCropPeriod?.CropName)
+                ? f.CurrentCropPeriod.CropName
+                : f.CurrentCropPeriod?.CropType?.ToString(),
             Variety: f.CurrentCropPeriod?.Variety,
             SizeInHectares: f.SizeInHectares,
             HasLocation: f.Latitude.HasValue && f.Longitude.HasValue

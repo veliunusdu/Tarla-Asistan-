@@ -31,10 +31,14 @@ public static class FarmEndpoints
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
+            var initialCropName = !string.IsNullOrWhiteSpace(req.InitialCropName)
+                ? req.InitialCropName.Trim()
+                : (req.InitialCropType.HasValue ? CropTypeHelper.ToTurkishName(req.InitialCropType.Value) : string.Empty);
+
             var command = new CreateFarmCommand(
                 ownerId, req.Name, req.Latitude, req.Longitude,
                 req.SizeInHectares, req.IrrigationMethod,
-                req.InitialCropType, req.InitialPlantedAt
+                initialCropName, req.InitialCropType, req.InitialPlantedAt
             );
 
             var validationResult = await validator.ValidateAsync(command);
@@ -192,6 +196,7 @@ public static class FarmEndpoints
     }
 }
 
+[method: System.Text.Json.Serialization.JsonConstructor]
 public record CreateFarmRequest(
     Guid? OwnerId,
     string Name,
@@ -199,9 +204,24 @@ public record CreateFarmRequest(
     double? Longitude,
     double? SizeInHectares,
     IrrigationMethod? IrrigationMethod,
-    CropType InitialCropType,
-    DateOnly InitialPlantedAt
-);
+    string? InitialCropName = null,
+    CropType? InitialCropType = null,
+    DateOnly InitialPlantedAt = default
+)
+{
+    public CreateFarmRequest(
+        Guid? ownerId,
+        string name,
+        double? latitude,
+        double? longitude,
+        double? sizeInHectares,
+        IrrigationMethod? irrigationMethod,
+        CropType initialCropType,
+        DateOnly initialPlantedAt)
+        : this(ownerId, name, latitude, longitude, sizeInHectares, irrigationMethod, CropTypeHelper.ToTurkishName(initialCropType), initialCropType, initialPlantedAt)
+    {
+    }
+}
 
 public record UpdateFarmRequest(
     Guid? UserId,

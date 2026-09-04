@@ -1,4 +1,4 @@
-﻿using MediatR;
+using MediatR;
 using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.Application.Features.Farms.Commands;
@@ -10,6 +10,21 @@ public record CreateFarmCommand(
     double? Longitude,
     double? SizeInHectares,
     IrrigationMethod? IrrigationMethod,
-    CropType InitialCropType,
-    DateOnly InitialPlantedAt
-) : IRequest<Guid>; // Returns the new Farm's ID
+    string InitialCropName = "",
+    CropType? InitialCropType = null,
+    DateOnly InitialPlantedAt = default
+) : IRequest<Guid>
+{
+    public CreateFarmCommand(
+        Guid ownerId,
+        string name,
+        double? latitude,
+        double? longitude,
+        double? sizeInHectares,
+        IrrigationMethod? irrigationMethod,
+        CropType initialCropType,
+        DateOnly initialPlantedAt)
+        : this(ownerId, name, latitude, longitude, sizeInHectares, irrigationMethod, CropTypeHelper.ToTurkishName(initialCropType), initialCropType, initialPlantedAt)
+    {
+    }
+}

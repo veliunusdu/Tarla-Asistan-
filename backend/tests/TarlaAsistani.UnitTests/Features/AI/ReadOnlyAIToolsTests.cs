@@ -78,6 +78,7 @@ public class ReadOnlyAIToolsTests
                 CurrentCropPeriod: new CropPeriodDto(
                     Id: Guid.NewGuid(),
                     FarmId: farmId,
+                    CropName: "Domates",
                     CropType: CropType.Tomato,
                     Variety: "Cherry",
                     PlantedAt: new DateOnly(2026, 4, 1),
@@ -104,7 +105,7 @@ public class ReadOnlyAIToolsTests
 
         var content = result.GetContentString();
         content.Should().Contain("Kuzey Tarlası");
-        content.Should().Contain("Tomato");
+        content.Should().Contain("Domates");
         content.Should().Contain("Cherry");
     }
 

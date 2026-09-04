@@ -1,4 +1,4 @@
-﻿namespace TarlaAsistani.Domain.Entities;
+namespace TarlaAsistani.Domain.Entities;
 
 using TarlaAsistani.Domain.Enums;
 
@@ -7,7 +7,16 @@ public class CropPeriod
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid FarmId { get; set; }
 
-    public CropType CropType { get; set; }
+    private string _cropName = string.Empty;
+    public string CropName
+    {
+        get => !string.IsNullOrWhiteSpace(_cropName)
+            ? _cropName
+            : (CropType.HasValue ? CropTypeHelper.ToTurkishName(CropType.Value) : string.Empty);
+        set => _cropName = value;
+    }
+
+    public CropType? CropType { get; set; }
     public string? Variety { get; set; }
 
     // DateOnly is the modern C# way to handle dates (no time component)

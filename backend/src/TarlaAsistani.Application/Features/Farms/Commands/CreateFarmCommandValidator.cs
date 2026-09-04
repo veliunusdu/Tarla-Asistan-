@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 
 namespace TarlaAsistani.Application.Features.Farms.Commands;
 
@@ -20,5 +20,13 @@ public class CreateFarmCommandValidator : AbstractValidator<CreateFarmCommand>
 
         RuleFor(v => v.InitialPlantedAt)
             .NotEmpty().WithMessage("Planting date is required.");
+
+        RuleFor(v => v.InitialCropName)
+            .Cascade(CascadeMode.Stop)
+            .Must(name => name == string.Empty || !string.IsNullOrWhiteSpace(name))
+            .WithMessage("Ürün adı sadece boşluk olamaz.")
+            .Must((cmd, name) => !string.IsNullOrWhiteSpace(name) || cmd.InitialCropType.HasValue)
+            .WithMessage("Ürün adı gereklidir.")
+            .MaximumLength(100).WithMessage("Ürün adı en fazla 100 karakter olabilir.");
     }
 }

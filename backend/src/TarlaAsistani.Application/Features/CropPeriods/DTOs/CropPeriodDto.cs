@@ -6,7 +6,8 @@ namespace TarlaAsistani.Application.Features.CropPeriods.DTOs;
 public record CropPeriodDto(
     Guid Id,
     Guid FarmId,
-    CropType CropType,
+    string CropName,
+    CropType? CropType,
     string? Variety,
     DateOnly PlantedAt,
     DateOnly? HarvestedAt,
@@ -18,6 +19,7 @@ public record CropPeriodDto(
     public static CropPeriodDto FromEntity(CropPeriod cp) => new(
         cp.Id,
         cp.FarmId,
+        !string.IsNullOrWhiteSpace(cp.CropName) ? cp.CropName : (cp.CropType.HasValue ? CropTypeHelper.ToTurkishName(cp.CropType.Value) : string.Empty),
         cp.CropType,
         cp.Variety,
         cp.PlantedAt,

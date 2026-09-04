@@ -29,14 +29,6 @@ const List<String> _trAylar = [
 String _formatTarih(DateTime dt) =>
     '${dt.day} ${_trAylar[dt.month - 1]} ${dt.year}';
 
-/// PRD §7.4: Desteklenen ürünler listesi.
-const List<String> _desteklenenUrunler = [
-  'Buğday',
-  'Arpa',
-  'Mısır',
-  'Ayçiçeği',
-  'Domates',
-];
 
 typedef FieldLocationPicker =
     Future<TarlaLocation?> Function(BuildContext, TarlaLocation?);
@@ -64,6 +56,7 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _sizeController = TextEditingController();
+  final _cropController = TextEditingController();
 
   String? _secilenUrun;
   DateTime? _secilenTarih;
@@ -80,6 +73,7 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
     if (tarla == null) return;
     _nameController.text = tarla.name;
     _sizeController.text = tarla.size?.toString() ?? '';
+    _cropController.text = tarla.cropType ?? '';
     _secilenUrun = tarla.cropType;
     _secilenTarih = tarla.plantingDate;
     if (tarla.latitude != null && tarla.longitude != null) {
@@ -94,12 +88,24 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
   void dispose() {
     _nameController.dispose();
     _sizeController.dispose();
+    _cropController.dispose();
     super.dispose();
   }
 
   // ---------------------------------------------------------------------------
   // Doğrulama yardımcıları
   // ---------------------------------------------------------------------------
+
+  String? _validateUrun(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return 'Ürün adı boş bırakılamaz.';
+    }
+    if (trimmed.length > 100) {
+      return 'Ürün adı en fazla 100 karakter olabilir.';
+    }
+    return null;
+  }
 
   String? _validateAd(String? value) {
     final trimmed = value?.trim() ?? '';
@@ -153,8 +159,9 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
 
   Future<void> _kaydet() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (!_isEditing && _secilenUrun == null) {
-      _snackBar('Lütfen bir ürün seçin.');
+    final urun = _isEditing ? _secilenUrun : _cropController.text.trim();
+    if (!_isEditing && (urun == null || urun.isEmpty)) {
+      _snackBar('Lütfen ürün adını yazın.');
       return;
     }
     if (!_isEditing && _secilenTarih == null) {
@@ -176,7 +183,7 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
       latitude: _selectedLocation?.latitude,
       longitude: _selectedLocation?.longitude,
       size: boyut,
-      cropType: _secilenUrun,
+      cropType: urun,
       plantingDate: _secilenTarih,
     );
 
@@ -365,20 +372,16 @@ class _TarlaEklemeEkraniState extends State<TarlaEklemeEkrani> {
                     child: Text(_secilenUrun ?? 'Ürün bilgisi yok'),
                   )
                 else
-                  DropdownButtonFormField<String>(
-                    initialValue: _secilenUrun,
+                  TextFormField(
+                    controller: _cropController,
+                    textCapitalization: TextCapitalization.sentences,
+                    maxLength: 100,
                     decoration: const InputDecoration(
                       labelText: 'Ürün',
+                      hintText: 'Bu tarlada yetiştirdiğiniz ürünü yazın',
                       prefixIcon: Icon(Icons.grass),
                     ),
-                    items: _desteklenenUrunler
-                        .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                        .toList(),
-                    onChanged: _kaydediliyor
-                        ? null
-                        : (v) => setState(() => _secilenUrun = v),
-                    validator: (v) =>
-                        v == null ? 'Lütfen bir ürün seçin.' : null,
+                    validator: _validateUrun,
                   ),
                 const SizedBox(height: AppSpacing.md),
 
