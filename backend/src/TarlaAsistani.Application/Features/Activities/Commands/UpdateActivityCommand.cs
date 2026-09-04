@@ -7,6 +7,7 @@ namespace TarlaAsistani.Application.Features.Activities.Commands;
 public record UpdateActivityCommand(
     Guid ActivityId,
     Guid UserId,
+    string? ActivityName = null,
     ActivityType? ActivityType = null,
     string? Description = null,
     DateTime? OccurredAt = null,

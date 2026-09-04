@@ -43,9 +43,15 @@ public class UpdateActivityCommandHandler : IRequestHandler<UpdateActivityComman
         // 3. Track previous values for revision history
         var previousValues = new Dictionary<string, object?>();
 
+        if (request.ActivityName != null && request.ActivityName.Trim() != activity.ActivityName)
+        {
+            previousValues["activity_name"] = activity.ActivityName;
+            activity.ActivityName = request.ActivityName.Trim();
+        }
+
         if (request.ActivityType.HasValue && request.ActivityType.Value != activity.ActivityType)
         {
-            previousValues["activity_type"] = activity.ActivityType.ToString();
+            previousValues["activity_type"] = activity.ActivityType?.ToString();
             activity.ActivityType = request.ActivityType.Value;
         }
 

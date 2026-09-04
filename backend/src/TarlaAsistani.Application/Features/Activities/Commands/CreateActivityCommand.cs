@@ -7,9 +7,10 @@ namespace TarlaAsistani.Application.Features.Activities.Commands;
 public record CreateActivityCommand(
     Guid FarmId,
     Guid CreatedById,
-    ActivityType ActivityType,
-    string Description,
-    DateTime OccurredAt,
+    string ActivityName = "",
+    string Description = "",
+    DateTime OccurredAt = default,
+    ActivityType? ActivityType = null,
     Guid? CropPeriodId = null,
     ActivitySource InputMethod = ActivitySource.Manual,
     int? DurationMinutes = null,

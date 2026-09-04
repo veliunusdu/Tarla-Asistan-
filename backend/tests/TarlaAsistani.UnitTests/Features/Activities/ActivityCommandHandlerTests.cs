@@ -1,5 +1,7 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Features.Activities.Commands;
+using TarlaAsistani.Application.Features.Activities.DTOs;
 using TarlaAsistani.Application.Features.Activities.Queries;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
@@ -279,5 +281,237 @@ public class ActivityCommandHandlerTests
         // Assert
         result.Should().NotBeNull();
         result!.Items.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateActivity_WithFreeText_ShouldStoreAndReturnExactActivityName_Test1()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
+
+        var db = new MockDbContextBuilder().WithFarms(farm).Build();
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: userId,
+            ActivityName: "Damla sulama yaptım",
+            Description: "Sabah sulaması",
+            OccurredAt: DateTime.UtcNow
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.ActivityName.Should().Be("Damla sulama yaptım");
+        result.Description.Should().Be("Sabah sulaması");
+    }
+
+    [Fact]
+    public async Task CreateActivity_WithCustomNameNotInEnum_ShouldSucceed_Test2()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
+
+        var db = new MockDbContextBuilder().WithFarms(farm).Build();
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: userId,
+            ActivityName: "Çapa",
+            Description: "",
+            OccurredAt: DateTime.UtcNow
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.ActivityName.Should().Be("Çapa");
+        result.ActivityType.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateActivity_WithFidanBaglama_ShouldSucceed_Test3()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
+
+        var db = new MockDbContextBuilder().WithFarms(farm).Build();
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: userId,
+            ActivityName: "Fidan bağlama",
+            Description: "İpler yenilendi",
+            OccurredAt: DateTime.UtcNow
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.ActivityName.Should().Be("Fidan bağlama");
+    }
+
+    [Fact]
+    public async Task CreateActivity_WithWhitespaceAroundName_ShouldTrimCleanly_Test4()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
+
+        var db = new MockDbContextBuilder().WithFarms(farm).Build();
+        var handler = new CreateActivityCommandHandler(db);
+        var command = new CreateActivityCommand(
+            FarmId: farmId,
+            CreatedById: userId,
+            ActivityName: "   Çapa   ",
+            Description: "",
+            OccurredAt: DateTime.UtcNow
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.ActivityName.Should().Be("Çapa");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task CreateActivityValidator_WhenActivityNameEmptyOrWhitespace_ShouldBeInvalid_Test5_6(string name)
+    {
+        // Arrange
+        var validator = new CreateActivityCommandValidator();
+        var command = new CreateActivityCommand(
+            FarmId: Guid.NewGuid(),
+            CreatedById: Guid.NewGuid(),
+            ActivityName: name,
+            Description: "Test"
+        );
+
+        // Act
+        var result = await validator.ValidateAsync(command);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == nameof(CreateActivityCommand.ActivityName));
+    }
+
+    [Fact]
+    public async Task CreateActivityValidator_WhenActivityNameExceeds150Chars_ShouldBeInvalid_Test7()
+    {
+        // Arrange
+        var validator = new CreateActivityCommandValidator();
+        var command = new CreateActivityCommand(
+            FarmId: Guid.NewGuid(),
+            CreatedById: Guid.NewGuid(),
+            ActivityName: new string('A', 151),
+            Description: "Test"
+        );
+
+        // Act
+        var result = await validator.ValidateAsync(command);
+
+        // Assert
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == nameof(CreateActivityCommand.ActivityName));
+    }
+
+    [Fact]
+    public void ActivityDto_FromEntity_WhenLegacyIrrigationWithoutActivityName_ShouldReturnSulama_Test8()
+    {
+        // Arrange
+        var entity = new Activity
+        {
+            Id = Guid.NewGuid(),
+            FarmId = Guid.NewGuid(),
+            ActivityName = "",
+            ActivityType = ActivityType.Irrigation,
+            Description = "Eski sulama"
+        };
+
+        // Act
+        var dto = ActivityDto.FromEntity(entity);
+
+        // Assert
+        dto.ActivityName.Should().Be("Sulama");
+        dto.ActivityType.Should().Be(ActivityType.Irrigation);
+    }
+
+    [Fact]
+    public void ActivityDto_FromEntity_WhenLegacyOtherWithoutActivityName_ShouldReturnDiger_Test9()
+    {
+        // Arrange
+        var entity = new Activity
+        {
+            Id = Guid.NewGuid(),
+            FarmId = Guid.NewGuid(),
+            ActivityName = "",
+            ActivityType = ActivityType.Other,
+            Description = "Özel işlem"
+        };
+
+        // Act
+        var dto = ActivityDto.FromEntity(entity);
+
+        // Assert
+        dto.ActivityName.Should().Be("Diğer");
+        dto.ActivityType.Should().Be(ActivityType.Other);
+    }
+
+    [Fact]
+    public async Task UpdateActivity_WhenActivityNameUpdated_ShouldUpdateAndRecordRevision_Test10()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var activityId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, OwnerId = userId, Name = "Tarla 1" };
+        var activity = new Activity
+        {
+            Id = activityId,
+            FarmId = farmId,
+            Farm = farm,
+            ActivityName = "Çapa",
+            Status = ActivityStatus.Confirmed,
+            Description = "Yabani ot temizlendi"
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithActivities(activity)
+            .Build();
+
+        var handler = new UpdateActivityCommandHandler(db);
+        var command = new UpdateActivityCommand(
+            ActivityId: activityId,
+            UserId: userId,
+            ActivityName: "Derin çapa"
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.ActivityName.Should().Be("Derin çapa");
+        activity.ActivityName.Should().Be("Derin çapa");
+        var rev = await db.ActivityRevisions.FirstOrDefaultAsync(r => r.ActivityId == activityId);
+        rev.Should().NotBeNull();
+        rev!.PreviousValues.Should().Contain("activity_name");
     }
 }

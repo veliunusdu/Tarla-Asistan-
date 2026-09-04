@@ -9,7 +9,8 @@ public record ActivityDto(
     Guid? CropPeriodId,
     Guid? TaskId,
     Guid? CreatedById,
-    ActivityType ActivityType,
+    string ActivityName,
+    ActivityType? ActivityType,
     ActivityStatus Status,
     ActivitySource Source,
     string Description,
@@ -34,6 +35,19 @@ public record ActivityDto(
         a.CropPeriodId,
         a.TaskId,
         a.CreatedById,
+        !string.IsNullOrWhiteSpace(a.ActivityName)
+            ? a.ActivityName
+            : (a.ActivityType?.ToString() switch
+            {
+                "Irrigation" => "Sulama",
+                "Fertilization" => "Gübreleme",
+                "Spraying" => "İlaçlama",
+                "Pruning" => "Budama",
+                "FieldCheck" => "Tarla Kontrolü",
+                "Harvest" => "Hasat",
+                "Other" => "Diğer",
+                _ => a.ActivityType?.ToString() ?? "Diğer"
+            }),
         a.ActivityType,
         a.Status,
         a.Source,

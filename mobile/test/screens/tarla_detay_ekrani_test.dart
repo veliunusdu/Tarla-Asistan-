@@ -443,9 +443,10 @@ void main() {
         expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
 
         // Bir faaliyet ekleyip kaydet
-        await tester.tap(find.byType(DropdownButtonFormField<String>));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Sulama').last);
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'İş türü'),
+          'Sulama',
+        );
         await tester.pumpAndSettle();
 
         // Tarih seçimi (Yapıldı modunda)

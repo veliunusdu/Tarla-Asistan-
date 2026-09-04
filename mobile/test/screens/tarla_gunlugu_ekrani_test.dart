@@ -192,10 +192,10 @@ Future<void> completeFarmForm(WidgetTester tester) async {
     find.widgetWithText(TextFormField, 'Büyüklük (Dönüm)'),
     '5',
   );
-  await tester.tap(find.byType(DropdownButtonFormField<String>));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Buğday').last);
-  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.widgetWithText(TextFormField, 'Ürün'),
+    'Buğday',
+  );
   await tester.tap(find.text('Tarih seçin'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Tamam'));
@@ -979,10 +979,11 @@ void main() {
 
           expect(find.byType(FaaliyetEklemeEkrani), findsOneWidget);
 
-          // İş türü seç, tarih bugün kalsın, İşi Planla'ya bas
-          await tester.tap(find.byType(DropdownButtonFormField<String>));
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('Sulama').last);
+          // İş türü yaz, tarih bugün kalsın, İşi Planla'ya bas
+          await tester.enterText(
+            find.widgetWithText(TextFormField, 'İş türü'),
+            'Sulama',
+          );
           await tester.pumpAndSettle();
 
           await tester.tap(find.text('İşi Planla'));

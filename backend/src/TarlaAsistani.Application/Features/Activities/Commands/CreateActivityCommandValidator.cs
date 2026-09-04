@@ -13,9 +13,15 @@ public class CreateActivityCommandValidator : AbstractValidator<CreateActivityCo
         RuleFor(x => x.CreatedById)
             .NotEmpty();
 
+        RuleFor(x => x.ActivityName)
+            .Must((cmd, name) => !string.IsNullOrWhiteSpace(name) || cmd.ActivityType.HasValue)
+            .WithMessage("İş adı / faaliyet türü boş olamaz.")
+            .Must(name => string.IsNullOrEmpty(name) || !string.IsNullOrWhiteSpace(name))
+            .WithMessage("İş adı yalnızca boşluk karakterlerinden oluşamaz.")
+            .MaximumLength(150)
+            .WithMessage("İş adı en fazla 150 karakter olabilir.");
+
         RuleFor(x => x.Description)
-            .NotEmpty().WithMessage("Faaliyet açıklaması boş olamaz.")
-            .MinimumLength(2)
             .MaximumLength(4000);
 
         RuleFor(x => x.OccurredAt)

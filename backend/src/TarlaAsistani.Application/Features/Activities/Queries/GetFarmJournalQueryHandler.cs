@@ -57,11 +57,25 @@ public class GetFarmJournalQueryHandler : IRequestHandler<GetFarmJournalQuery, F
                 ["voice_url"] = a.VoiceUrl
             };
 
+            var title = !string.IsNullOrWhiteSpace(a.ActivityName)
+                ? a.ActivityName
+                : (a.ActivityType?.ToString() switch
+                {
+                    "Irrigation" => "Sulama",
+                    "Fertilization" => "Gübreleme",
+                    "Spraying" => "İlaçlama",
+                    "Pruning" => "Budama",
+                    "FieldCheck" => "Tarla Kontrolü",
+                    "Harvest" => "Hasat",
+                    "Other" => "Diğer",
+                    _ => a.ActivityType?.ToString() ?? "Faaliyet"
+                });
+
             entries.Add(new JournalEntryDto(
                 EntryType: "ACTIVITY",
                 Id: a.Id,
                 OccurredAt: a.OccurredAtUtc,
-                Title: a.ActivityType.ToString(),
+                Title: title,
                 Description: a.Description,
                 Metadata: meta
             ));

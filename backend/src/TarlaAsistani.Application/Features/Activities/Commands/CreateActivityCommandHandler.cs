@@ -58,15 +58,33 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
         var isVoiceDraft = request.InputMethod == ActivitySource.Voice;
         var now = DateTime.UtcNow;
 
+        var resolvedName = !string.IsNullOrWhiteSpace(request.ActivityName)
+            ? request.ActivityName.Trim()
+            : request.ActivityType switch
+            {
+                ActivityType.Irrigation => "Sulama",
+                ActivityType.Fertilization => "Gübreleme",
+                ActivityType.Spraying => "İlaçlama",
+                ActivityType.Pruning => "Budama",
+                ActivityType.FieldCheck => "Tarla Kontrolü",
+                ActivityType.Harvest => "Hasat",
+                _ => "Diğer"
+            };
+
+        var resolvedDescription = !string.IsNullOrWhiteSpace(request.Description)
+            ? request.Description.Trim()
+            : resolvedName;
+
         var activity = new Activity
         {
             FarmId = farm.Id,
             CropPeriodId = request.CropPeriodId,
             CreatedById = request.CreatedById,
+            ActivityName = resolvedName,
             ActivityType = request.ActivityType,
             Status = isVoiceDraft ? ActivityStatus.Draft : ActivityStatus.Confirmed,
             Source = request.InputMethod,
-            Description = request.Description.Trim(),
+            Description = resolvedDescription,
             OccurredAtUtc = request.OccurredAt.Kind == DateTimeKind.Unspecified 
                 ? DateTime.SpecifyKind(request.OccurredAt, DateTimeKind.Utc) 
                 : request.OccurredAt.ToUniversalTime(),
@@ -89,7 +107,7 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
 
         if (request.ClientOperationId.HasValue)
         {
-            var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{farm.Id}:{request.ActivityType}:{request.Description.Trim()}"))).ToLowerInvariant();
+            var payloadDigest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{farm.Id}:{resolvedName}:{resolvedDescription}"))).ToLowerInvariant();
             _db.ClientOperations.Add(new ClientOperation
             {
                 ActorId = request.CreatedById,

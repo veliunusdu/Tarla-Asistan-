@@ -42,9 +42,10 @@ public static class ActivityEndpoints
             var command = new CreateActivityCommand(
                 FarmId: farmId,
                 CreatedById: userId,
-                ActivityType: req.ActivityType,
-                Description: req.Description,
+                ActivityName: req.ActivityName ?? string.Empty,
+                Description: req.Description ?? string.Empty,
                 OccurredAt: req.OccurredAt ?? DateTime.UtcNow,
+                ActivityType: req.ActivityType,
                 CropPeriodId: req.CropPeriodId,
                 InputMethod: req.InputMethod ?? ActivitySource.Manual,
                 DurationMinutes: req.DurationMinutes,
@@ -201,6 +202,7 @@ public static class ActivityEndpoints
             var command = new UpdateActivityCommand(
                 ActivityId: id,
                 UserId: userId,
+                ActivityName: req.ActivityName,
                 ActivityType: req.ActivityType,
                 Description: req.Description,
                 OccurredAt: req.OccurredAt,
@@ -238,7 +240,29 @@ public static class ActivityEndpoints
         .Produces(StatusCodes.Status422UnprocessableEntity)
         .ProducesValidationProblem();
 
-        // 6. POST /api/v1/activities/{id}/confirm - Confirm voice draft activity
+        // 6. DELETE /api/v1/activities/{id} - Soft-archive activity
+        activities.MapDelete("/{id:guid}", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromQuery] Guid? userId,
+            IMediator mediator) =>
+        {
+            var commandUserId = httpContext.ResolveUserId(userId, headerUserId);
+            if (commandUserId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var result = await mediator.Send(new ArchiveActivityCommand(id, commandUserId));
+            return result ? Results.NoContent() : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
+        })
+        .WithName("ArchiveActivity")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // 7. POST /api/v1/activities/{id}/confirm - Confirm activity
         activities.MapPost("/{id:guid}/confirm", async (
             Guid id,
             HttpContext httpContext,
@@ -258,22 +282,6 @@ public static class ActivityEndpoints
         .WithName("ConfirmActivity")
         .Produces<ActivityDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound);
-
-        // 7. DELETE /api/v1/activities/{id} - Archive activity
-        activities.MapDelete("/{id:guid}", async (
-            Guid id,
-            HttpContext httpContext,
-            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
-            [FromQuery] Guid? userId,
-            IMediator mediator) =>
-        {
-            var reqUserId = httpContext.ResolveUserId(userId, headerUserId);
-            var success = await mediator.Send(new ArchiveActivityCommand(id, reqUserId));
-            return success ? Results.NoContent() : Results.NotFound(new { detail = "Faaliyet bulunamadı." });
-        })
-        .WithName("ArchiveActivity")
-        .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status404NotFound);
 
         // 8. POST /api/v1/activities/{id}/restore - Restore archived activity
@@ -322,37 +330,39 @@ public static class ActivityEndpoints
 }
 
 public record CreateActivityApiRequest(
-    Guid? UserId,
-    ActivityType ActivityType,
-    string Description,
-    DateTime? OccurredAt,
-    Guid? CropPeriodId,
-    ActivitySource? InputMethod,
-    int? DurationMinutes,
-    float? Amount,
-    string? Unit,
-    string? PhotoUrl,
-    string? VoiceUrl,
-    string? VoiceTranscript,
-    string? PerformedBy,
-    float? Cost,
-    Guid? ClientOperationId
+    Guid? UserId = null,
+    ActivityType? ActivityType = null,
+    string? Description = null,
+    DateTime? OccurredAt = null,
+    Guid? CropPeriodId = null,
+    ActivitySource? InputMethod = null,
+    int? DurationMinutes = null,
+    float? Amount = null,
+    string? Unit = null,
+    string? PhotoUrl = null,
+    string? VoiceUrl = null,
+    string? VoiceTranscript = null,
+    string? PerformedBy = null,
+    float? Cost = null,
+    Guid? ClientOperationId = null,
+    string? ActivityName = null
 );
 
 public record UpdateActivityApiRequest(
-    Guid? UserId,
-    ActivityType? ActivityType,
-    string? Description,
-    DateTime? OccurredAt,
-    Guid? CropPeriodId,
-    int? DurationMinutes,
-    float? Amount,
-    string? Unit,
-    string? PhotoUrl,
-    string? VoiceUrl,
-    string? VoiceTranscript,
-    string? PerformedBy,
-    float? Cost
+    Guid? UserId = null,
+    ActivityType? ActivityType = null,
+    string? Description = null,
+    DateTime? OccurredAt = null,
+    Guid? CropPeriodId = null,
+    int? DurationMinutes = null,
+    float? Amount = null,
+    string? Unit = null,
+    string? PhotoUrl = null,
+    string? VoiceUrl = null,
+    string? VoiceTranscript = null,
+    string? PerformedBy = null,
+    float? Cost = null,
+    string? ActivityName = null
 );
 
 public record ConfirmActivityApiRequest(Guid? UserId = null);

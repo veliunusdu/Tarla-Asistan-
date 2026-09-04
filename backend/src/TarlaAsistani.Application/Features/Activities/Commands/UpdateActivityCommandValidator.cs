@@ -12,10 +12,18 @@ public class UpdateActivityCommandValidator : AbstractValidator<UpdateActivityCo
         RuleFor(x => x.UserId)
             .NotEmpty();
 
+        When(x => x.ActivityName != null, () =>
+        {
+            RuleFor(x => x.ActivityName)
+                .Must(name => !string.IsNullOrWhiteSpace(name))
+                .WithMessage("İş adı yalnızca boşluk karakterlerinden oluşamaz.")
+                .MaximumLength(150)
+                .WithMessage("İş adı en fazla 150 karakter olabilir.");
+        });
+
         When(x => x.Description != null, () =>
         {
             RuleFor(x => x.Description)
-                .MinimumLength(2)
                 .MaximumLength(4000);
         });
 

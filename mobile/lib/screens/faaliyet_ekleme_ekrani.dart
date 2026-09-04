@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
 
@@ -8,17 +9,6 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/activities/data/local_faaliyet_repository.dart';
 import '../models/faaliyet.dart';
 import '../shared/utils/date_formatter.dart';
-
-const List<String> _faaliyetTurleri = [
-  'Sulama',
-  'Gübreleme',
-  'İlaçlama',
-  'Hasat',
-  'Ekim / Dikim',
-  'Budama',
-  'Toprak İşleme',
-  'Diğer',
-];
 
 enum IsDurumu { planla, yapildi }
 
@@ -49,12 +39,11 @@ class FaaliyetEklemeEkrani extends StatefulWidget {
 
 class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   final _formKey = GlobalKey<FormState>();
+  final _isTuruController = TextEditingController();
   final _noteController = TextEditingController();
-  final _customTitleController = TextEditingController();
   final _speechToText = SpeechToText();
 
   late IsDurumu _durum;
-  String? _secilenTur;
   DateTime? _secilenTarih;
   bool _isListening = false;
   bool _kaydediliyor = false;
@@ -69,8 +58,8 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
   @override
   void dispose() {
+    _isTuruController.dispose();
     _noteController.dispose();
-    _customTitleController.dispose();
     _speechToText.stop();
     super.dispose();
   }
@@ -183,14 +172,13 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
     setState(() => _kaydediliyor = true);
 
     try {
+      final isTuru = _isTuruController.text.trim();
+
       if (_durum == IsDurumu.planla) {
-        final title = _secilenTur == 'Diğer'
-            ? _customTitleController.text.trim()
-            : _secilenTur!;
         final gorev = Faaliyet(
           id: const Uuid().v4(),
           tarlaId: widget.tarlaId,
-          type: title,
+          type: isTuru,
           note: _noteController.text.trim(),
           timestamp: DateTime.now(),
           dueDate: _secilenTarih!,
@@ -203,17 +191,11 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
         }
         await (repository as PlanliGorevRepository).addPlanliGorev(gorev);
       } else {
-        final noteText = _secilenTur == 'Diğer'
-            ? (_noteController.text.trim().isEmpty
-                ? _customTitleController.text.trim()
-                : '${_customTitleController.text.trim()} - ${_noteController.text.trim()}')
-            : _noteController.text.trim();
-
         final faaliyet = Faaliyet(
           id: const Uuid().v4(),
           tarlaId: widget.tarlaId,
-          type: _secilenTur!,
-          note: noteText,
+          type: isTuru,
+          note: _noteController.text.trim(),
           timestamp: _secilenTarih!,
           dueDate: null,
           isCompleted: true,
@@ -297,42 +279,29 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // ── İş türü ───────────────────────────────────────────────────
-              DropdownButtonFormField<String>(
-                initialValue: _secilenTur,
+              // ── İş türü (serbest metin girişi) ────────────────────────────
+              TextFormField(
+                controller: _isTuruController,
+                enabled: !_kaydediliyor,
+                maxLength: 150,
+                maxLengthEnforcement: MaxLengthEnforcement.none,
+                textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
                   labelText: 'İş türü',
+                  hintText: 'Yaptığınız işi yazın (örn: Damla sulama, Çapa)',
                   prefixIcon: Icon(Icons.agriculture),
                 ),
-                items: _faaliyetTurleri
-                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                    .toList(),
-                onChanged: _kaydediliyor
-                    ? null
-                    : (v) => setState(() => _secilenTur = v),
-                validator: (v) =>
-                    v == null ? 'Lütfen bir iş türü seçin.' : null,
+                validator: (v) {
+                  final trimmed = v?.trim() ?? '';
+                  if (trimmed.isEmpty) {
+                    return 'Lütfen yapılan veya planlanan işi yazın.';
+                  }
+                  if (trimmed.length > 150) {
+                    return 'İş türü en fazla 150 karakter olabilir.';
+                  }
+                  return null;
+                },
               ),
-
-              if (_secilenTur == 'Diğer') ...[
-                const SizedBox(height: AppSpacing.md),
-                TextFormField(
-                  controller: _customTitleController,
-                  enabled: !_kaydediliyor,
-                  decoration: const InputDecoration(
-                    labelText: 'İş adı',
-                    hintText: 'Örn: Budama temizliği',
-                    prefixIcon: Icon(Icons.edit_note),
-                  ),
-                  validator: (v) {
-                    if (_secilenTur == 'Diğer' &&
-                        (v == null || v.trim().isEmpty)) {
-                      return 'Lütfen iş adını girin.';
-                    }
-                    return null;
-                  },
-                ),
-              ],
 
               const SizedBox(height: AppSpacing.md),
 

@@ -13,8 +13,9 @@ public sealed class Activity
     public Guid? TaskId { get; set; }
     public Guid? CreatedById { get; set; }
 
-    // -- Enum fields ----------------------------------------------------------
-    public ActivityType ActivityType { get; set; }
+    // -- Core activity classification -----------------------------------------
+    public string ActivityName { get; set; } = string.Empty; // Farmer-entered free-text (max 150)
+    public ActivityType? ActivityType { get; set; }          // Optional / internal category
     public ActivityStatus Status { get; set; } = ActivityStatus.Confirmed;
     public ActivitySource Source { get; set; } = ActivitySource.Manual;
 

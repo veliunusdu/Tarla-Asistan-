@@ -880,5 +880,120 @@ void main() {
       final all = await repo.getTumFaaliyetler();
       expect(all, isEmpty);
     });
+
+    test(
+      'addFaaliyet sends activity_name with farmer free-text "Damla sulama yaptım" (Test 1)',
+      () async {
+        Map<String, dynamic>? capturedBody;
+
+        final client = ApiClient(
+          httpClient: MockClient((request) async {
+            capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+            return http.Response(
+              jsonEncode({
+                'id': 'backend-act-1',
+                'farm_id': 'farm-1',
+                'activity_name': capturedBody?['activity_name'],
+                'activity_type': capturedBody?['activity_type'],
+                'description': capturedBody?['description'],
+                'occurred_at_utc': '2026-09-04T10:00:00.000Z',
+                'status': 'Confirmed',
+                'source': 'Manual',
+              }),
+              201,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }),
+          idTokenProvider: () async => 'dummy-token',
+        );
+
+        final repo = BackendFaaliyetRepository(
+          apiClient: client,
+          tarlaRepository: _FakeTarlaRepository([]),
+        );
+
+        await repo.addFaaliyet(
+          Faaliyet(
+            id: 'id-1',
+            tarlaId: 'farm-1',
+            type: 'Damla sulama yaptım',
+            note: '3 saat açık kaldı',
+            timestamp: DateTime.utc(2026, 9, 4, 10, 0, 0),
+          ),
+        );
+
+        expect(capturedBody?['activity_name'], 'Damla sulama yaptım');
+      },
+    );
+
+    test(
+      'fromBackendJson maps activity_name directly to Faaliyet.type for "Çapa" and "Fidan bağlama" (Test 2, 3, 16)',
+      () {
+        final f1 = BackendFaaliyetRepository.fromBackendJson({
+          'id': 'act-capa',
+          'farm_id': 'farm-1',
+          'activity_name': 'Çapa',
+          'activity_type': 'OTHER',
+          'description': 'Yabani otlar temizlendi',
+          'occurred_at_utc': '2026-09-04T10:00:00.000Z',
+        }, fallbackTarlaId: 'farm-1');
+
+        expect(f1.type, 'Çapa');
+        expect(f1.note, 'Yabani otlar temizlendi');
+
+        final f2 = BackendFaaliyetRepository.fromBackendJson({
+          'id': 'act-fidan',
+          'farm_id': 'farm-1',
+          'activity_name': 'Fidan bağlama',
+          'activity_type': 'OTHER',
+          'description': '',
+          'occurred_at_utc': '2026-09-04T10:00:00.000Z',
+        }, fallbackTarlaId: 'farm-1');
+
+        expect(f2.type, 'Fidan bağlama');
+      },
+    );
+
+    test(
+      'fromBackendJson falls back to Turkish enum name when activity_name is null or empty (Test 8)',
+      () {
+        final legacySulama = BackendFaaliyetRepository.fromBackendJson({
+          'id': 'act-legacy-1',
+          'farm_id': 'farm-1',
+          'activity_type': 'IRRIGATION',
+          'description': 'Eski sulama kaydı',
+          'occurred_at_utc': '2026-08-01T10:00:00.000Z',
+        }, fallbackTarlaId: 'farm-1');
+
+        expect(legacySulama.type, 'Sulama');
+
+        final legacyGubreleme = BackendFaaliyetRepository.fromBackendJson({
+          'id': 'act-legacy-2',
+          'farm_id': 'farm-1',
+          'activity_name': '',
+          'activity_type': 'FERTILIZATION',
+          'description': '',
+          'occurred_at_utc': '2026-08-01T10:00:00.000Z',
+        }, fallbackTarlaId: 'farm-1');
+
+        expect(legacyGubreleme.type, 'Gübreleme');
+      },
+    );
+
+    test(
+      'fromBackendJson handles legacy OTHER records gracefully (Test 9)',
+      () {
+        final legacyOther = BackendFaaliyetRepository.fromBackendJson({
+          'id': 'act-legacy-other',
+          'farm_id': 'farm-1',
+          'activity_type': 'OTHER',
+          'description': 'Özel iş',
+          'occurred_at_utc': '2026-08-01T10:00:00.000Z',
+        }, fallbackTarlaId: 'farm-1');
+
+        expect(legacyOther.type, 'Diğer');
+        expect(legacyOther.note, 'Özel iş');
+      },
+    );
   });
 }

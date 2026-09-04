@@ -55,6 +55,7 @@ class BackendFaaliyetRepository
     final clientOperationId = _resolveClientOperationId(faaliyet.id);
 
     final payload = <String, dynamic>{
+      'activity_name': faaliyet.type.trim(),
       'activity_type': activityType,
       'description': description,
       'occurred_at': occurredAt,
@@ -216,8 +217,11 @@ class BackendFaaliyetRepository
   }) {
     final id = json['id']?.toString() ?? '';
     final farmId = json['farm_id']?.toString() ?? fallbackTarlaId;
-    final backendType = json['activity_type']?.toString() ?? 'OTHER';
-    final mobileType = _mapActivityTypeToMobile(backendType);
+    final rawActivityName = json['activity_name']?.toString().trim();
+    final backendType = json['activity_type']?.toString();
+    final mobileType = (rawActivityName != null && rawActivityName.isNotEmpty)
+        ? rawActivityName
+        : (backendType != null ? _mapActivityTypeToMobile(backendType) : 'Faaliyet');
     final description = json['description']?.toString() ?? '';
     final occurredAtUtcStr = json['occurred_at_utc']?.toString();
     final timestamp = occurredAtUtcStr != null

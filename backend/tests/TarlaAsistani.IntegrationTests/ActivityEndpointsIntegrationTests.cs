@@ -176,4 +176,101 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
         created.Should().NotBeNull();
         created!.FarmId.Should().Be(farmId);
     }
+
+    [Fact]
+    public async Task CreateActivity_WithFarmerFreeText_ShouldReturnCreatedAndExactActivityName()
+    {
+        // 1. Farmer creates farm
+        var farmerId = Guid.NewGuid();
+        var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
+            OwnerId: farmerId,
+            Name: "Serbest Metin Tarla",
+            Latitude: 38.0, Longitude: 35.0, SizeInHectares: 3.0,
+            IrrigationMethod: IrrigationMethod.Drip,
+            InitialCropType: CropType.Wheat,
+            InitialPlantedAt: new DateOnly(2026, 3, 1)
+        ), CustomWebApplicationFactory.JsonOptions);
+
+        var farmResult = await farmResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
+        var farmId = farmResult!["id"];
+
+        // 2. Farmer creates activity with "Damla sulama yaptım"
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/farms/{farmId}/activities");
+        createRequest.Headers.Add("X-User-Id", farmerId.ToString());
+        createRequest.Headers.Add("X-User-Role", "Farmer");
+        createRequest.Content = JsonContent.Create(new CreateActivityApiRequest(
+            UserId: farmerId,
+            ActivityName: "Damla sulama yaptım",
+            Description: "3 saat sulandı",
+            OccurredAt: DateTime.UtcNow
+        ), options: CustomWebApplicationFactory.JsonOptions);
+
+        var response = await _client.SendAsync(createRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var activity = await response.Content.ReadFromJsonAsync<ActivityDto>(CustomWebApplicationFactory.JsonOptions);
+        activity.Should().NotBeNull();
+        activity!.ActivityName.Should().Be("Damla sulama yaptım");
+        activity.Description.Should().Be("3 saat sulandı");
+    }
+
+    [Fact]
+    public async Task CreateActivity_WithNonEnumNameAndPatchUpdate_ShouldWorkEndToEnd()
+    {
+        // 1. Farmer creates farm
+        var farmerId = Guid.NewGuid();
+        var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
+            OwnerId: farmerId,
+            Name: "Çapa Tarla",
+            Latitude: 38.0, Longitude: 35.0, SizeInHectares: 2.0,
+            IrrigationMethod: IrrigationMethod.Drip,
+            InitialCropType: CropType.Wheat,
+            InitialPlantedAt: new DateOnly(2026, 3, 1)
+        ), CustomWebApplicationFactory.JsonOptions);
+
+        var farmResult = await farmResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(CustomWebApplicationFactory.JsonOptions);
+        var farmId = farmResult!["id"];
+
+        // 2. Create activity "Çapa"
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/farms/{farmId}/activities");
+        createRequest.Headers.Add("X-User-Id", farmerId.ToString());
+        createRequest.Headers.Add("X-User-Role", "Farmer");
+        createRequest.Content = JsonContent.Create(new CreateActivityApiRequest(
+            UserId: farmerId,
+            ActivityName: "Çapa",
+            Description: "Yabancı ot temizliği yapıldı",
+            OccurredAt: DateTime.UtcNow
+        ), options: CustomWebApplicationFactory.JsonOptions);
+
+        var createResponse = await _client.SendAsync(createRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResponse.Content.ReadFromJsonAsync<ActivityDto>(CustomWebApplicationFactory.JsonOptions);
+        created.Should().NotBeNull();
+        created!.ActivityName.Should().Be("Çapa");
+
+        // 3. Update activity from "Çapa" to "Derin çapa"
+        using var patchRequest = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/activities/{created.Id}");
+        patchRequest.Headers.Add("X-User-Id", farmerId.ToString());
+        patchRequest.Headers.Add("X-User-Role", "Farmer");
+        patchRequest.Content = JsonContent.Create(new UpdateActivityApiRequest(
+            UserId: farmerId,
+            ActivityName: "Derin çapa"
+        ), options: CustomWebApplicationFactory.JsonOptions);
+
+        var patchResponse = await _client.SendAsync(patchRequest);
+        patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await patchResponse.Content.ReadFromJsonAsync<ActivityDto>(CustomWebApplicationFactory.JsonOptions);
+        updated.Should().NotBeNull();
+        updated!.ActivityName.Should().Be("Derin çapa");
+
+        // 4. Verify in GET list
+        using var listRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmId}/activities");
+        listRequest.Headers.Add("X-User-Id", farmerId.ToString());
+        listRequest.Headers.Add("X-User-Role", "Farmer");
+        var listResponse = await _client.SendAsync(listRequest);
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var listResult = await listResponse.Content.ReadFromJsonAsync<ActivityListDto>(CustomWebApplicationFactory.JsonOptions);
+        listResult.Should().NotBeNull();
+        listResult!.Items.Should().ContainSingle(a => a.ActivityName == "Derin çapa");
+    }
 }
