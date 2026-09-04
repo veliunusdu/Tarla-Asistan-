@@ -3,6 +3,7 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -67,10 +68,26 @@ public static class DependencyInjection
 
         // 4. Memory Cache & HTTP Integrations (Weather & AI)
         services.AddMemoryCache();
-        services.AddHttpClient<IWeatherProvider, OpenMeteoWeatherProvider>(client =>
+        var timeoutSeconds = configuration.GetValue("Weather:TimeoutSeconds", 10);
+        services.AddHttpClient<OpenMeteoWeatherProvider>(client =>
         {
-            var timeoutSeconds = configuration.GetValue("Weather:TimeoutSeconds", 10);
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        });
+        services.AddHttpClient<WeatherApiWeatherProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        });
+        services.AddScoped<IWeatherProvider>(sp =>
+        {
+            var openMeteo = sp.GetRequiredService<OpenMeteoWeatherProvider>();
+            var weatherApi = sp.GetRequiredService<WeatherApiWeatherProvider>();
+            var logger = sp.GetRequiredService<ILogger<FallbackWeatherProvider>>();
+
+            var providers = weatherApi.IsConfigured
+                ? new IWeatherProvider[] { weatherApi, openMeteo }
+                : new IWeatherProvider[] { openMeteo, weatherApi };
+
+            return new FallbackWeatherProvider(providers, logger);
         });
         var weatherActionRiskOptions = new WeatherActionRiskOptions();
         configuration.GetSection("Weather:ActionRisk").Bind(weatherActionRiskOptions);
