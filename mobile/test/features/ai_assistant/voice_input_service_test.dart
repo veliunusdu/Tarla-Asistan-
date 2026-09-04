@@ -27,6 +27,7 @@ class FakeSpeechToTextUnderlying extends Fake implements SpeechToText {
   bool initSucceeds = true;
   bool isInit = false;
   bool currentlyListening = false;
+  bool hasPerm = true;
   List<LocaleName> availableLocales = [];
 
   @override
@@ -42,6 +43,9 @@ class FakeSpeechToTextUnderlying extends Fake implements SpeechToText {
   bool get isListening => currentlyListening;
 
   @override
+  Future<bool> get hasPermission async => hasPerm;
+
+  @override
   Future<bool> initialize({
     SpeechErrorListener? onError,
     SpeechStatusListener? onStatus,
@@ -51,7 +55,7 @@ class FakeSpeechToTextUnderlying extends Fake implements SpeechToText {
   }) async {
     errorListener = onError;
     statusListener = onStatus;
-    isInit = true;
+    isInit = initSucceeds;
     return initSucceeds;
   }
 
@@ -120,7 +124,7 @@ class FakeVoiceInputService implements VoiceInputService {
   Future<bool> initialize() async => isAvailable;
 
   @override
-  Future<void> startListening({
+  Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
@@ -132,7 +136,8 @@ class FakeVoiceInputService implements VoiceInputService {
           message: 'Disposed',
         ),
       );
-      return;
+      onListeningChanged?.call(false);
+      return false;
     }
     if (!isAvailable) {
       onError?.call(
@@ -141,13 +146,15 @@ class FakeVoiceInputService implements VoiceInputService {
           message: 'Mikrofon izni yok.',
         ),
       );
-      return;
+      onListeningChanged?.call(false);
+      return false;
     }
     onResultCallback = onResult;
     onErrorCallback = onError;
     onListeningChangedCallback = onListeningChanged;
     _listening = true;
     onListeningChangedCallback?.call(true);
+    return true;
   }
 
   @override
@@ -222,6 +229,35 @@ void main() {
     test('boş dil listesinde null döner ve patlamaz', () {
       expect(DefaultVoiceInputService.resolveTurkishLocale([]), isNull);
     });
+
+    test('desteklenen kullanıcı tercihi locale varsa onu seçer', () {
+      final locales = [
+        LocaleName('en_US', 'English'),
+        LocaleName('tr_TR', 'Türkçe'),
+        LocaleName('de_DE', 'Deutsch'),
+      ];
+      expect(
+        DefaultVoiceInputService.resolveTurkishLocale(
+          locales,
+          userPreferredLocale: 'de-DE',
+        ),
+        'de_DE',
+      );
+    });
+
+    test('desteklenmeyen kullanıcı tercihi istendiğinde Türkçe fallback yapar', () {
+      final locales = [
+        LocaleName('en_US', 'English'),
+        LocaleName('tr_TR', 'Türkçe'),
+      ];
+      expect(
+        DefaultVoiceInputService.resolveTurkishLocale(
+          locales,
+          userPreferredLocale: 'es-ES',
+        ),
+        'tr_TR',
+      );
+    });
   });
 
   group('FakeVoiceInputService test edilebilirliği (UI simülasyonu)', () {
@@ -280,9 +316,11 @@ void main() {
     );
 
     test(
-      'initialize başarısız olduğunda startListening güvenli hata üretir',
+      'initialize başarısız olduğunda (izin yokken) startListening permissionDenied üretir',
       () async {
-        final underlying = FakeSpeechToTextUnderlying()..initSucceeds = false;
+        final underlying = FakeSpeechToTextUnderlying()
+          ..initSucceeds = false
+          ..hasPerm = false;
         final service = DefaultVoiceInputService(speechToText: underlying);
 
         VoiceInputException? capturedError;
@@ -335,11 +373,131 @@ void main() {
           onError: (err) => capturedError = err,
         );
 
-        underlying.emitError('network failure', permanent: false);
+        underlying.emitError('audio error', permanent: false);
 
         expect(capturedError, isNotNull);
         expect(capturedError!.type, VoiceInputErrorType.runtimeError);
-        expect(capturedError!.message, 'network failure');
+        expect(capturedError!.message, 'audio error');
+        expect(service.isListening, isFalse);
+      },
+    );
+
+    test(
+      'network hatasını VoiceInputErrorType.network olarak doğru sınıflandırır',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying();
+        final service = DefaultVoiceInputService(speechToText: underlying);
+        await service.initialize();
+
+        VoiceInputException? capturedError;
+        await service.startListening(
+          onResult: (_) {},
+          onError: (err) => capturedError = err,
+        );
+
+        underlying.emitError('error_network', permanent: true);
+
+        expect(capturedError, isNotNull);
+        expect(capturedError!.type, VoiceInputErrorType.network);
+        expect(service.isListening, isFalse);
+      },
+    );
+
+    test(
+      'permanent timeout veya no_match hatası permissionDenied olarak YANLIŞ sınıflandırılmaz',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying();
+        final service = DefaultVoiceInputService(speechToText: underlying);
+        await service.initialize();
+
+        VoiceInputException? capturedError;
+        await service.startListening(
+          onResult: (_) {},
+          onError: (err) => capturedError = err,
+        );
+
+        underlying.emitError('error_speech_timeout', permanent: true);
+
+        expect(capturedError, isNotNull);
+        expect(capturedError!.type, isNot(VoiceInputErrorType.permissionDenied));
+        expect(capturedError!.type, VoiceInputErrorType.runtimeError);
+      },
+    );
+
+    test(
+      'başarısız initialize sonrasında servis kilitlenmez, tekrar denendiğinde başarılı olur',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying()..initSucceeds = false;
+        final service = DefaultVoiceInputService(speechToText: underlying);
+
+        final firstTry = await service.initialize();
+        expect(firstTry, isFalse);
+        expect(service.isAvailable, isFalse);
+
+        // Kullanıcı izin verdi / donanım hazır oldu
+        underlying.initSucceeds = true;
+        final secondTry = await service.initialize();
+        expect(secondTry, isTrue);
+        expect(service.isAvailable, isTrue);
+      },
+    );
+
+    test(
+      'hasPermission=true fakat engine init başarısızsa unavailable döner (permissionDenied değil)',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying()
+          ..initSucceeds = false
+          ..hasPerm = true;
+        final service = DefaultVoiceInputService(speechToText: underlying);
+
+        VoiceInputException? capturedError;
+        final started = await service.startListening(
+          onResult: (_) {},
+          onError: (err) => capturedError = err,
+        );
+
+        expect(started, isFalse);
+        expect(capturedError, isNotNull);
+        expect(capturedError!.type, VoiceInputErrorType.unavailable);
+      },
+    );
+
+    test(
+      'hasPermission=false iken init başarısız olursa permissionDenied döner',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying()
+          ..initSucceeds = false
+          ..hasPerm = false;
+        final service = DefaultVoiceInputService(speechToText: underlying);
+
+        VoiceInputException? capturedError;
+        final started = await service.startListening(
+          onResult: (_) {},
+          onError: (err) => capturedError = err,
+        );
+
+        expect(started, isFalse);
+        expect(capturedError, isNotNull);
+        expect(capturedError!.type, VoiceInputErrorType.permissionDenied);
+      },
+    );
+
+    test(
+      'rapid tap / paralel startListening çağrısı ikinci oturumu engeller ve false döner',
+      () async {
+        final underlying = FakeSpeechToTextUnderlying();
+        final service = DefaultVoiceInputService(speechToText: underlying);
+        await service.initialize();
+
+        final firstFuture = service.startListening(onResult: (_) {});
+        final secondFuture = service.startListening(onResult: (_) {});
+
+        final results = await Future.wait([firstFuture, secondFuture]);
+        expect(results[0], isTrue);
+        expect(results[1], isFalse);
+        expect(service.isListening, isTrue);
+
+        await service.stopListening();
         expect(service.isListening, isFalse);
       },
     );

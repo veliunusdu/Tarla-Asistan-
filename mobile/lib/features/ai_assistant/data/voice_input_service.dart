@@ -39,6 +39,8 @@ enum VoiceInputErrorType {
   startListeningFailed,
   runtimeError,
   notListening,
+  network,
+  languageUnsupported,
 }
 
 /// Sesli giriş işleminde oluşan güvenli ve tipli hata nesnesi.
@@ -70,7 +72,9 @@ abstract class VoiceInputService {
   /// [onResult] ara (partial) ve nihai (final) metin sonuçlarını bildirir.
   /// [onError] platform veya donanım hatalarını fırlatmadan üst katmana iletir.
   /// [onListeningChanged] dinleme durumu başladığında (true) ve bittiğinde (false) tetiklenir.
-  Future<void> startListening({
+  ///
+  /// Dinleme oturumu başarıyla başlatıldıysa `true`, başlatılamadıysa `false` döner.
+  Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
@@ -100,6 +104,7 @@ class DefaultVoiceInputService implements VoiceInputService {
   final SpeechToText _speechToText;
   bool _isInitialized = false;
   bool _isListening = false;
+  bool _isStarting = false;
   bool _isDisposed = false;
   String? _preferredLocaleId;
 
@@ -117,33 +122,37 @@ class DefaultVoiceInputService implements VoiceInputService {
   String? get preferredLocaleId => _preferredLocaleId;
 
   @override
-  Future<bool> initialize() async {
+  Future<bool> initialize({String? userPreferredLocale}) async {
     if (_isDisposed) return false;
-    if (_isInitialized) return isAvailable;
+    if (_isInitialized && _speechToText.isAvailable) return true;
 
     try {
-      final hasPermission = await _speechToText.initialize(
+      final available = await _speechToText.initialize(
         onError: _handleSpeechError,
         onStatus: _handleSpeechStatus,
       );
 
-      _isInitialized = true;
-
-      if (hasPermission) {
-        await _resolveTurkishLocale();
+      if (available && _speechToText.isAvailable) {
+        _isInitialized = true;
+        await _resolveTurkishLocale(userPreferredLocale: userPreferredLocale);
+        return true;
+      } else {
+        _isInitialized = false;
+        return false;
       }
-
-      return isAvailable;
     } catch (e) {
       _isInitialized = false;
       return false;
     }
   }
 
-  Future<void> _resolveTurkishLocale() async {
+  Future<void> _resolveTurkishLocale({String? userPreferredLocale}) async {
     try {
       final locales = await _speechToText.locales();
-      _preferredLocaleId = resolveTurkishLocale(locales);
+      _preferredLocaleId = resolveTurkishLocale(
+        locales,
+        userPreferredLocale: userPreferredLocale,
+      );
     } catch (_) {
       _preferredLocaleId = null;
     }
@@ -151,14 +160,32 @@ class DefaultVoiceInputService implements VoiceInputService {
 
   /// Cihazda bulunan diller arasından Türkçe yerelini güvenle seçer.
   ///
-  /// Sırasıyla tam `tr_TR`/`tr-TR`, ardından herhangi bir `tr_...` varyantı
-  /// ve son olarak `tr` ön ekini arar. Bulunamazsa cihazın varsayılan dilini
-  /// kullanmak üzere `null` döner.
+  /// Öncelik:
+  /// 1. Kullanıcının voice preference yereli (cihazda destekleniyorsa)
+  /// 2. Tam 'tr_TR' / 'tr-TR' eşleşmesi
+  /// 3. 'tr_' bölgesel varyantı (ör. tr_CY)
+  /// 4. 'tr' ile başlayan herhangi bir yerel kodu
+  /// 5. Bulunamazsa cihazın varsayılan dilini kullanmak üzere `null`
   @visibleForTesting
-  static String? resolveTurkishLocale(List<LocaleName> locales) {
+  static String? resolveTurkishLocale(
+    List<LocaleName> locales, {
+    String? userPreferredLocale,
+  }) {
     if (locales.isEmpty) return null;
 
-    // 1. Öncelik: Tam 'tr_TR' veya 'tr-TR' eşleşmesi
+    // 1. Öncelik: Kullanıcının tercih ettiği desteklenen locale
+    if (userPreferredLocale != null && userPreferredLocale.trim().isNotEmpty) {
+      final target =
+          userPreferredLocale.trim().toLowerCase().replaceAll('-', '_');
+      for (final loc in locales) {
+        final norm = loc.localeId.toLowerCase().replaceAll('-', '_');
+        if (norm == target) {
+          return loc.localeId;
+        }
+      }
+    }
+
+    // 2. Öncelik: Tam 'tr_TR' veya 'tr-TR' eşleşmesi
     for (final loc in locales) {
       final normalized = loc.localeId.toLowerCase().replaceAll('-', '_');
       if (normalized == 'tr_tr') {
@@ -166,7 +193,7 @@ class DefaultVoiceInputService implements VoiceInputService {
       }
     }
 
-    // 2. Öncelik: 'tr_' ile başlayan bölgesel varyantlar (ör. tr_CY)
+    // 3. Öncelik: 'tr_' ile başlayan bölgesel varyantlar (ör. tr_CY)
     for (final loc in locales) {
       final normalized = loc.localeId.toLowerCase().replaceAll('-', '_');
       if (normalized.startsWith('tr_') || normalized.startsWith('tr-')) {
@@ -174,7 +201,7 @@ class DefaultVoiceInputService implements VoiceInputService {
       }
     }
 
-    // 3. Öncelik: 'tr' ile başlayan herhangi bir locale kodu
+    // 4. Öncelik: 'tr' ile başlayan herhangi bir locale kodu
     for (final loc in locales) {
       if (loc.localeId.toLowerCase().startsWith('tr')) {
         return loc.localeId;
@@ -184,8 +211,41 @@ class DefaultVoiceInputService implements VoiceInputService {
     return null;
   }
 
+  /// Hata metnini ve kalıcılık bilgisini anlamlı tipli hata türüne dönüştürür.
+  @visibleForTesting
+  static VoiceInputErrorType mapSpeechError(String errorMsg, bool permanent) {
+    final lower = errorMsg.toLowerCase();
+    if (lower.contains('permission') ||
+        lower.contains('not_allowed') ||
+        lower.contains('denied')) {
+      return VoiceInputErrorType.permissionDenied;
+    }
+    if (lower.contains('network') || lower.contains('server')) {
+      return VoiceInputErrorType.network;
+    }
+    if (lower.contains('language') ||
+        lower.contains('not_supported') ||
+        lower.contains('unsupported')) {
+      return VoiceInputErrorType.languageUnsupported;
+    }
+    if (lower.contains('disabled') ||
+        lower.contains('unavailable') ||
+        lower.contains('not_available') ||
+        lower.contains('no_speech_engine') ||
+        lower.contains('client')) {
+      return VoiceInputErrorType.unavailable;
+    }
+    if (lower.contains('no_match') ||
+        lower.contains('timeout') ||
+        lower.contains('speech_timeout') ||
+        lower.contains('busy')) {
+      return VoiceInputErrorType.runtimeError;
+    }
+    return VoiceInputErrorType.runtimeError;
+  }
+
   @override
-  Future<void> startListening({
+  Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
@@ -197,40 +257,53 @@ class DefaultVoiceInputService implements VoiceInputService {
           message: 'VoiceInputService disposed edilmiş durumda.',
         ),
       );
-      return;
+      return false;
     }
 
+    if (_isListening || _isStarting) {
+      return false;
+    }
+
+    _isStarting = true;
     _onResult = onResult;
     _onError = onError;
     _onListeningChanged = onListeningChanged;
 
-    if (!_isInitialized) {
+    if (!_isInitialized || !_speechToText.isAvailable) {
       final ok = await initialize();
       if (!ok) {
-        final err = VoiceInputException(
-          type: VoiceInputErrorType.permissionDenied,
-          message:
-              'Mikrofon izni verilmedi veya konuşma tanıma servisi kullanılamıyor.',
-        );
+        _isStarting = false;
+        final hasPerm = await _speechToText.hasPermission;
+        final VoiceInputErrorType errorType;
+        final String errorMsg;
+        if (!hasPerm) {
+          errorType = VoiceInputErrorType.permissionDenied;
+          errorMsg =
+              'Mikrofon izni verilmedi. Sesli giriş için mikrofon erişimine izin verin.';
+        } else {
+          errorType = VoiceInputErrorType.unavailable;
+          errorMsg = 'Bu cihazda konuşma tanıma motoru kullanılamıyor.';
+        }
+        final err = VoiceInputException(type: errorType, message: errorMsg);
         _onError?.call(err);
-        return;
+        _onListeningChanged?.call(false);
+        return false;
       }
     }
 
     if (!isAvailable) {
+      _isStarting = false;
       _onError?.call(
         const VoiceInputException(
           type: VoiceInputErrorType.unavailable,
           message: 'Konuşma tanıma motoru kullanılamıyor.',
         ),
       );
-      return;
+      _onListeningChanged?.call(false);
+      return false;
     }
 
     try {
-      _isListening = true;
-      _onListeningChanged?.call(true);
-
       await _speechToText.listen(
         onResult: (SpeechRecognitionResult result) {
           if (_isDisposed) return;
@@ -248,8 +321,13 @@ class DefaultVoiceInputService implements VoiceInputService {
           localeId: _preferredLocaleId,
         ),
       );
+      _isListening = true;
+      _isStarting = false;
+      _onListeningChanged?.call(true);
+      return true;
     } catch (e) {
       _isListening = false;
+      _isStarting = false;
       _onListeningChanged?.call(false);
       _onError?.call(
         VoiceInputException(
@@ -258,38 +336,39 @@ class DefaultVoiceInputService implements VoiceInputService {
           cause: e,
         ),
       );
+      return false;
     }
   }
 
   @override
   Future<void> stopListening() async {
-    if (!_isListening) return;
+    if (!_isListening && !_isStarting) return;
     try {
       await _speechToText.stop();
     } catch (_) {}
     _isListening = false;
+    _isStarting = false;
     _onListeningChanged?.call(false);
   }
 
   @override
   Future<void> cancelListening() async {
-    if (!_isListening) return;
+    if (!_isListening && !_isStarting) return;
     try {
       await _speechToText.cancel();
     } catch (_) {}
     _isListening = false;
+    _isStarting = false;
     _onListeningChanged?.call(false);
   }
 
   void _handleSpeechError(SpeechRecognitionError error) {
     if (_isDisposed) return;
     _isListening = false;
+    _isStarting = false;
     _onListeningChanged?.call(false);
 
-    final errorType = error.permanent
-        ? VoiceInputErrorType.permissionDenied
-        : VoiceInputErrorType.runtimeError;
-
+    final errorType = mapSpeechError(error.errorMsg, error.permanent);
     _onError?.call(
       VoiceInputException(type: errorType, message: error.errorMsg),
     );
@@ -313,10 +392,11 @@ class DefaultVoiceInputService implements VoiceInputService {
   @override
   void dispose() {
     _isDisposed = true;
+    _isStarting = false;
     if (_isListening) {
       _isListening = false;
       try {
-        _speechToText.stop();
+        _speechToText.cancel();
       } catch (_) {}
       _onListeningChanged?.call(false);
     }

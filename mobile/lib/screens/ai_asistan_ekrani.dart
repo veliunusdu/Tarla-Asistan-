@@ -70,6 +70,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   bool _gonderiyor = false;
   bool _isListening = false;
   bool _isDisposed = false;
+  bool _isStartingVoice = false;
   String _voiceBaseText = '';
   int? _speakingMessageIndex;
   bool _voiceOutputInitialized = false;
@@ -300,7 +301,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   // ---------------------------------------------------------------------------
 
   Future<void> _sesliGirisTetikle() async {
-    if (_gonderiyor) return;
+    if (_gonderiyor || _isStartingVoice) return;
 
     if (_isListening) {
       await _durdurSesliGiris();
@@ -311,10 +312,11 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
       await _durdurSesliCikti();
     }
 
+    _isStartingVoice = true;
     _voiceBaseText = _ctrl.text;
 
     try {
-      await _voiceService.startListening(
+      final started = await _voiceService.startListening(
         onResult: (result) {
           if (_isDisposed || !mounted) return;
           final recognized = result.recognizedWords.trim();
@@ -343,14 +345,16 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
           setState(() => _isListening = listening);
         },
       );
-      if (!_isDisposed && mounted) {
-        setState(() => _isListening = true);
+      if (!started && !_isDisposed && mounted) {
+        setState(() => _isListening = false);
       }
     } catch (_) {
       if (!_isDisposed && mounted) {
         setState(() => _isListening = false);
         _hataMesajiGoster('Dinleme başlatılamadı. Lütfen tekrar deneyin.');
       }
+    } finally {
+      _isStartingVoice = false;
     }
   }
 
@@ -378,6 +382,12 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
         break;
       case VoiceInputErrorType.startListeningFailed:
         mesaj = 'Dinleme başlatılamadı. Lütfen tekrar deneyin.';
+        break;
+      case VoiceInputErrorType.network:
+        mesaj = 'Ses tanıma için internet bağlantısı gerekiyor.';
+        break;
+      case VoiceInputErrorType.languageUnsupported:
+        mesaj = 'Cihazınızda seçili dil için ses tanıma desteklenmiyor.';
         break;
       case VoiceInputErrorType.runtimeError:
       case VoiceInputErrorType.notListening:

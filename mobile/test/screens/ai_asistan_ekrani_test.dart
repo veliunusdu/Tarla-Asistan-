@@ -184,6 +184,12 @@ class FakeVoiceInputService implements VoiceInputService {
   int stopListeningCalls = 0;
   int cancelListeningCalls = 0;
   int disposeCalls = 0;
+  VoiceInputErrorType unavailableErrorType =
+      VoiceInputErrorType.permissionDenied;
+  String unavailableErrorMessage =
+      'Mikrofon izni verilmedi. Sesli giriş için mikrofon erişimine izin verin.';
+
+  Completer<void>? startCompleter;
 
   ValueChanged<VoiceRecognitionResult>? onResultCallback;
   void Function(VoiceInputException error)? onErrorCallback;
@@ -199,7 +205,7 @@ class FakeVoiceInputService implements VoiceInputService {
   Future<bool> initialize() async => isAvailable;
 
   @override
-  Future<void> startListening({
+  Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
@@ -211,24 +217,29 @@ class FakeVoiceInputService implements VoiceInputService {
           message: 'Disposed',
         ),
       );
-      return;
+      onListeningChanged?.call(false);
+      return false;
     }
     if (!isAvailable) {
       onError?.call(
-        const VoiceInputException(
-          type: VoiceInputErrorType.permissionDenied,
-          message:
-              'Mikrofon izni verilmedi. Sesli giriş için mikrofon erişimine izin verin.',
+        VoiceInputException(
+          type: unavailableErrorType,
+          message: unavailableErrorMessage,
         ),
       );
-      return;
+      onListeningChanged?.call(false);
+      return false;
     }
     startListeningCalls++;
+    if (startCompleter != null) {
+      await startCompleter!.future;
+    }
     onResultCallback = onResult;
     onErrorCallback = onError;
     onListeningChangedCallback = onListeningChanged;
     _isListening = true;
     onListeningChangedCallback?.call(true);
+    return true;
   }
 
   @override
@@ -260,6 +271,8 @@ class FakeVoiceInputService implements VoiceInputService {
   }
 
   void emitError(VoiceInputErrorType type, String message) {
+    _isListening = false;
+    onListeningChangedCallback?.call(false);
     onErrorCallback?.call(VoiceInputException(type: type, message: message));
   }
 }
@@ -1005,6 +1018,161 @@ void main() {
             find.text('Görselde azot eksikliği görünüyor.'),
             findsOneWidget,
           );
+        },
+      );
+
+      testWidgets(
+        'Test 11: Rapid double tap mikrofon butonuna basıldığında ikinci startListening çağrısı engellenir',
+        (tester) async {
+          final completer = Completer<void>();
+          final fakeVoice = FakeVoiceInputService()..startCompleter = completer;
+          await tester.pumpWidget(_wrap(voiceInputService: fakeVoice));
+          await tester.pumpAndSettle();
+
+          // İlk basış başlatma sürecini tetikler (_isStartingVoice = true)
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pump();
+
+          // Başlatma tamamlanmadan hemen ikinci basış gelir
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pump();
+
+          // İlk başlatma tamamlanır
+          completer.complete();
+          await tester.pumpAndSettle();
+
+          expect(fakeVoice.startListeningCalls, 1);
+          expect(fakeVoice.isListening, isTrue);
+        },
+      );
+
+      testWidgets(
+        'Test 12: Speech engine cihazda yokken (unavailable) hata doğru gösterilir ve UI listening=false kalır',
+        (tester) async {
+          final fakeVoice = FakeVoiceInputService()
+            ..available = false
+            ..unavailableErrorType = VoiceInputErrorType.unavailable
+            ..unavailableErrorMessage =
+                'Bu cihazda konuşma tanıma motoru kullanılamıyor.';
+
+          await tester.pumpWidget(_wrap(voiceInputService: fakeVoice));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pumpAndSettle();
+
+          expect(fakeVoice.isListening, isFalse);
+          expect(find.byTooltip('Sesli giriş başlat'), findsOneWidget);
+          expect(find.text('Dinliyorum...'), findsNothing);
+          expect(
+            find.text('Bu cihazda konuşma tanıma kullanılamıyor.'),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'Test 13: Sesli giriş kullanılamasa bile yazılı chat ve mesaj gönderme kesintisiz çalışır',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1400);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final fakeVoice = FakeVoiceInputService()..available = false;
+          final fakeRepo = FakeAiAssistantRepository(
+            cevap: 'Pas hastalığı için pas ilacı uygulayın.',
+          );
+
+          await tester.pumpWidget(
+            _wrap(repo: fakeRepo, voiceInputService: fakeVoice),
+          );
+          await tester.pumpAndSettle();
+
+          // Sesli girişi dene ve hata al
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pumpAndSettle();
+          expect(fakeVoice.isListening, isFalse);
+
+          // Hata bildirim SnackBar'ını temizle
+          ScaffoldMessenger.of(
+            tester.element(find.byType(AiAsistanEkrani)),
+          ).clearSnackBars();
+          await tester.pumpAndSettle();
+
+          // Yazılı mesaj gönder
+          await tester.enterText(
+            find.byType(TextField),
+            'Buğday pas hastalığı nasıl geçer?',
+          );
+          await tester.tap(find.byTooltip('Gönder'));
+          await tester.pumpAndSettle();
+
+          expect(fakeRepo.gonderilen, ['Buğday pas hastalığı nasıl geçer?']);
+          expect(
+            find.text('Pas hastalığı için pas ilacı uygulayın.'),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'Test 14: Network hatası alındığında listening false olur, yazılmış metin silinmez ve uygun hata gösterilir',
+        (tester) async {
+          final fakeVoice = FakeVoiceInputService();
+          await tester.pumpWidget(_wrap(voiceInputService: fakeVoice));
+          await tester.pumpAndSettle();
+
+          // Önceden bir metin yazılmış olsun
+          await tester.enterText(find.byType(TextField), 'Mısır tarlasında');
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pumpAndSettle();
+          expect(fakeVoice.isListening, isTrue);
+
+          // Network hatası gelsin
+          fakeVoice.emitError(VoiceInputErrorType.network, 'error_network');
+          await tester.pumpAndSettle();
+
+          expect(fakeVoice.isListening, isFalse);
+          expect(find.byTooltip('Sesli giriş başlat'), findsOneWidget);
+          expect(
+            find.text('Ses tanıma için internet bağlantısı gerekiyor.'),
+            findsOneWidget,
+          );
+          // Yazılmış metin korunmalı
+          expect(
+            find.widgetWithText(TextField, 'Mısır tarlasında'),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'Test 15: Boş transkript geldiğinde veya ses algılanmadığında AI\'a boş mesaj gönderilmez',
+        (tester) async {
+          final fakeVoice = FakeVoiceInputService();
+          final fakeRepo = FakeAiAssistantRepository();
+
+          await tester.pumpWidget(
+            _wrap(repo: fakeRepo, voiceInputService: fakeVoice),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byTooltip('Sesli giriş başlat'));
+          await tester.pumpAndSettle();
+
+          // Boş sonuç
+          fakeVoice.emitResult('', isFinal: true);
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byTooltip('Sesli girişi durdur'));
+          await tester.pumpAndSettle();
+
+          // AI repo çağrılmamış olmalı ve metin boş kalmalı
+          expect(fakeRepo.gonderilen, isEmpty);
+          expect(find.widgetWithText(TextField, ''), findsOneWidget);
         },
       );
     });
