@@ -231,11 +231,12 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .HasFilter("\"Status\" = 'Active'")
                   .HasDatabaseName("uq_crop_periods_one_active_per_farm");
 
+            entity.Property(cp => cp.CropName).HasMaxLength(100).IsRequired();
             entity.Property(cp => cp.Variety).HasMaxLength(120);
             entity.Property(cp => cp.Status)
                   .HasConversion<string>()
                   .HasDefaultValue(CropPeriodStatus.Active);
-            entity.Property(cp => cp.CropType).HasConversion<string>();
+            entity.Property(cp => cp.CropType).HasConversion<string>().IsRequired(false);
 
             entity.HasOne(cp => cp.Farm)
                   .WithMany(f => f.CropPeriods)
@@ -287,10 +288,12 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .HasFilter("\"ClientOperationId\" IS NOT NULL")
                   .HasDatabaseName("uq_activities_client_operation");
 
+            entity.Property(a => a.ActivityName).HasMaxLength(150).IsRequired();
             entity.Property(a => a.ActivityType).HasConversion<string>();
             entity.Property(a => a.Status)
                   .HasConversion<string>()
-                  .HasDefaultValue(ActivityStatus.Confirmed);
+                  .HasDefaultValue(ActivityStatus.Confirmed)
+                  .HasSentinel(ActivityStatus.Confirmed);
             entity.Property(a => a.Source)
                   .HasConversion<string>()
                   .HasDefaultValue(ActivitySource.Manual);
@@ -368,7 +371,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.Property(t => t.Source).HasConversion<string>();
             entity.Property(t => t.Confidence)
                   .HasConversion<string>()
-                  .HasDefaultValue(TaskConfidence.Medium);
+                  .HasDefaultValue(TaskConfidence.Medium)
+                  .HasSentinel(TaskConfidence.Medium);
 
             // Computed property — never persisted
             entity.Ignore(t => t.ExpertReviewRecommended);
@@ -430,7 +434,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.Property(sc => sc.Category).HasConversion<string>();
             entity.Property(sc => sc.Priority)
                   .HasConversion<string>()
-                  .HasDefaultValue(CasePriority.Medium);
+                  .HasDefaultValue(CasePriority.Medium)
+                  .HasSentinel(CasePriority.Medium);
             entity.Property(sc => sc.Status)
                   .HasConversion<string>()
                   .HasDefaultValue(CaseStatus.Open);
@@ -712,6 +717,19 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
         // MARKET PRICES
         // ══════════════════════════════════════════════════════
         modelBuilder.ApplyConfiguration(new MarketPriceConfiguration());
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in ChangeTracker.Entries<CropPeriod>().Where(e => e.State == EntityState.Added || e.State == EntityState.Modified))
+        {
+            if (string.IsNullOrWhiteSpace(entry.Entity.CropName) && entry.Entity.CropType.HasValue)
+            {
+                entry.Entity.CropName = CropTypeHelper.ToTurkishName(entry.Entity.CropType.Value);
+            }
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
