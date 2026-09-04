@@ -19,8 +19,8 @@ class MarketResponse {
   factory MarketResponse.fromJson(Map<String, dynamic> json) {
     final rawList = json['items'] as List<dynamic>? ?? [];
     final parsedItems = rawList
-        .whereType<Map<String, dynamic>>()
-        .map(MarketItem.fromJson)
+        .where((e) => e is Map)
+        .map((e) => MarketItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
 
     final lastUpdated = DateTime.tryParse(json['last_updated_utc']?.toString() ?? '')?.toUtc() ??

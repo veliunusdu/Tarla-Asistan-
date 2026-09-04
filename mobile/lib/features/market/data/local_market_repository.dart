@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../services/database_helper.dart';
 import '../domain/models/market_category.dart';
@@ -38,11 +39,22 @@ class LocalMarketRepository implements MarketRepository {
     CREATE INDEX IF NOT EXISTS idx_market_cache_cached_at ON $tableName(cached_at_utc)
   ''';
 
+  Future<void> _ensureTable(Database db) async {
+    try {
+      await db.execute(sqlCreateTable);
+      await db.execute(sqlCreateIndexCategory);
+      await db.execute(sqlCreateIndexCachedAt);
+    } catch (e) {
+      debugPrint('LocalMarketRepository: _ensureTable error: $e');
+    }
+  }
+
   /// Yerel veritabanında saklanan piyasa kalemlerini sorgular.
   /// Kategori belirtilirse ("all" haricinde) yalnızca o kategoriye ait kayıtlar döndürülür.
   Future<List<MarketItem>> getCachedData({MarketCategory? category}) async {
     try {
       final db = await _helper.database;
+      await _ensureTable(db);
 
       List<Map<String, dynamic>> maps;
 
@@ -65,7 +77,8 @@ class LocalMarketRepository implements MarketRepository {
       }
 
       return maps.map(MarketItem.fromSqlite).toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('LocalMarketRepository: getCachedData error: $e');
       return [];
     }
   }
@@ -76,6 +89,7 @@ class LocalMarketRepository implements MarketRepository {
 
     try {
       final db = await _helper.database;
+      await _ensureTable(db);
       final cachedAt = DateTime.now().toUtc().toIso8601String();
 
       await db.transaction((txn) async {
@@ -89,7 +103,9 @@ class LocalMarketRepository implements MarketRepository {
         }
         await batch.commit(noResult: true);
       });
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('LocalMarketRepository: cacheData error: $e');
+    }
   }
 
   /// Önbellekteki en eski verinin yaşını kontrol eder.
@@ -101,7 +117,8 @@ class LocalMarketRepository implements MarketRepository {
 
       final age = DateTime.now().toUtc().difference(oldest);
       return age > maxAge;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('LocalMarketRepository: isStale error: $e');
       return true;
     }
   }
@@ -110,6 +127,7 @@ class LocalMarketRepository implements MarketRepository {
   Future<DateTime?> getOldestCachedAt() async {
     try {
       final db = await _helper.database;
+      await _ensureTable(db);
       final result = await db.rawQuery(
         'SELECT MIN(cached_at_utc) as oldest FROM $tableName',
       );
@@ -120,7 +138,8 @@ class LocalMarketRepository implements MarketRepository {
 
       final rawOldest = result.first['oldest']?.toString();
       return DateTime.tryParse(rawOldest ?? '')?.toUtc();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('LocalMarketRepository: getOldestCachedAt error: $e');
       return null;
     }
   }

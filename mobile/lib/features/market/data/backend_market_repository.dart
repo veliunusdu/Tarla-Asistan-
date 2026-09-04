@@ -133,14 +133,24 @@ class BackendMarketRepository implements MarketRepository {
 
         final marketResponse = MarketResponse.fromJson(jsonResponse);
 
-        // SQLite önbelleğine kalıcı olarak yaz
-        await localRepo.cacheData(marketResponse.items);
+        // SQLite önbelleğine kalıcı olarak yaz (hata alsa bile UI akışını engellemez)
+        try {
+          await localRepo.cacheData(marketResponse.items);
+        } catch (cacheErr) {
+          debugPrint('BackendMarketRepository: Önbelleğe yazma hatası: $cacheErr');
+        }
 
-        // Filtrelenmiş güncel veriyi yerelden geri oku
-        final updatedItems = await localRepo.getCachedData(category: category);
+        // Kategoriye göre filtrelenmiş güncel veriyi hazırla
+        final displayItems = (category == null || category == MarketCategory.all)
+            ? marketResponse.items
+            : marketResponse.items.where((i) => i.category == category).toList();
+
+        final itemsToShow = displayItems.isNotEmpty
+            ? displayItems
+            : await localRepo.getCachedData(category: category);
 
         stateNotifier.value = MarketDataLoaded(
-          items: updatedItems,
+          items: itemsToShow,
           isStale: false,
           lastUpdated: marketResponse.lastUpdatedUtc,
         );

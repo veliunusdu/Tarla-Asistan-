@@ -168,5 +168,57 @@ void main() {
       expect(errorState.cachedItems.length, equals(1));
       expect(errorState.cachedItems.first.code, equals('DIESEL'));
     });
+
+    test('getMarketData updates stateNotifier with API items even if local cache was empty', () async {
+      fakeLocal.memoryItems = [];
+
+      final apiClient = ApiClient(
+        httpClient: MockHttpClient((req) async {
+          final responseBody = jsonEncode({
+            'last_updated_utc': '2026-09-04T08:00:00Z',
+            'items': [
+              {
+                'code': 'UREA',
+                'name': 'Üre Gübresi',
+                'category': 'fertilizer',
+                'price': 14350.0,
+                'previous_price': 14250.0,
+                'change_percent': 0.70,
+                'change_direction': 'up',
+                'unit': 'TL/Ton',
+                'icon_key': 'fertilizer_urea',
+                'updated_at_utc': '2026-09-04T08:00:00Z',
+              }
+            ],
+          });
+          return http.Response(responseBody, 200, headers: {
+            'content-type': 'application/json; charset=utf-8',
+          });
+        }),
+        idTokenProvider: () async => 'test-token',
+      );
+
+      final repo = BackendMarketRepository(
+        apiClient: apiClient,
+        localRepo: fakeLocal,
+      );
+
+      final loadedCompleter = Completer<void>();
+      repo.stateNotifier.addListener(() {
+        if (repo.stateNotifier.value is MarketDataLoaded && !loadedCompleter.isCompleted) {
+          final loaded = repo.stateNotifier.value as MarketDataLoaded;
+          if (loaded.items.isNotEmpty && loaded.items.first.code == 'UREA') {
+            loadedCompleter.complete();
+          }
+        }
+      });
+
+      await repo.getMarketData();
+      await loadedCompleter.future.timeout(const Duration(seconds: 3));
+
+      final state = repo.stateNotifier.value as MarketDataLoaded;
+      expect(state.items.length, equals(1));
+      expect(state.items.first.code, equals('UREA'));
+    });
   });
 }

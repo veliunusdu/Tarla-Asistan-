@@ -56,5 +56,31 @@ void main() {
       expect(response.items, isEmpty);
       expect(response.lastUpdatedUtc, equals(DateTime.utc(2026, 9, 4, 7, 15)));
     });
+
+    test('fromJson handles dynamic map types safely', () {
+      final dynamicMap = <dynamic, dynamic>{
+        'code': 'DIESEL',
+        'name': 'Motorin (Mazot)',
+        'category': 'fuel',
+        'price': 44.85,
+        'previous_price': 44.20,
+        'change_percent': 1.47,
+        'change_direction': 'up',
+        'unit': 'TL/Lt',
+        'icon_key': 'fuel_diesel',
+        'updated_at_utc': '2026-09-04T07:00:00Z',
+      };
+
+      final json = {
+        'last_updated_utc': '2026-09-04T07:15:00Z',
+        'items': <dynamic>[dynamicMap, 'invalid_item'],
+      };
+
+      final response = MarketResponse.fromJson(json);
+
+      expect(response.items.length, equals(1));
+      expect(response.items.first.code, equals('DIESEL'));
+      expect(response.items.first.category, equals(MarketCategory.fuel));
+    });
   });
 }
