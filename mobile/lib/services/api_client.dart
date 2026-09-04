@@ -48,11 +48,13 @@ class ApiClient {
   Future<Map<String, dynamic>> getJson(
     String endpoint, {
     Map<String, dynamic>? queryParameters,
+    bool requiresAuth = true,
   }) async {
     final response = await _send(
       'GET',
       endpoint,
       queryParameters: queryParameters,
+      requiresAuth: requiresAuth,
     );
     return _decodeObject(response);
   }
@@ -252,9 +254,16 @@ class ApiClient {
     String endpoint, {
     Map<String, dynamic>? body,
     Map<String, dynamic>? queryParameters,
+    bool requiresAuth = true,
   }) async {
-    final token = await _idTokenProvider();
-    if (token == null || token.isEmpty) {
+    String? token;
+    try {
+      token = await _idTokenProvider();
+    } catch (_) {
+      token = null;
+    }
+
+    if (requiresAuth && (token == null || token.isEmpty)) {
       throw const ApiException(
         'Devam etmek için tekrar giriş yapın.',
         statusCode: 401,
@@ -264,12 +273,12 @@ class ApiClient {
     final response = await _execute(
       method,
       endpoint,
-      token: token,
+      token: token ?? '',
       body: body,
       queryParameters: queryParameters,
     );
 
-    if (response.statusCode == 401) {
+    if (requiresAuth && response.statusCode == 401) {
       final freshToken = await _forceRefreshTokenProvider();
       if (freshToken == null || freshToken.isEmpty) {
         throw const ApiException(
@@ -402,7 +411,7 @@ class ApiClient {
       ..headers.addAll({
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
+        if (token.isNotEmpty) 'Authorization': 'Bearer $token',
       });
     if (body != null) request.body = jsonEncode(body);
     try {

@@ -128,6 +128,7 @@ class BackendMarketRepository implements MarketRepository {
         final jsonResponse = await apiClient.getJson(
           '/market',
           queryParameters: queryParams,
+          requiresAuth: false,
         );
 
         final marketResponse = MarketResponse.fromJson(jsonResponse);

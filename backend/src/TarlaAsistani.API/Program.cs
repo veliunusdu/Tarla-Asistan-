@@ -182,11 +182,12 @@ if (app.Environment.IsProduction())
     app.Use(async (context, next) =>
     {
         var isApiRequest = context.Request.Path.StartsWithSegments("/api/v1");
-        var isPublicAuthRequest = context.Request.Path.StartsWithSegments("/api/v1/auth/firebase") ||
-                                  context.Request.Path.StartsWithSegments("/api/v1/auth/refresh") ||
-                                  context.Request.Path.StartsWithSegments("/api/v1/auth/logout");
+        var isPublicRequest = context.Request.Path.StartsWithSegments("/api/v1/auth/firebase") ||
+                              context.Request.Path.StartsWithSegments("/api/v1/auth/refresh") ||
+                              context.Request.Path.StartsWithSegments("/api/v1/auth/logout") ||
+                              context.Request.Path.StartsWithSegments("/api/v1/market");
 
-        if (isApiRequest && !isPublicAuthRequest &&
+        if (isApiRequest && !isPublicRequest &&
             !HttpMethods.IsOptions(context.Request.Method) &&
             !(context.User.Identity?.IsAuthenticated ?? false))
         {
