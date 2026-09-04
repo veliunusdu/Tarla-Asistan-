@@ -34,7 +34,7 @@ class DatabaseHelper implements SyncOperationStore {
 
   @visibleForTesting
   static Future<void> createTablesForTesting(Database db) async {
-    await instance._createDB(db, 5);
+    await instance._createDB(db, 6);
   }
 
   String? get currentUserId {
@@ -61,7 +61,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -106,6 +106,7 @@ class DatabaseHelper implements SyncOperationStore {
     ''');
 
     await _createSyncOperationsTable(db);
+    await _createMarketCacheTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -121,6 +122,33 @@ class DatabaseHelper implements SyncOperationStore {
     if (oldVersion < 5) {
       await Migrations.v4ToV5(db);
     }
+    if (oldVersion < 6) {
+      await _createMarketCacheTable(db);
+    }
+  }
+
+  Future<void> _createMarketCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS market_cache (
+        code TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        price REAL NOT NULL,
+        previous_price REAL NOT NULL,
+        change_percent REAL NOT NULL,
+        change_direction TEXT NOT NULL,
+        unit TEXT NOT NULL,
+        icon_key TEXT NOT NULL,
+        updated_at_utc TEXT NOT NULL,
+        cached_at_utc TEXT NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_market_cache_category ON market_cache(category)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_market_cache_cached_at ON market_cache(cached_at_utc)',
+    );
   }
 
   Future<void> _createSyncOperationsTable(Database db) async {

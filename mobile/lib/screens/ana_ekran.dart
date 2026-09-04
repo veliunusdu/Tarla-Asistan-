@@ -4,6 +4,8 @@ import '../features/activities/data/faaliyet_repository.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/cases/data/case_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/market/data/backend_market_repository.dart';
+import '../features/market/data/local_market_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import '../services/database_helper.dart';
@@ -34,6 +36,7 @@ class AnaEkran extends StatefulWidget {
     ProfileRepository? profileRepository,
     CaseRepository? caseRepository,
     ApiClient? apiClient,
+    BackendMarketRepository? marketRepository,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
@@ -41,7 +44,10 @@ class AnaEkran extends StatefulWidget {
        _aiRepo = aiRepository,
        _profileRepo = profileRepository,
        _caseRepo = caseRepository,
+       // ignore: prefer_initializing_formals
        _apiClient = apiClient,
+       _marketRepo = marketRepository,
+       // ignore: prefer_initializing_formals
        _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
@@ -51,6 +57,7 @@ class AnaEkran extends StatefulWidget {
   final ProfileRepository? _profileRepo;
   final CaseRepository? _caseRepo;
   final ApiClient? _apiClient;
+  final BackendMarketRepository? _marketRepo;
   final Future<void> Function()? _onLogout;
 
   @override
@@ -79,6 +86,13 @@ class _AnaEkranState extends State<AnaEkran> {
         faaliyetRepository: widget._faaliyetRepo,
         weatherRepository: widget._weatherRepo,
         caseRepository: widget._caseRepo,
+        marketRepository: widget._marketRepo ??
+            (widget._apiClient != null
+                ? BackendMarketRepository(
+                    apiClient: widget._apiClient!,
+                    localRepo: const LocalMarketRepository(),
+                  )
+                : null),
         onTarlalarimSekme: _gotoTarlalarim,
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,

@@ -13,6 +13,8 @@ import 'features/cases/data/backend_case_repository.dart';
 import 'features/weather/data/backend_weather_repository.dart';
 import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
+import 'features/market/data/backend_market_repository.dart';
+import 'features/market/data/local_market_repository.dart';
 import 'features/profile/data/backend_profile_repository.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
@@ -326,6 +328,10 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         apiClient: _apiClient,
                         caseRepository: BackendCaseRepository(
                           apiClient: _apiClient,
+                        ),
+                        marketRepository: BackendMarketRepository(
+                          apiClient: _apiClient,
+                          localRepo: const LocalMarketRepository(),
                         ),
                       );
                     },

@@ -10,6 +10,8 @@ import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/location/data/location_service.dart';
+import '../features/market/data/backend_market_repository.dart';
+import '../features/market/presentation/widgets/piyasa_bilgileri_widget.dart';
 import '../features/weather/data/unavailable_weather_repository.dart';
 import '../features/weather/data/backend_weather_repository.dart';
 import '../features/weather/data/weather_repository.dart';
@@ -38,6 +40,7 @@ class AnaSayfaEkrani extends StatefulWidget {
     FaaliyetRepository? faaliyetRepository,
     WeatherRepository? weatherRepository,
     CaseRepository? caseRepository,
+    BackendMarketRepository? marketRepository,
     this.locationService,
     this.locationPicker,
     this.onTarlalarimSekme,
@@ -46,12 +49,14 @@ class AnaSayfaEkrani extends StatefulWidget {
   }) : _tarlaRepo = tarlaRepository ?? const LocalTarlaRepository(),
        _faaliyetRepo = faaliyetRepository ?? const LocalFaaliyetRepository(),
        _weatherRepo = weatherRepository ?? const UnavailableWeatherRepository(),
-       _caseRepo = caseRepository;
+       _caseRepo = caseRepository,
+       _marketRepo = marketRepository;
 
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
   final WeatherRepository _weatherRepo;
   final CaseRepository? _caseRepo;
+  final BackendMarketRepository? _marketRepo;
   final LocationService? locationService;
   final FieldLocationPicker? locationPicker;
 
@@ -81,9 +86,13 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   /// Hızlı işlemler için senkron tarla listesi önbelleği.
   List<Tarla> _tarlalarCache = [];
 
+  BackendMarketRepository? _marketRepository;
+
   @override
   void initState() {
     super.initState();
+    _marketRepository = widget._marketRepo;
+    _marketRepository?.getMarketData();
     _initData();
     widget.refreshNotifier?.addListener(_yenileTarlaVeFaaliyetler);
   }
@@ -195,6 +204,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   }
 
   void _yenile() {
+    _marketRepository?.refreshMarketData();
     setState(_initData);
   }
 
@@ -350,6 +360,14 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                 onKonumEkle: _konumEkle,
               ),
               const SizedBox(height: AppSpacing.lg),
+
+              // ── Piyasa Bilgileri ──────────────────────────────────────────
+              if (_marketRepository != null) ...[
+                PiyasaBilgileriWidget(
+                  marketRepository: _marketRepository!,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
 
               // ── Tarla istatistikleri ──────────────────────────────────────
               _TarlaIstatistikSection(

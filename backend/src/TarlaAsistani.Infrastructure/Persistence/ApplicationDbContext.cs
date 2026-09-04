@@ -4,6 +4,8 @@ using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 using TaskStatus = TarlaAsistani.Domain.Enums.TaskStatus; // disambiguate from System.Threading.Tasks.TaskStatus
 
+using TarlaAsistani.Infrastructure.Data.Configurations;
+
 namespace TarlaAsistani.Infrastructure.Persistence;
 
 public class ApplicationDbContext : DbContext, IApplicationDbContext
@@ -55,6 +57,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // ── AI Usage, Cost & Proactive Advisories ────────────────
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<ProactiveAdvisory> ProactiveAdvisories => Set<ProactiveAdvisory>();
+
+    // ── Market Data ──────────────────────────────────────────
+    public DbSet<MarketPrice> MarketPrices => Set<MarketPrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -702,6 +707,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .HasForeignKey(a => a.RelatedTaskId)
                   .OnDelete(DeleteBehavior.SetNull);
         });
+
+        // ══════════════════════════════════════════════════════
+        // MARKET PRICES
+        // ══════════════════════════════════════════════════════
+        modelBuilder.ApplyConfiguration(new MarketPriceConfiguration());
     }
 
     public async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)

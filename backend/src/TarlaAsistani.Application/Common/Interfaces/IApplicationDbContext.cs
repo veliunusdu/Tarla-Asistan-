@@ -48,6 +48,9 @@ public interface IApplicationDbContext
     DbSet<AiUsageLog> AiUsageLogs { get; }
     DbSet<ProactiveAdvisory> ProactiveAdvisories { get; }
 
+    // ── Market Data ──────────────────────────────────────────
+    DbSet<MarketPrice> MarketPrices { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

@@ -7,7 +7,9 @@ using Npgsql;
 using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.AI.Services;
+using TarlaAsistani.Application.Features.Market.Services;
 using TarlaAsistani.Application.Features.Weather.Services;
+using TarlaAsistani.Infrastructure.BackgroundJobs;
 using TarlaAsistani.Infrastructure.BackgroundServices;
 using TarlaAsistani.Infrastructure.Persistence;
 using TarlaAsistani.Infrastructure.Services;
@@ -104,9 +106,17 @@ public static class DependencyInjection
         services.AddSingleton<IProactiveAdvisoryEngine, ProactiveAdvisoryEngine>();
         services.AddScoped<IProactiveAdvisoryService, ProactiveAdvisoryService>();
 
-        // 6. Background Workers
+        // 6. Market Data Services & Providers
+        services.Configure<StaticMarketDataOptions>(configuration.GetSection("Market:Static"));
+        services.AddHttpClient<TcmbMarketDataProvider>();
+        services.AddScoped<IMarketDataProvider, TcmbMarketDataProvider>();
+        services.AddScoped<IMarketDataProvider, StaticMarketDataProvider>();
+        services.AddScoped<MarketPriceSyncService>();
+
+        // 7. Background Workers
         services.AddHostedService<AccountDeletionBackgroundService>();
         services.AddHostedService<ProactiveAdvisoryBackgroundService>();
+        services.AddHostedService<MarketDataSyncWorker>();
 
         return services;
     }
