@@ -52,16 +52,8 @@ class BackendWeatherRepository implements WeatherRepository {
         throw const WeatherLocationRequiredException();
       }
       if (error.statusCode == 503 || error.retryable) {
-        final cached = await _localRepo.getCachedWeather(farmId: targetFarmId);
-        if (cached != null) {
-          final desc = cached.description.endsWith(' (önbellek)')
-              ? cached.description
-              : '${cached.description} (önbellek)';
-          return WeatherSummary(
-            temperature: cached.temperature,
-            description: desc,
-          );
-        }
+        final fallback = await _getCachedFallback(targetFarmId);
+        if (fallback != null) return fallback;
       }
       if (error.statusCode == 503) {
         throw WeatherUnavailableException(error.message);
@@ -71,16 +63,8 @@ class BackendWeatherRepository implements WeatherRepository {
       if (e is WeatherLocationRequiredException) {
         rethrow;
       }
-      final cached = await _localRepo.getCachedWeather(farmId: targetFarmId);
-      if (cached != null) {
-        final desc = cached.description.endsWith(' (önbellek)')
-            ? cached.description
-            : '${cached.description} (önbellek)';
-        return WeatherSummary(
-          temperature: cached.temperature,
-          description: desc,
-        );
-      }
+      final fallback = await _getCachedFallback(targetFarmId);
+      if (fallback != null) return fallback;
       rethrow;
     }
 
@@ -167,5 +151,17 @@ class BackendWeatherRepository implements WeatherRepository {
     if (temperature <= 10) return 'Soğuk hava';
     if (temperature >= 35) return 'Çok sıcak hava';
     return 'Hava durumu güncellendi';
+  }
+
+  Future<WeatherSummary?> _getCachedFallback(String? farmId) async {
+    final cached = await _localRepo.getCachedWeather(farmId: farmId);
+    if (cached == null) return null;
+    final desc = cached.description.endsWith(' (önbellek)')
+        ? cached.description
+        : '${cached.description} (önbellek)';
+    return WeatherSummary(
+      temperature: cached.temperature,
+      description: desc,
+    );
   }
 }

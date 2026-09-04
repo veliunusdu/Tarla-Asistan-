@@ -7,6 +7,7 @@ import 'package:mobile/features/weather/data/backend_weather_repository.dart';
 import 'package:mobile/features/weather/data/local_weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
 import 'package:mobile/services/api_client.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class FakeLocalWeatherRepository extends LocalWeatherRepository {
   FakeLocalWeatherRepository({this.cachedWeather});
@@ -32,6 +33,8 @@ class FakeLocalWeatherRepository extends LocalWeatherRepository {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
 
   ApiClient makeClient({
     required Future<http.Response> Function(http.Request) handler,

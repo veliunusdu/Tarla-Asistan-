@@ -85,7 +85,7 @@ public static class DependencyInjection
 
             var providers = weatherApi.IsConfigured
                 ? new IWeatherProvider[] { weatherApi, openMeteo }
-                : new IWeatherProvider[] { openMeteo, weatherApi };
+                : new IWeatherProvider[] { openMeteo };
 
             return new FallbackWeatherProvider(providers, logger);
         });
