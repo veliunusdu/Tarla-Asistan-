@@ -279,7 +279,7 @@ void main() {
     // ── Hava durumu ───────────────────────────────────────────────────────
     group('hava durumu', () {
       testWidgets('sıcaklık ve açıklama gösterilir', (tester) async {
-        final repo = FakeTarlaRepository(Future.value([]));
+        final repo = FakeTarlaRepository(Future.value([_tarla('1')]));
         await tester.pumpWidget(
           _wrap(
             tarlaRepo: repo,
@@ -319,6 +319,7 @@ void main() {
         tester,
       ) async {
         final weather = Completer<WeatherSummary>();
+        weather.future.ignore();
         final field = Tarla(
           id: 'farm-123',
           name: 'Konumsuz Tarla',
@@ -381,9 +382,6 @@ void main() {
 
           final weatherRepo = _CountingWeatherRepo(() async {
             weatherCalls++;
-            if (weatherCalls == 1) {
-              throw const WeatherLocationRequiredException();
-            }
             return const WeatherSummary(temperature: 24, description: 'Güneşli');
           });
 
@@ -403,7 +401,8 @@ void main() {
           );
           await tester.pumpAndSettle();
 
-          expect(weatherCalls, 1);
+          // Tarlada konum olmadığı için hava durumu API'si baştan çağrılmaz
+          expect(weatherCalls, 0);
           expect(tarlaCalls, 1);
           expect(find.text('Konum ekle'), findsOneWidget);
 
@@ -419,9 +418,9 @@ void main() {
           await tester.tap(find.widgetWithText(ElevatedButton, 'Kaydet'));
           await tester.pumpAndSettle();
 
-          // Ekran kapandı, ana sayfa yenilendi
+          // Ekran kapandı, ana sayfa yenilendi ve hava durumu çağrıldı
           expect(find.byType(TarlaKonumDuzenlemeEkrani), findsNothing);
-          expect(weatherCalls, 2);
+          expect(weatherCalls, 1);
           expect(tarlaCalls, 2);
           expect(find.textContaining('24°C'), findsOneWidget);
         },
@@ -471,7 +470,7 @@ void main() {
 
         await tester.pumpWidget(
           _wrap(
-            tarlaRepo: FakeTarlaRepository(Future.value([])),
+            tarlaRepo: FakeTarlaRepository(Future.value([_tarla('1')])),
             weatherRepo: weatherRepo,
           ),
         );
@@ -821,8 +820,20 @@ void main() {
 
         // Bottom sheet içinde tarla isimleri görünmeli
         expect(find.text('Hangi tarla için?'), findsOneWidget);
-        expect(find.text('Kuzey Tarla'), findsOneWidget);
-        expect(find.text('Güney Tarla'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Kuzey Tarla'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Güney Tarla'),
+          ),
+          findsOneWidget,
+        );
       });
 
       testWidgets('Tarlalarım callback çağrılır', (tester) async {
@@ -1095,6 +1106,407 @@ void main() {
         expect(weatherCallCount, 1);
       });
     });
+
+    // ── Hava durumu tarla seçimi ve akışı (10 senaryo) ────────────────────
+    group('hava durumu tarla seçimi ve akışı', () {
+      testWidgets(
+        'Senaryo 1: Tek uygun tarla - tarla adı görünür, dropdown oku ve seçim modalı görünmez',
+        (tester) async {
+          final repo = FakeTarlaRepository(
+            Future.value([_tarla('1', name: 'Zeytinlik')]),
+          );
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            return const WeatherSummary(temperature: 22, description: 'Güneşli');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Tarla adı ve hava durumu görünür
+          expect(find.text('Zeytinlik'), findsWidgets);
+          expect(find.textContaining('22°C'), findsOneWidget);
+
+          // Tek uygun tarla olduğu için dropdown oku görünmez
+          expect(find.byIcon(Icons.arrow_drop_down), findsNothing);
+
+          // Tıklanabilir seçim alanı olarak davranmaz
+          await tester.tap(find.text('Zeytinlik').first);
+          await tester.pumpAndSettle();
+          expect(find.byType(BottomSheet), findsNothing);
+          expect(weatherRepo.requestedFarmIds, ['1']);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 1b: 1 koordinatlı + 1 koordinatsız tarla - tek uygun tarla olduğu için dropdown oku yine görünmez',
+        (tester) async {
+          final repo = FakeTarlaRepository(
+            Future.value([
+              _tarla('1', name: 'Zeytinlik'),
+              Tarla(id: '2', name: 'Konumsuz', latitude: null, longitude: null, size: 5),
+            ]),
+          );
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            return const WeatherSummary(temperature: 22, description: 'Güneşli');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Zeytinlik'), findsWidgets);
+          expect(find.byIcon(Icons.arrow_drop_down), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 2: İki uygun tarla - başlangıçta Tarla A seçilir, modal ile Tarla B seçilince güncellenir',
+        (tester) async {
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            if (farmId == 'a') {
+              return const WeatherSummary(temperature: 18, description: 'Bulutlu');
+            } else if (farmId == 'b') {
+              return const WeatherSummary(temperature: 26, description: 'Açık');
+            }
+            return const WeatherSummary(temperature: 0, description: '');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Başlangıçta Tarla A seçili
+          expect(find.text('Tarla A'), findsWidgets);
+          expect(find.textContaining('18°C'), findsOneWidget);
+          expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
+          expect(weatherRepo.requestedFarmIds, ['a']);
+
+          // Dropdown'a tıkla ve bottom sheet'i aç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Hava durumu için tarla seçin'), findsOneWidget);
+          expect(find.text('Tarla B'), findsWidgets);
+
+          // Tarla B'yi seç
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pumpAndSettle();
+
+          // Seçim güncellendi, Tarla B verisi ve adı görünüyor
+          expect(weatherRepo.requestedFarmIds, ['a', 'b']);
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.textContaining('26°C'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 3: Refresh seçimi korur - Tarla B seçildikten sonra refresh Tarla B olarak kalır',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            if (farmId == 'b') {
+              return const WeatherSummary(temperature: 26, description: 'Açık');
+            }
+            return const WeatherSummary(temperature: 18, description: 'Bulutlu');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Tarla B'yi seç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+
+          // Refresh et (pull to refresh)
+          await tester.fling(find.byType(SingleChildScrollView), const Offset(0, 300), 1000);
+          await tester.pumpAndSettle();
+
+          // Seçim Tarla A'ya zıplamaz, Tarla B olarak korunur
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(weatherRepo.requestedFarmIds.last, 'b');
+        },
+      );
+
+      testWidgets(
+        'Senaryo 4: Seçilen tarla artık yoksa güvenli şekilde ilk uygun tarlaya fallback yapar',
+        (tester) async {
+          tester.view.physicalSize = const Size(800, 1600);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = _MutableFakeTarlaRepo([tarlaA, tarlaB]);
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            if (farmId == 'b') {
+              return const WeatherSummary(temperature: 26, description: 'Açık');
+            }
+            return const WeatherSummary(temperature: 18, description: 'Bulutlu');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Tarla B'yi seç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+
+          // Tarla B listeden silindi
+          repo.tarlalar = [tarlaA];
+
+          // Refresh tetikle
+          (tester.state(find.byType(AnaSayfaEkrani)) as dynamic).refresh();
+          await tester.pumpAndSettle();
+
+          // Güvenli şekilde Tarla A'ya fallback yaptı
+          expect(find.text('Tarla A'), findsWidgets);
+          expect(find.textContaining('18°C'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 5: Koordinatsız tarla - modal içinde disabled görünür ve seçilemez',
+        (tester) async {
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final tarlaC = Tarla(id: 'c', name: 'Tarla C (Konumsuz)', latitude: null, longitude: null, size: 20);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB, tarlaC]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            return const WeatherSummary(temperature: 20, description: 'Açık');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Modal aç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+
+          // Tarla C 'Konum bilgisi yok' alt yazısıyla görünmeli
+          expect(find.text('Tarla C (Konumsuz)'), findsOneWidget);
+          expect(find.textContaining('Konum bilgisi yok'), findsOneWidget);
+
+          // Tarla C'ye tıklandığında seçilemez olmalı (onTap null)
+          await tester.tap(find.text('Tarla C (Konumsuz)'));
+          await tester.pumpAndSettle();
+
+          // Bottom sheet hala açık ve Tarla C için weather çağrılmadı
+          expect(find.text('Hava durumu için tarla seçin'), findsOneWidget);
+          expect(weatherRepo.requestedFarmIds.contains('c'), isFalse);
+
+          // Tarla B seçilebilir
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(weatherRepo.requestedFarmIds, ['a', 'b']);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 6: Hiç koordinatlı tarla yok - weather API çağrılmaz, konum ekle gösterilir',
+        (tester) async {
+          final tarla1 = Tarla(id: '1', name: 'Tarla 1', latitude: null, longitude: null, size: 10);
+          final tarla2 = Tarla(id: '2', name: 'Tarla 2', latitude: null, longitude: null, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarla1, tarla2]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            return const WeatherSummary(temperature: 20, description: 'Açık');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Weather API çağrılmamalıdır
+          expect(weatherRepo.requestedFarmIds, isEmpty);
+
+          // Konum ekleme yönlendirmesi görünmeli
+          expect(find.text('Hava durumu için tarla konumu ekleyin'), findsOneWidget);
+          expect(find.text('Konum ekle'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 7: Hiç tarla yok - weather API çağrılmaz, boş durum gösterilir',
+        (tester) async {
+          final repo = FakeTarlaRepository(Future.value([]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            return const WeatherSummary(temperature: 20, description: 'Açık');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Weather API çağrılmamalıdır
+          expect(weatherRepo.requestedFarmIds, isEmpty);
+
+          // Tarla ekleme yönlendirmesi görünmeli
+          expect(find.text('Hava durumunu görmek için tarla ekleyin'), findsOneWidget);
+          expect(find.text('Tarla Ekle'), findsWidgets);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 8: Race condition - geç gelen Tarla A yanıtı hızlı Tarla B yanıtını ezmez',
+        (tester) async {
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB]));
+
+          final completerA = Completer<WeatherSummary>();
+          final completerB = Completer<WeatherSummary>();
+          completerA.future.ignore();
+          completerB.future.ignore();
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) {
+            if (farmId == 'a') {
+              return completerA.future;
+            } else {
+              return completerB.future;
+            }
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pump(); // Tarla A isteği başladı, completerA bekliyor
+
+          expect(find.text('Tarla A'), findsWidgets);
+          expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
+
+          // Kullanıcı Tarla B'yi seçer
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pump(); // Tarla B isteği başladı
+
+          // Hızlı gelen Tarla B yanıtı tamamlanır
+          completerB.complete(const WeatherSummary(temperature: 28, description: 'B Sıcak'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.textContaining('28°C'), findsOneWidget);
+
+          // Yavaş gelen eski Tarla A yanıtı tamamlanır
+          completerA.complete(const WeatherSummary(temperature: 12, description: 'A Soğuk'));
+          await tester.pumpAndSettle();
+
+          // UI Tarla B'de kalmalıdır, Tarla A yanıtı ezmemelidir
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.textContaining('28°C'), findsOneWidget);
+          expect(find.textContaining('12°C'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 9: Tarla değişiminde stale veri karışmaması - Tarla A verisi Tarla B adıyla görünmez',
+        (tester) async {
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB]));
+
+          final completerB = Completer<WeatherSummary>();
+          completerB.future.ignore();
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) {
+            if (farmId == 'a') {
+              return Future.value(const WeatherSummary(temperature: 16, description: 'Yağmurlu'));
+            } else {
+              return completerB.future;
+            }
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Tarla A verisi 16°C
+          expect(find.text('Tarla A'), findsWidgets);
+          expect(find.textContaining('16°C'), findsOneWidget);
+
+          // Tarla B'yi seç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pump(); // transition/loading anı
+
+          // Bu geçiş anında Tarla A'nın sıcaklığı görünmemeli, Tarla B adı ve loading görünmeli
+          expect(find.textContaining('16°C'), findsNothing);
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.text('Hava durumu yükleniyor…'), findsOneWidget);
+
+          // Tarla B yanıtı gelince
+          completerB.complete(const WeatherSummary(temperature: 24, description: 'Güneşli'));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.textContaining('24°C'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'Senaryo 10: Risk regresyonu - Seçilen tarlada kritik risk WeatherCard içinde gösterilir',
+        (tester) async {
+          final tarlaA = Tarla(id: 'a', name: 'Tarla A', latitude: 38.4, longitude: 27.1, size: 10);
+          final tarlaB = Tarla(id: 'b', name: 'Tarla B', latitude: 39.1, longitude: 28.2, size: 15);
+          final repo = FakeTarlaRepository(Future.value([tarlaA, tarlaB]));
+
+          final weatherRepo = _RecordingWeatherRepo((farmId) async {
+            if (farmId == 'b') {
+              return WeatherSummary(
+                temperature: 2,
+                description: 'Don Bekleniyor',
+                risks: [
+                  WeatherRisk(
+                    riskType: 'FROST',
+                    severity: 'CRITICAL',
+                    startsAt: DateTime(2026, 9, 5, 3),
+                    endsAt: DateTime(2026, 9, 5, 6),
+                    message: 'Önümüzdeki saatlerde şiddetli don riski var.',
+                    suggestedAction: 'Hassas fideleri örtün ve sulama yapın.',
+                  ),
+                ],
+              );
+            }
+            return const WeatherSummary(temperature: 20, description: 'Açık');
+          });
+
+          await tester.pumpWidget(_wrap(tarlaRepo: repo, weatherRepo: weatherRepo));
+          await tester.pumpAndSettle();
+
+          // Tarla B'yi seç
+          await tester.tap(find.byIcon(Icons.arrow_drop_down));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Tarla B')));
+          await tester.pumpAndSettle();
+
+          expect(find.text('Tarla B'), findsWidgets);
+          expect(find.text('Önümüzdeki saatlerde şiddetli don riski var.'), findsOneWidget);
+          expect(find.textContaining('Hassas fideleri örtün'), findsOneWidget);
+          expect(find.textContaining('Kritik'), findsOneWidget);
+        },
+      );
+    });
   });
 }
 
@@ -1117,15 +1529,36 @@ class _CountingTarlaLocationRepo
     implements TarlaRepository, TarlaLocationRepository {
   _CountingTarlaLocationRepo(this._fn);
   final Future<List<Tarla>> Function() _fn;
+  TarlaLocation? updatedLocation;
 
   @override
-  Future<List<Tarla>> getTarlalar() => _fn();
+  Future<List<Tarla>> getTarlalar() async {
+    final list = await _fn();
+    if (updatedLocation != null) {
+      return list
+          .map(
+            (t) => Tarla(
+              id: t.id,
+              name: t.name,
+              latitude: updatedLocation!.latitude,
+              longitude: updatedLocation!.longitude,
+              size: t.size,
+              cropType: t.cropType,
+              plantingDate: t.plantingDate,
+            ),
+          )
+          .toList();
+    }
+    return list;
+  }
 
   @override
   Future<void> addTarla(Tarla tarla) async {}
 
   @override
-  Future<void> updateTarlaLocation(String id, TarlaLocation location) async {}
+  Future<void> updateTarlaLocation(String id, TarlaLocation location) async {
+    updatedLocation = location;
+  }
 }
 
 class _CountingWeatherRepo implements WeatherRepository {
@@ -1134,6 +1567,18 @@ class _CountingWeatherRepo implements WeatherRepository {
 
   @override
   Future<WeatherSummary> getWeather({String? farmId}) => _fn();
+}
+
+class _RecordingWeatherRepo implements WeatherRepository {
+  _RecordingWeatherRepo(this._fn);
+  final Future<WeatherSummary> Function(String? farmId) _fn;
+  final List<String?> requestedFarmIds = [];
+
+  @override
+  Future<WeatherSummary> getWeather({String? farmId}) {
+    requestedFarmIds.add(farmId);
+    return _fn(farmId);
+  }
 }
 
 /// Her `getTarlalar` çağrısında güncel `tarlalar` listesini döndürür.

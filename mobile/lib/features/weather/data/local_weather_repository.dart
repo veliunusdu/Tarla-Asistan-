@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../services/database_helper.dart';
@@ -20,15 +21,21 @@ class LocalWeatherRepository {
   static const String sqlCreateTable = '''
     CREATE TABLE IF NOT EXISTS $tableName (
       farm_id TEXT PRIMARY KEY,
-      temperature INTEGER NOT NULL,
+      temperature INTEGER,
       description TEXT NOT NULL,
-      updated_at_utc TEXT NOT NULL
+      updated_at_utc TEXT NOT NULL,
+      payload_json TEXT
     )
   ''';
 
   Future<void> _ensureTable(Database db) async {
     try {
       await db.execute(sqlCreateTable);
+      try {
+        await db.execute('ALTER TABLE $tableName ADD COLUMN payload_json TEXT');
+      } catch (_) {
+        // Column already exists or table was just created with it
+      }
     } catch (e) {
       debugPrint('LocalWeatherRepository: _ensureTable error: $e');
     }
@@ -50,8 +57,22 @@ class LocalWeatherRepository {
       if (maps.isEmpty) return null;
 
       final row = maps.first;
+      final payloadJson = row['payload_json'] as String?;
+      if (payloadJson != null && payloadJson.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(payloadJson);
+          if (decoded is Map<String, dynamic>) {
+            return WeatherSummary.fromJson(decoded);
+          } else if (decoded is Map) {
+            return WeatherSummary.fromJson(Map<String, dynamic>.from(decoded));
+          }
+        } catch (e) {
+          debugPrint('LocalWeatherRepository: error parsing payload_json: $e');
+        }
+      }
+
       return WeatherSummary(
-        temperature: (row['temperature'] as num?)?.toInt() ?? 0,
+        temperature: row['temperature'] as num?,
         description: row['description']?.toString() ?? '',
       );
     } catch (e) {
@@ -70,9 +91,10 @@ class LocalWeatherRepository {
         tableName,
         {
           'farm_id': key,
-          'temperature': weather.temperature,
+          'temperature': weather.temperature?.round() ?? 0,
           'description': weather.description,
           'updated_at_utc': DateTime.now().toUtc().toIso8601String(),
+          'payload_json': jsonEncode(weather.toJson()),
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );

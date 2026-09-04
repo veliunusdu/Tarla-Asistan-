@@ -16,6 +16,7 @@ import '../features/weather/data/unavailable_weather_repository.dart';
 import '../features/weather/data/backend_weather_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import '../features/weather/domain/weather_summary.dart';
+import '../features/weather/presentation/widgets/weather_card.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
 import '../shared/utils/date_formatter.dart';
@@ -77,16 +78,38 @@ class AnaSayfaEkrani extends StatefulWidget {
   State<AnaSayfaEkrani> createState() => _AnaSayfaEkraniState();
 }
 
+class _CancelledWeatherRequestException implements Exception {
+  const _CancelledWeatherRequestException();
+  @override
+  String toString() => 'CancelledWeatherRequestException';
+}
+
 class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   late Future<List<Tarla>> _tarlalar;
   late Future<List<Faaliyet>> _faaliyetler;
   late Future<WeatherSummary> _weather;
   late Future<(List<Tarla>, List<Faaliyet>)> _gorevVerisi;
 
-  /// Hızlı işlemler için senkron tarla listesi önbelleği.
+  /// Hızlı işlemler ve hava durumu seçimi için senkron tarla listesi önbelleği.
   List<Tarla> _tarlalarCache = [];
+  String? _weatherTarlaName;
+  String? _selectedWeatherFarmId;
+  int _weatherRequestId = 0;
 
   BackendMarketRepository? _marketRepository;
+
+  bool _hasCoordinates(Tarla t) => t.latitude != null && t.longitude != null;
+
+  List<Tarla> get _eligibleWeatherFarms =>
+      _tarlalarCache.where(_hasCoordinates).toList();
+
+  Tarla? get _selectedWeatherFarm {
+    if (_selectedWeatherFarmId == null) return null;
+    return _tarlalarCache.cast<Tarla?>().firstWhere(
+      (t) => t?.id == _selectedWeatherFarmId,
+      orElse: () => null,
+    );
+  }
 
   @override
   void initState() {
@@ -109,8 +132,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
     if (repo is PlanliGorevRepository) {
       try {
-        final planli =
-            await (repo as PlanliGorevRepository).getPlanliGorevler();
+        final planli = await (repo as PlanliGorevRepository)
+            .getPlanliGorevler();
         for (final f in planli) {
           if (!f.isCompleted && f.dueDate != null) {
             map[f.id] = f;
@@ -141,12 +164,14 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
       _tarlalar = summaryFuture.then((s) {
         final list = s.farms.map((f) => f.tarla).toList();
         _tarlalarCache = list;
+        if (mounted) setState(() {});
         return list;
       });
       _faaliyetler = summaryFuture.then((s) => s.upcomingTasks);
     } else {
       _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
         _tarlalarCache = list;
+        if (mounted) setState(() {});
         return list;
       });
       _faaliyetler = _fetchGorevler();
@@ -159,18 +184,88 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   }
 
   Future<WeatherSummary> _fetchWeather() async {
-    String? farmId;
+    final List<Tarla> tarlalar;
     try {
-      final tarlalar = await _tarlalar;
-      final tarlaWithLocation = tarlalar.cast<Tarla?>().firstWhere(
-        (t) => t != null && t.latitude != null && t.longitude != null,
+      tarlalar = await _tarlalar;
+      _tarlalarCache = tarlalar;
+    } catch (_) {
+      _selectedWeatherFarmId = null;
+      _weatherTarlaName = null;
+      return widget._weatherRepo.getWeather(farmId: null);
+    }
+
+    if (tarlalar.isEmpty) {
+      _selectedWeatherFarmId = null;
+      _weatherTarlaName = null;
+      throw const WeatherNoFarmsException();
+    }
+
+    final eligibleFarms = tarlalar.where(_hasCoordinates).toList();
+    if (eligibleFarms.isEmpty) {
+      _selectedWeatherFarmId = null;
+      _weatherTarlaName = null;
+      throw const WeatherLocationRequiredException();
+    }
+
+    Tarla? selectedFarm;
+    if (_selectedWeatherFarmId != null) {
+      selectedFarm = eligibleFarms.cast<Tarla?>().firstWhere(
+        (t) => t?.id == _selectedWeatherFarmId,
         orElse: () => null,
       );
-      if (tarlaWithLocation != null) {
-        farmId = tarlaWithLocation.id;
-      }
-    } catch (_) {}
-    return widget._weatherRepo.getWeather(farmId: farmId);
+    }
+
+    selectedFarm ??= eligibleFarms.first;
+    _selectedWeatherFarmId = selectedFarm.id;
+    _weatherTarlaName = selectedFarm.name;
+
+    final requestId = ++_weatherRequestId;
+    final summary = await widget._weatherRepo.getWeather(
+      farmId: selectedFarm.id,
+    );
+
+    if (_weatherRequestId != requestId ||
+        _selectedWeatherFarmId != selectedFarm.id) {
+      throw const _CancelledWeatherRequestException();
+    }
+
+    return summary;
+  }
+
+  Future<WeatherSummary> _fetchWeatherForTarla(
+    Tarla tarla,
+    int requestId,
+  ) async {
+    _weatherTarlaName = tarla.name;
+    final summary = await widget._weatherRepo.getWeather(farmId: tarla.id);
+    if (!mounted ||
+        _weatherRequestId != requestId ||
+        _selectedWeatherFarmId != tarla.id) {
+      throw const _CancelledWeatherRequestException();
+    }
+    return summary;
+  }
+
+  Future<void> _secWeatherFarm() async {
+    if (_tarlalarCache.isEmpty) return;
+
+    final secilen = await TarlaSecimBottomSheet.show(
+      context,
+      tarlalar: _tarlalarCache,
+      title: 'Hava durumu için tarla seçin',
+      selectedTarlaId: _selectedWeatherFarmId,
+      requireLocation: true,
+    );
+
+    if (secilen == null || !mounted) return;
+    if (secilen.id == _selectedWeatherFarmId) return;
+
+    setState(() {
+      _selectedWeatherFarmId = secilen.id;
+      _weatherTarlaName = secilen.name;
+      final requestId = ++_weatherRequestId;
+      _weather = _fetchWeatherForTarla(secilen, requestId);
+    });
   }
 
   /// Tarla/görev verisi değiştiğinde çağrılır.
@@ -208,9 +303,21 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     setState(_initData);
   }
 
+  /// Refreshes the entire home screen data (public hook for testing / triggers).
+  void refresh() => _yenile();
+
   void _yenileHava() {
     setState(() {
-      _weather = _fetchWeather();
+      final selectedFarm = _tarlalarCache.cast<Tarla?>().firstWhere(
+        (t) => t?.id == _selectedWeatherFarmId && _hasCoordinates(t!),
+        orElse: () => null,
+      );
+      if (selectedFarm != null) {
+        final requestId = ++_weatherRequestId;
+        _weather = _fetchWeatherForTarla(selectedFarm, requestId);
+      } else {
+        _weather = _fetchWeather();
+      }
     });
   }
 
@@ -340,71 +447,77 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── Karşılama ────────────────────────────────────────────────
-              Text(
-                'Bugün tarlanızda ne yapmalısınız?',
-                style: theme.textTheme.headlineSmall,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Hava durumu ───────────────────────────────────────────────
-              _HavaDurumuSection(
-                future: _weather,
-                onRetry: _yenileHava,
-                onTarlaEkle: _tarlaEkle,
-                onKonumEkle: _konumEkle,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // ── Piyasa Bilgileri ──────────────────────────────────────────
-              if (_marketRepository != null) ...[
-                PiyasaBilgileriWidget(
-                  marketRepository: _marketRepository!,
+        child: RefreshIndicator(
+          onRefresh: () async => _yenile(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Karşılama ────────────────────────────────────────────────
+                Text(
+                  'Bugün tarlanızda ne yapmalısınız?',
+                  style: theme.textTheme.headlineSmall,
                 ),
                 const SizedBox(height: AppSpacing.lg),
-              ],
 
-              // ── Tarla istatistikleri ──────────────────────────────────────
-              _TarlaIstatistikSection(
-                future: _tarlalar,
-                onRetry: _yenile,
-                onTarlaEkle: _tarlaEkle,
-                onSorunBildir: widget._caseRepo != null ? _sorunBildir : null,
-              ),
-              const SizedBox(height: AppSpacing.lg),
+                // ── Hava durumu ───────────────────────────────────────────────
+                _HavaDurumuSection(
+                  future: _weather,
+                  onRetry: _yenileHava,
+                  onTarlaEkle: _tarlaEkle,
+                  onKonumEkle: _konumEkle,
+                  tarlaNameProvider: () =>
+                      _selectedWeatherFarm?.name ?? _weatherTarlaName,
+                  canSelectFarmProvider: () => _eligibleWeatherFarms.length > 1,
+                  onFarmTap: _secWeatherFarm,
+                ),
+                const SizedBox(height: AppSpacing.lg),
 
-              // ── Yaklaşan işler ───────────────────────────────────────────
-              _YaklasanGorevlerSection(
-                gorevVerisi: _gorevVerisi,
-                onRetry: _yenile,
-                onFaaliyetPlanla: () => _isEkle(isCompleted: false),
-                caseRepo: widget._caseRepo,
-                tarlaRepo: widget._tarlaRepo,
-              ),
-              const SizedBox(height: AppSpacing.lg),
+                // ── Piyasa Bilgileri ──────────────────────────────────────────
+                if (_marketRepository != null) ...[
+                  PiyasaBilgileriWidget(marketRepository: _marketRepository!),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
 
-              // ── Hızlı işlemler ────────────────────────────────────────────
-              _HizliIslemlerSection(
-                onTarlaEkle: _tarlaEkle,
-                onFaaliyetEkle: () => _isEkle(isCompleted: true),
-                onTarlalarim:
-                    widget.onTarlalarimSekme ??
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            TarlaListesiEkrani(repository: widget._tarlaRepo),
+                // ── Tarla istatistikleri ──────────────────────────────────────
+                _TarlaIstatistikSection(
+                  future: _tarlalar,
+                  onRetry: _yenile,
+                  onTarlaEkle: _tarlaEkle,
+                  onSorunBildir: widget._caseRepo != null ? _sorunBildir : null,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // ── Yaklaşan işler ───────────────────────────────────────────
+                _YaklasanGorevlerSection(
+                  gorevVerisi: _gorevVerisi,
+                  onRetry: _yenile,
+                  onFaaliyetPlanla: () => _isEkle(isCompleted: false),
+                  caseRepo: widget._caseRepo,
+                  tarlaRepo: widget._tarlaRepo,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+
+                // ── Hızlı işlemler ────────────────────────────────────────────
+                _HizliIslemlerSection(
+                  onTarlaEkle: _tarlaEkle,
+                  onFaaliyetEkle: () => _isEkle(isCompleted: true),
+                  onTarlalarim:
+                      widget.onTarlalarimSekme ??
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              TarlaListesiEkrani(repository: widget._tarlaRepo),
+                        ),
                       ),
-                    ),
-                onTumFaaliyetler: widget.onGunlukSekme,
-              ),
-              const SizedBox(height: AppSpacing.xl),
-            ],
+                  onTumFaaliyetler: widget.onGunlukSekme,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+              ],
+            ),
           ),
         ),
       ),
@@ -422,16 +535,23 @@ class _HavaDurumuSection extends StatelessWidget {
     required this.onRetry,
     required this.onTarlaEkle,
     required this.onKonumEkle,
+    this.tarlaNameProvider,
+    this.canSelectFarmProvider,
+    this.onFarmTap,
   });
 
   final Future<WeatherSummary> future;
   final VoidCallback onRetry;
   final VoidCallback onTarlaEkle;
   final VoidCallback onKonumEkle;
+  final String? Function()? tarlaNameProvider;
+  final bool Function()? canSelectFarmProvider;
+  final VoidCallback? onFarmTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isSelectable = canSelectFarmProvider?.call() ?? false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -442,9 +562,58 @@ class _HavaDurumuSection extends StatelessWidget {
           future: future,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
+              final resolvedTarlaName = tarlaNameProvider?.call();
+              if (resolvedTarlaName != null) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildTarlaSelectorHeader(
+                          context,
+                          resolvedTarlaName,
+                          isSelectable: isSelectable,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        const Divider(height: 1),
+                        const SizedBox(height: AppSpacing.md),
+                        const AppLoadingView(message: 'Hava durumu yükleniyor…'),
+                      ],
+                    ),
+                  ),
+                );
+              }
               return const AppLoadingView(message: 'Hava durumu yükleniyor…');
             }
             if (snapshot.hasError) {
+              if (snapshot.error is _CancelledWeatherRequestException) {
+                return const SizedBox.shrink();
+              }
+              if (snapshot.error is WeatherNoFarmsException) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hava durumunu görmek için tarla ekleyin',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        OutlinedButton(
+                          onPressed: onTarlaEkle,
+                          child: const Text('Tarla Ekle'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
               if (snapshot.error is WeatherLocationRequiredException) {
                 return Card(
                   child: Padding(
@@ -452,7 +621,13 @@ class _HavaDurumuSection extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Hava durumu için tarla konumu ekleyin'),
+                        Text(
+                          'Hava durumu için tarla konumu ekleyin',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                         const SizedBox(height: AppSpacing.sm),
                         OutlinedButton(
                           onPressed: onKonumEkle,
@@ -463,6 +638,35 @@ class _HavaDurumuSection extends StatelessWidget {
                   ),
                 );
               }
+
+              final resolvedTarlaName = tarlaNameProvider?.call();
+              if (resolvedTarlaName != null) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _buildTarlaSelectorHeader(
+                          context,
+                          resolvedTarlaName,
+                          isSelectable: isSelectable,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        const Divider(height: 1),
+                        const SizedBox(height: AppSpacing.sm),
+                        AppErrorView(
+                          title: 'Hava durumu alınamadı',
+                          description:
+                              'İnternet bağlantınızı kontrol edip tekrar deneyin.',
+                          onRetry: onRetry,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
               return AppErrorView(
                 title: 'Hava durumu alınamadı',
                 description:
@@ -471,32 +675,68 @@ class _HavaDurumuSection extends StatelessWidget {
               );
             }
             final hava = snapshot.data!;
-            final desc = hava.description.isEmpty
-                ? ''
-                : hava.description[0].toUpperCase() +
-                      hava.description.substring(1);
+            final resolvedTarlaName = tarlaNameProvider?.call();
 
-            return Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md,
-                  vertical: AppSpacing.sm,
-                ),
-                leading: const Icon(
-                  Icons.cloud_outlined,
-                  color: AppColors.textSecondary,
-                  size: 32,
-                ),
-                title: Text(
-                  '${hava.temperature}°C',
-                  style: theme.textTheme.titleMedium,
-                ),
-                subtitle: Text(desc, style: theme.textTheme.bodyMedium),
-              ),
+            return WeatherCard(
+              weather: hava,
+              tarlaName: resolvedTarlaName,
+              canSelectFarm: isSelectable,
+              onFarmTap: onFarmTap,
             );
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildTarlaSelectorHeader(
+    BuildContext context,
+    String tarlaName, {
+    required bool isSelectable,
+  }) {
+    final theme = Theme.of(context);
+    final row = Row(
+      children: [
+        const Icon(
+          Icons.location_on_outlined,
+          size: 15,
+          color: AppColors.primary,
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            tarlaName,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (isSelectable)
+          const Icon(
+            Icons.arrow_drop_down,
+            size: 18,
+            color: AppColors.primary,
+          ),
+      ],
+    );
+
+    if (isSelectable && onFarmTap != null) {
+      return InkWell(
+        onTap: onFarmTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: row,
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: row,
     );
   }
 }
@@ -680,8 +920,7 @@ class _YaklasanGorevlerSection extends StatelessWidget {
               return AppEmptyView(
                 icon: Icons.event_available,
                 title: 'Planlanmış işin yok.',
-                description:
-                    'Yeni bir iş planlayarak başlayabilirsin.',
+                description: 'Yeni bir iş planlayarak başlayabilirsin.',
                 actionLabel: 'İş Planla',
                 onAction: onFaaliyetPlanla,
               );

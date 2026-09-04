@@ -8,6 +8,10 @@ class WeatherLocationRequiredException implements Exception {
   const WeatherLocationRequiredException();
 }
 
+class WeatherNoFarmsException implements Exception {
+  const WeatherNoFarmsException();
+}
+
 class WeatherUnavailableException implements Exception {
   const WeatherUnavailableException(this.message);
 
@@ -18,15 +22,6 @@ class WeatherUnavailableException implements Exception {
 }
 
 /// Backend `/api/v1/farms/{farmId}/weather` endpoint'ini kullanan implementasyon.
-///
-/// Endpoint: GET /api/v1/farms/{farm_id}/weather
-/// Auth: Bearer token (Firebase ID token)
-/// Response: FarmWeatherResponse
-///   - farm_id, provider, fetched_at, is_stale, stale_reason
-///   - points[]: WeatherPointResponse (observed_at, temperature_c,
-///               precipitation_probability, precipitation_mm, wind_speed_kmh)
-///   - risks[]: WeatherRiskResponse (risk_type, severity, starts_at,
-///              ends_at, message, suggested_action)
 class BackendWeatherRepository implements WeatherRepository {
   const BackendWeatherRepository({
     required ApiClient apiClient,
@@ -68,53 +63,132 @@ class BackendWeatherRepository implements WeatherRepository {
       rethrow;
     }
 
-    int temperature = 0;
-    String? conditionFromCurrent;
+    final current = raw['current'] is Map ? raw['current'] as Map : null;
+    final points = raw['points'] is List ? raw['points'] as List : null;
+    final daily = raw['daily'] is List ? raw['daily'] as List : null;
 
-    final current = raw['current'];
-    if (current is Map<String, dynamic>) {
-      final temp = current['temperature_c'];
-      if (temp is num) {
-        temperature = temp.round();
-      }
-      final cond = current['condition'] as String?;
-      if (cond != null && cond.isNotEmpty) {
-        conditionFromCurrent = cond;
-      }
-    }
+    final Map? firstPoint =
+        (points != null && points.isNotEmpty && points.first is Map)
+            ? points.first as Map
+            : null;
 
-    final points = raw['points'];
-    if ((points is! List || points.isEmpty) && current == null) {
-      throw const ApiException(
-        'Hava durumu noktası bulunamadı.',
-        statusCode: null,
+    final Map? firstDaily =
+        (daily != null && daily.isNotEmpty && daily.first is Map)
+            ? daily.first as Map
+            : null;
+
+    // 1. Current mapping
+    final num? tempFromCurrent =
+        current != null ? _toNum(current['temperature_c']) : null;
+    final double? feelsLike =
+        current != null ? _toDouble(current['feels_like_c']) : null;
+    final double? humidityFromCurrent =
+        current != null ? _toDouble(current['humidity_percent']) : null;
+    final double? windSpeedFromCurrent =
+        current != null ? _toDouble(current['wind_speed_kmh']) : null;
+    final double? windGust =
+        current != null ? _toDouble(current['wind_gusts_kmh']) : null;
+    final String? condFromCurrent = current?['condition']?.toString();
+    final int? codeFromCurrent =
+        current != null ? _toInt(current['weather_code']) : null;
+    final DateTime? observedFromCurrent =
+        current != null ? _toDateTime(current['observed_at']) : null;
+
+    // 2. Daily mapping (daily is an array; safe index 0)
+    final double? minTemperature =
+        firstDaily != null ? _toDouble(firstDaily['min_temperature_c']) : null;
+    final double? maxTemperature =
+        firstDaily != null ? _toDouble(firstDaily['max_temperature_c']) : null;
+    final double? precipProbFromDaily = firstDaily != null
+        ? _toDouble(firstDaily['precipitation_probability'])
+        : null;
+    final double? precipAmountFromDaily =
+        firstDaily != null ? _toDouble(firstDaily['precipitation_mm']) : null;
+    final String? condFromDaily = firstDaily?['condition']?.toString();
+    final int? codeFromDaily =
+        firstDaily != null ? _toInt(firstDaily['weather_code']) : null;
+
+    // 3. Points fallback (only when current/daily data is absent)
+    final num? tempFromPoint =
+        firstPoint != null ? _toNum(firstPoint['temperature_c']) : null;
+    final double? humidityFromPoint =
+        firstPoint != null ? _toDouble(firstPoint['humidity_percent']) : null;
+    final double? windSpeedFromPoint =
+        firstPoint != null ? _toDouble(firstPoint['wind_speed_kmh']) : null;
+    final double? precipProbFromPoint = firstPoint != null
+        ? _toDouble(firstPoint['precipitation_probability'])
+        : null;
+    final double? precipAmountFromPoint =
+        firstPoint != null ? _toDouble(firstPoint['precipitation_mm']) : null;
+    final int? codeFromPoint =
+        firstPoint != null ? _toInt(firstPoint['weather_code']) : null;
+    final DateTime? observedFromPoint =
+        firstPoint != null ? _toDateTime(firstPoint['observed_at']) : null;
+
+    // Resolved values
+    final num? temperature = tempFromCurrent ?? tempFromPoint;
+    final double? humidity = humidityFromCurrent ?? humidityFromPoint;
+    final double? windSpeed = windSpeedFromCurrent ?? windSpeedFromPoint;
+    final double? precipitationProbability =
+        precipProbFromDaily ?? precipProbFromPoint;
+    final double? precipitationAmount =
+        precipAmountFromDaily ?? precipAmountFromPoint;
+    final int? weatherCode = codeFromCurrent ?? codeFromDaily ?? codeFromPoint;
+    final DateTime? observedAt = observedFromCurrent ?? observedFromPoint;
+    final DateTime? fetchedAt = _toDateTime(raw['fetched_at']);
+
+    // Condition resolution
+    final String? condition = (condFromCurrent != null &&
+            condFromCurrent.isNotEmpty)
+        ? condFromCurrent
+        : ((condFromDaily != null && condFromDaily.isNotEmpty)
+            ? condFromDaily
+            : null);
+
+    // Description resolution (independent from is_stale)
+    final String description;
+    if (condition != null && condition.isNotEmpty) {
+      description = condition;
+    } else if (weatherCode != null) {
+      final fromCode = _descriptionFromWeatherCode(weatherCode);
+      description = fromCode.isNotEmpty
+          ? fromCode
+          : _fallbackDescription(
+              temperature: temperature,
+              precipitationProbability: precipitationProbability,
+            );
+    } else {
+      description = _fallbackDescription(
+        temperature: temperature,
+        precipitationProbability: precipitationProbability,
       );
     }
 
-    if (current == null && points is List && points.isNotEmpty) {
-      final first = points.first;
-      if (first is Map<String, dynamic>) {
-        final tempC = first['temperature_c'];
-        temperature = tempC != null ? (tempC as num).round() : 0;
-      }
-    }
+    // Root status
+    final bool isStale = raw['is_stale'] == true;
+    final String? staleReason = raw['stale_reason']?.toString();
+    final List<WeatherRisk> risks = _parseRisks(raw['risks']);
 
-    final precipProb =
-        (points is List && points.isNotEmpty && points.first is Map)
-            ? points.first['precipitation_probability']
-            : null;
+    final result = WeatherSummary(
+      temperature: temperature,
+      description: description,
+      condition: condition,
+      feelsLike: feelsLike,
+      humidity: humidity,
+      windSpeed: windSpeed,
+      windGust: windGust,
+      minTemperature: minTemperature,
+      maxTemperature: maxTemperature,
+      precipitationProbability: precipitationProbability,
+      precipitationAmount: precipitationAmount,
+      risks: risks,
+      isStale: isStale,
+      staleReason: staleReason,
+      weatherCode: weatherCode,
+      observedAt: observedAt,
+      fetchedAt: fetchedAt,
+    );
 
-    final description =
-        conditionFromCurrent ??
-        _descriptionFromWeather(
-          precipitationProbability:
-              precipProb is num ? precipProb.toDouble() : null,
-          temperature: temperature,
-          isStale: raw['is_stale'] as bool? ?? false,
-          staleReason: raw['stale_reason'] as String?,
-        );
-
-    final result = WeatherSummary(temperature: temperature, description: description);
     await _localRepo.cacheWeather(farmId: targetFarmId, weather: result);
     return result;
   }
@@ -137,31 +211,147 @@ class BackendWeatherRepository implements WeatherRepository {
     throw const WeatherLocationRequiredException();
   }
 
-  static String _descriptionFromWeather({
+  static num? _toNum(dynamic value) {
+    if (value is num) return value;
+    if (value is String) return num.tryParse(value);
+    return null;
+  }
+
+  static double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static int? _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static DateTime? _toDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    return DateTime.tryParse(value.toString());
+  }
+
+  static List<WeatherRisk> _parseRisks(dynamic rawRisks) {
+    if (rawRisks is! List) return const [];
+    final risks = <WeatherRisk>[];
+    for (final item in rawRisks) {
+      if (item is! Map) continue;
+      try {
+        final map = Map<String, dynamic>.from(item);
+        risks.add(WeatherRisk(
+          riskType: (map['risk_type'] ?? map['riskType'] ?? '').toString(),
+          severity: (map['severity'] ?? 'LOW').toString(),
+          startsAt: _toDateTime(map['starts_at'] ?? map['startsAt']),
+          endsAt: _toDateTime(map['ends_at'] ?? map['endsAt']),
+          message: (map['message'] ?? map['description'] ?? '').toString(),
+          suggestedAction:
+              (map['suggested_action'] ?? map['suggestedAction'])?.toString(),
+        ));
+      } catch (_) {
+        // Malformed single risk does not crash entire weather response
+      }
+    }
+    return risks;
+  }
+
+  static String _descriptionFromWeatherCode(int? code) {
+    if (code == null) return '';
+    switch (code) {
+      case 0:
+        return 'Açık';
+      case 1:
+        return 'Çoğunlukla Açık';
+      case 2:
+        return 'Parçalı Bulutlu';
+      case 3:
+        return 'Bulutlu';
+      case 45:
+      case 48:
+        return 'Sisli';
+      case 51:
+      case 53:
+      case 55:
+        return 'Çiseleyen Yağmur';
+      case 56:
+      case 57:
+        return 'Dondurucu Çiseleme';
+      case 61:
+        return 'Hafif Yağmurlu';
+      case 63:
+        return 'Yağmurlu';
+      case 65:
+        return 'Şiddetli Yağmurlu';
+      case 66:
+      case 67:
+        return 'Dondurucu Yağmur';
+      case 71:
+        return 'Hafif Karlı';
+      case 73:
+        return 'Karlı';
+      case 75:
+        return 'Yoğun Karlı';
+      case 77:
+        return 'Kar Taneli';
+      case 80:
+        return 'Hafif Sağanak';
+      case 81:
+        return 'Sağanak Yağışlı';
+      case 82:
+        return 'Şiddetli Sağanak';
+      case 85:
+      case 86:
+        return 'Kar Sağanağı';
+      case 95:
+        return 'Gök Gürültülü Fırtına';
+      case 96:
+      case 99:
+        return 'Dolu ile Karışık Fırtına';
+      default:
+        return 'Bulutlu';
+    }
+  }
+
+  static String _fallbackDescription({
+    num? temperature,
     double? precipitationProbability,
-    required int temperature,
-    required bool isStale,
-    String? staleReason,
   }) {
-    if (isStale && staleReason != null) return staleReason;
     if (precipitationProbability != null && precipitationProbability >= 60) {
       return 'Yağmur ihtimali yüksek';
     }
-    if (temperature <= 0) return 'Dondurucu soğuk';
-    if (temperature <= 10) return 'Soğuk hava';
-    if (temperature >= 35) return 'Çok sıcak hava';
-    return 'Hava durumu güncellendi';
+    if (temperature != null) {
+      if (temperature <= 0) return 'Dondurucu soğuk';
+      if (temperature <= 10) return 'Soğuk hava';
+      if (temperature >= 35) return 'Çok sıcak hava';
+    }
+    return '';
   }
 
   Future<WeatherSummary?> _getCachedFallback(String? farmId) async {
     final cached = await _localRepo.getCachedWeather(farmId: farmId);
     if (cached == null) return null;
-    final desc = cached.description.endsWith(' (önbellek)')
-        ? cached.description
-        : '${cached.description} (önbellek)';
     return WeatherSummary(
       temperature: cached.temperature,
-      description: desc,
+      description: cached.description,
+      condition: cached.condition,
+      feelsLike: cached.feelsLike,
+      humidity: cached.humidity,
+      windSpeed: cached.windSpeed,
+      windGust: cached.windGust,
+      minTemperature: cached.minTemperature,
+      maxTemperature: cached.maxTemperature,
+      precipitationProbability: cached.precipitationProbability,
+      precipitationAmount: cached.precipitationAmount,
+      risks: cached.risks,
+      isStale: true,
+      staleReason: cached.staleReason ?? 'Çevrimdışı önbellek verisi',
+      weatherCode: cached.weatherCode,
+      observedAt: cached.observedAt,
+      fetchedAt: cached.fetchedAt,
     );
   }
 }
+

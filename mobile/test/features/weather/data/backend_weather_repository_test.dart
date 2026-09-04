@@ -140,19 +140,21 @@ void main() {
     });
 
     test(
-      'returns stale reason when is_stale=true and stale_reason set',
+      'maps is_stale and stale_reason directly without overwriting description',
       () async {
         final client = makeClient(
           handler: (_) async => http.Response(
             jsonEncode({
               'is_stale': true,
               'stale_reason': 'Hava durumu güncellenemedi.',
-              'points': [
-                {'temperature_c': 20, 'precipitation_probability': 0.0},
-              ],
+              'current': {
+                'temperature_c': 20,
+                'condition': 'Parçalı Bulutlu',
+              },
               'risks': [],
             }),
             200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
           ),
         );
         final repo = BackendWeatherRepository(
@@ -162,12 +164,14 @@ void main() {
 
         final summary = await repo.getWeather();
 
-        expect(summary.description, 'Hava durumu güncellenemedi.');
+        expect(summary.isStale, isTrue);
+        expect(summary.staleReason, 'Hava durumu güncellenemedi.');
+        expect(summary.description, 'Parçalı Bulutlu');
         client.close();
       },
     );
 
-    test('throws ApiException when points list is empty', () async {
+    test('returns WeatherSummary with null temperature when points list and current are empty', () async {
       final client = makeClient(
         handler: (_) async => http.Response(
           jsonEncode({'is_stale': false, 'points': [], 'risks': []}),
@@ -179,7 +183,8 @@ void main() {
         farmId: 'farm-4',
       );
 
-      await expectLater(repo.getWeather(), throwsA(isA<ApiException>()));
+      final summary = await repo.getWeather();
+      expect(summary.temperature, isNull);
       client.close();
     });
 
@@ -248,7 +253,7 @@ void main() {
       client.close();
     });
 
-    test('returns cached weather with (önbellek) in description when API returns 503 and cache exists', () async {
+    test('returns cached weather with clean description, isStale=true, and staleReason when API returns 503 and cache exists', () async {
       final client = makeClient(
         handler: (_) async => http.Response(
           '{"detail":"Hava durumu şu anda alınamıyor."}',
@@ -271,11 +276,13 @@ void main() {
       final summary = await repo.getWeather();
 
       expect(summary.temperature, 19);
-      expect(summary.description, 'Güneşli ve Açık (önbellek)');
+      expect(summary.description, 'Güneşli ve Açık');
+      expect(summary.isStale, isTrue);
+      expect(summary.staleReason, isNotNull);
       client.close();
     });
 
-    test('returns cached weather with (önbellek) in description when API throws network/timeout error and cache exists', () async {
+    test('returns cached weather with clean description, isStale=true, and staleReason when API throws network/timeout error and cache exists', () async {
       final failClient = ApiClient(
         httpClient: MockClient(
           (_) async => throw http.ClientException('Sunucuya ulaşılamadı'),
@@ -297,7 +304,9 @@ void main() {
       final summary = await repo.getWeather();
 
       expect(summary.temperature, 24);
-      expect(summary.description, 'Parçalı Bulutlu (önbellek)');
+      expect(summary.description, 'Parçalı Bulutlu');
+      expect(summary.isStale, isTrue);
+      expect(summary.staleReason, isNotNull);
       failClient.close();
     });
 
@@ -394,7 +403,7 @@ void main() {
           capturedWeatherUri.path,
           contains('farms/farm-dynamic-123/weather'),
         );
-        expect(summary.temperature, 25);
+        expect(summary.temperature, 25.4);
         expect(summary.description, 'Parçalı Bulutlu');
         client.close();
       },
@@ -426,10 +435,392 @@ void main() {
 
         final summary = await repo.getWeather();
 
-        expect(summary.temperature, 22);
+        expect(summary.temperature, 21.6);
         expect(summary.description, 'Güneşli ve Açık');
         client.close();
       },
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // 11 Specific Mapping Scenarios
+  // ---------------------------------------------------------------------------
+  group('BackendWeatherRepository – 11 domain mapping scenarios', () {
+    test('1. Full response preserves decimals and all fields without loss', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'farm_id': 'farm-full',
+            'provider': 'open_meteo',
+            'fetched_at': '2026-09-04T12:00:00Z',
+            'is_stale': false,
+            'stale_reason': null,
+            'current': {
+              'observed_at': '2026-09-04T12:00:00Z',
+              'temperature_c': 23.6,
+              'feels_like_c': 22.8,
+              'humidity_percent': 45.0,
+              'wind_speed_kmh': 12.4,
+              'wind_gusts_kmh': 18.2,
+              'condition': 'Açık',
+              'weather_code': 0,
+            },
+            'daily': [
+              {
+                'date': '2026-09-04',
+                'min_temperature_c': 14.2,
+                'max_temperature_c': 26.1,
+                'precipitation_probability': 10.0,
+                'precipitation_mm': 0.0,
+                'condition': 'Açık',
+                'weather_code': 0,
+              }
+            ],
+            'points': [
+              {
+                'observed_at': '2026-09-04T12:00:00Z',
+                'temperature_c': 23.6,
+                'precipitation_probability': 10.0,
+                'precipitation_mm': 0.0,
+                'wind_speed_kmh': 12.4,
+                'humidity_percent': 45.0,
+                'weather_code': 0,
+              }
+            ],
+            'risks': [
+              {
+                'risk_type': 'HEAT_STRESS',
+                'severity': 'LOW',
+                'starts_at': '2026-09-04T13:00:00Z',
+                'ends_at': '2026-09-04T16:00:00Z',
+                'description': 'Düşük sıcaklık stresi',
+                'suggested_action': 'Sulama planını kontrol edin',
+              }
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-full');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 23.6);
+      expect(summary.feelsLike, 22.8);
+      expect(summary.humidity, 45.0);
+      expect(summary.windSpeed, 12.4);
+      expect(summary.windGust, 18.2);
+      expect(summary.description, 'Açık');
+      expect(summary.condition, 'Açık');
+      expect(summary.weatherCode, 0);
+      expect(summary.minTemperature, 14.2);
+      expect(summary.maxTemperature, 26.1);
+      expect(summary.precipitationProbability, 10.0);
+      expect(summary.precipitationAmount, 0.0);
+      expect(summary.isStale, isFalse);
+      expect(summary.staleReason, isNull);
+      expect(summary.fetchedAt, DateTime.parse('2026-09-04T12:00:00Z'));
+      expect(summary.observedAt, DateTime.parse('2026-09-04T12:00:00Z'));
+      expect(summary.risks.length, 1);
+      expect(summary.risks.first.riskType, 'HEAT_STRESS');
+      expect(summary.risks.first.severity, 'LOW');
+      expect(summary.risks.first.message, 'Düşük sıcaklık stresi');
+      expect(summary.risks.first.suggestedAction, 'Sulama planını kontrol edin');
+      client.close();
+    });
+
+    test('2. Real 0°C is preserved and not confused with null', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {
+              'temperature_c': 0.0,
+              'condition': 'Açık',
+            },
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-zero');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, isNotNull);
+      expect(summary.temperature, 0.0);
+      client.close();
+    });
+
+    test('3. Current is null: falls back safely to points.first', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': null,
+            'points': [
+              {
+                'temperature_c': 18.5,
+                'humidity_percent': 60.0,
+                'wind_speed_kmh': 8.0,
+                'observed_at': '2026-09-04T10:00:00Z',
+                'weather_code': 2,
+              }
+            ],
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-fallback');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 18.5);
+      expect(summary.humidity, 60.0);
+      expect(summary.windSpeed, 8.0);
+      expect(summary.weatherCode, 2);
+      expect(summary.description, 'Parçalı Bulutlu');
+      expect(summary.observedAt, DateTime.parse('2026-09-04T10:00:00Z'));
+      client.close();
+    });
+
+    test('4. Both current and points absent: no crash, returns WeatherSummary with null temperature', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': null,
+            'points': [],
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-empty');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, isNull);
+      expect(summary.humidity, isNull);
+      expect(summary.windSpeed, isNull);
+      expect(summary.description, '');
+      client.close();
+    });
+
+    test('5. Daily is null: no crash, min/max and rain probability are null', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {
+              'temperature_c': 20.0,
+              'condition': 'Açık',
+            },
+            'daily': null,
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-daily-null');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 20.0);
+      expect(summary.minTemperature, isNull);
+      expect(summary.maxTemperature, isNull);
+      expect(summary.precipitationProbability, isNull);
+      expect(summary.precipitationAmount, isNull);
+      client.close();
+    });
+
+    test('6. Daily is empty list: no crash, min/max are null', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {
+              'temperature_c': 22.0,
+              'condition': 'Açık',
+            },
+            'daily': [],
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-daily-empty');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 22.0);
+      expect(summary.minTemperature, isNull);
+      expect(summary.maxTemperature, isNull);
+      client.close();
+    });
+
+    test('7. Risks is empty list: summary.risks is empty', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {'temperature_c': 21.0},
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-risks-empty');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.risks, isEmpty);
+      client.close();
+    });
+
+    test('8. Risks is populated: List<WeatherRisk> parsed correctly', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {'temperature_c': 5.0},
+            'risks': [
+              {
+                'risk_type': 'FROST',
+                'severity': 'CRITICAL',
+                'starts_at': '2026-09-05T03:00:00Z',
+                'ends_at': '2026-09-05T07:00:00Z',
+                'description': 'Zirai don riski',
+                'suggested_action': 'Örtü altı sistemleri devreye alın',
+              }
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-risks-full');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.risks.length, 1);
+      final risk = summary.risks.first;
+      expect(risk.riskType, 'FROST');
+      expect(risk.severity, 'CRITICAL');
+      expect(risk.message, 'Zirai don riski');
+      expect(risk.suggestedAction, 'Örtü altı sistemleri devreye alın');
+      expect(risk.startsAt, DateTime.parse('2026-09-05T03:00:00Z'));
+      expect(risk.endsAt, DateTime.parse('2026-09-05T07:00:00Z'));
+      client.close();
+    });
+
+    test('9. Stale data preserves weather condition and sets isStale and staleReason', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'is_stale': true,
+            'stale_reason': 'Cache used',
+            'current': {
+              'temperature_c': 20.0,
+              'condition': 'Parçalı Bulutlu',
+            },
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-stale');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.description, 'Parçalı Bulutlu');
+      expect(summary.condition, 'Parçalı Bulutlu');
+      expect(summary.isStale, isTrue);
+      expect(summary.staleReason, 'Cache used');
+      client.close();
+    });
+
+    test('10. Numeric JSON variations: int, float, decimal safely parsed without precision loss', () async {
+      final clientInt = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {'temperature_c': 23},
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repoInt = BackendWeatherRepository(apiClient: clientInt, farmId: 'farm-num-int');
+      final summaryInt = await repoInt.getWeather();
+      expect(summaryInt.temperature, 23);
+      clientInt.close();
+
+      final clientFloat = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {'temperature_c': 23.0},
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repoFloat = BackendWeatherRepository(apiClient: clientFloat, farmId: 'farm-num-float');
+      final summaryFloat = await repoFloat.getWeather();
+      expect(summaryFloat.temperature, 23.0);
+      clientFloat.close();
+
+      final clientDecimal = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'current': {'temperature_c': 23.6},
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repoDecimal = BackendWeatherRepository(apiClient: clientDecimal, farmId: 'farm-num-dec');
+      final summaryDecimal = await repoDecimal.getWeather();
+      expect(summaryDecimal.temperature, 23.6);
+      clientDecimal.close();
+    });
+
+    test('11. Malformed optional DateTime does not crash and leaves fields null', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'fetched_at': 'corrupt-time',
+            'current': {
+              'temperature_c': 19.0,
+              'observed_at': 'not-a-date',
+            },
+            'risks': [
+              {
+                'risk_type': 'WIND',
+                'severity': 'MEDIUM',
+                'starts_at': 'invalid-date',
+                'ends_at': null,
+              }
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-malformed-dates');
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 19.0);
+      expect(summary.fetchedAt, isNull);
+      expect(summary.observedAt, isNull);
+      expect(summary.risks.first.startsAt, isNull);
+      expect(summary.risks.first.endsAt, isNull);
+      client.close();
+    });
   });
 }
