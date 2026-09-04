@@ -72,10 +72,12 @@ public static class DependencyInjection
         services.AddHttpClient<OpenMeteoWeatherProvider>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("TarlaAsistani/1.0 (+https://tarla-asistani-api.onrender.com)");
         });
         services.AddHttpClient<WeatherApiWeatherProvider>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("TarlaAsistani/1.0 (+https://tarla-asistani-api.onrender.com)");
         });
         services.AddScoped<IWeatherProvider>(sp =>
         {
