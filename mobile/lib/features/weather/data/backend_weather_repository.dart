@@ -1,6 +1,7 @@
 // ignore_for_file: prefer_initializing_formals
 import '../../../services/api_client.dart';
 import '../domain/weather_summary.dart';
+import 'local_weather_repository.dart';
 import 'weather_repository.dart';
 
 class WeatherLocationRequiredException implements Exception {
@@ -27,25 +28,58 @@ class WeatherUnavailableException implements Exception {
 ///   - risks[]: WeatherRiskResponse (risk_type, severity, starts_at,
 ///              ends_at, message, suggested_action)
 class BackendWeatherRepository implements WeatherRepository {
-  const BackendWeatherRepository({required ApiClient apiClient, String? farmId})
-    : _client = apiClient,
-      _farmId = farmId;
+  const BackendWeatherRepository({
+    required ApiClient apiClient,
+    String? farmId,
+    LocalWeatherRepository localRepo = const LocalWeatherRepository(),
+  })  : _client = apiClient,
+        _farmId = farmId,
+        _localRepo = localRepo;
 
   final ApiClient _client;
   final String? _farmId;
+  final LocalWeatherRepository _localRepo;
 
   @override
   Future<WeatherSummary> getWeather({String? farmId}) async {
+    String? targetFarmId = farmId ?? _farmId;
     final Map<String, dynamic> raw;
     try {
-      final targetFarmId = farmId ?? _farmId ?? await _findFirstFarmId();
+      targetFarmId ??= await _findFirstFarmId();
       raw = await _client.getJson('farms/$targetFarmId/weather');
     } on ApiException catch (error) {
       if (error.statusCode == 422) {
         throw const WeatherLocationRequiredException();
       }
+      if (error.statusCode == 503 || error.retryable) {
+        final cached = await _localRepo.getCachedWeather(farmId: targetFarmId);
+        if (cached != null) {
+          final desc = cached.description.endsWith(' (önbellek)')
+              ? cached.description
+              : '${cached.description} (önbellek)';
+          return WeatherSummary(
+            temperature: cached.temperature,
+            description: desc,
+          );
+        }
+      }
       if (error.statusCode == 503) {
         throw WeatherUnavailableException(error.message);
+      }
+      rethrow;
+    } catch (e) {
+      if (e is WeatherLocationRequiredException) {
+        rethrow;
+      }
+      final cached = await _localRepo.getCachedWeather(farmId: targetFarmId);
+      if (cached != null) {
+        final desc = cached.description.endsWith(' (önbellek)')
+            ? cached.description
+            : '${cached.description} (önbellek)';
+        return WeatherSummary(
+          temperature: cached.temperature,
+          description: desc,
+        );
       }
       rethrow;
     }
@@ -96,7 +130,9 @@ class BackendWeatherRepository implements WeatherRepository {
           staleReason: raw['stale_reason'] as String?,
         );
 
-    return WeatherSummary(temperature: temperature, description: description);
+    final result = WeatherSummary(temperature: temperature, description: description);
+    await _localRepo.cacheWeather(farmId: targetFarmId, weather: result);
+    return result;
   }
 
   Future<String> _findFirstFarmId() async {

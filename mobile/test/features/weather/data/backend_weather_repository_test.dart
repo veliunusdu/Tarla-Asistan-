@@ -4,7 +4,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mobile/features/weather/data/backend_weather_repository.dart';
+import 'package:mobile/features/weather/data/local_weather_repository.dart';
+import 'package:mobile/features/weather/domain/weather_summary.dart';
 import 'package:mobile/services/api_client.dart';
+
+class FakeLocalWeatherRepository extends LocalWeatherRepository {
+  FakeLocalWeatherRepository({this.cachedWeather});
+
+  WeatherSummary? cachedWeather;
+  WeatherSummary? savedWeather;
+  String? savedFarmId;
+
+  @override
+  Future<WeatherSummary?> getCachedWeather({String? farmId}) async {
+    return cachedWeather;
+  }
+
+  @override
+  Future<void> cacheWeather({
+    String? farmId,
+    required WeatherSummary weather,
+  }) async {
+    savedFarmId = farmId;
+    savedWeather = weather;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -192,6 +216,7 @@ void main() {
         handler: (_) async => http.Response(
           '{"detail":"Hava durumu için tarlanın konumu tanımlanmalıdır."}',
           422,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         ),
       );
       final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-no-location');
@@ -208,6 +233,7 @@ void main() {
         handler: (_) async => http.Response(
           '{"detail":"Hava durumu şu anda alınamıyor."}',
           503,
+          headers: {'content-type': 'application/json; charset=utf-8'},
         ),
       );
       final repo = BackendWeatherRepository(apiClient: client, farmId: 'farm-provider-down');
@@ -216,6 +242,114 @@ void main() {
         repo.getWeather(),
         throwsA(isA<WeatherUnavailableException>()),
       );
+      client.close();
+    });
+
+    test('returns cached weather with (önbellek) in description when API returns 503 and cache exists', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          '{"detail":"Hava durumu şu anda alınamıyor."}',
+          503,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final fakeLocal = FakeLocalWeatherRepository(
+        cachedWeather: const WeatherSummary(
+          temperature: 19,
+          description: 'Güneşli ve Açık',
+        ),
+      );
+      final repo = BackendWeatherRepository(
+        apiClient: client,
+        farmId: 'farm-cached-503',
+        localRepo: fakeLocal,
+      );
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 19);
+      expect(summary.description, 'Güneşli ve Açık (önbellek)');
+      client.close();
+    });
+
+    test('returns cached weather with (önbellek) in description when API throws network/timeout error and cache exists', () async {
+      final failClient = ApiClient(
+        httpClient: MockClient(
+          (_) async => throw http.ClientException('Sunucuya ulaşılamadı'),
+        ),
+        idTokenProvider: () async => 'tok',
+      );
+      final fakeLocal = FakeLocalWeatherRepository(
+        cachedWeather: const WeatherSummary(
+          temperature: 24,
+          description: 'Parçalı Bulutlu',
+        ),
+      );
+      final repo = BackendWeatherRepository(
+        apiClient: failClient,
+        farmId: 'farm-cached-network',
+        localRepo: fakeLocal,
+      );
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 24);
+      expect(summary.description, 'Parçalı Bulutlu (önbellek)');
+      failClient.close();
+    });
+
+    test('rethrows WeatherUnavailableException when API returns 503 and cache is empty', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          '{"detail":"Hava durumu şu anda alınamıyor."}',
+          503,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final fakeLocal = FakeLocalWeatherRepository(cachedWeather: null);
+      final repo = BackendWeatherRepository(
+        apiClient: client,
+        farmId: 'farm-no-cache',
+        localRepo: fakeLocal,
+      );
+
+      await expectLater(
+        repo.getWeather(),
+        throwsA(isA<WeatherUnavailableException>()),
+      );
+      client.close();
+    });
+
+    test('caches weather summary to localRepo on successful fetch', () async {
+      final client = makeClient(
+        handler: (_) async => http.Response(
+          jsonEncode({
+            'farm_id': 'farm-cache-success',
+            'current': {
+              'temperature_c': 28.0,
+              'condition': 'Açık',
+            },
+            'points': [],
+            'risks': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      );
+      final fakeLocal = FakeLocalWeatherRepository();
+      final repo = BackendWeatherRepository(
+        apiClient: client,
+        farmId: 'farm-cache-success',
+        localRepo: fakeLocal,
+      );
+
+      final summary = await repo.getWeather();
+
+      expect(summary.temperature, 28);
+      expect(summary.description, 'Açık');
+      expect(fakeLocal.savedFarmId, 'farm-cache-success');
+      expect(fakeLocal.savedWeather?.temperature, 28);
+      expect(fakeLocal.savedWeather?.description, 'Açık');
       client.close();
     });
 
