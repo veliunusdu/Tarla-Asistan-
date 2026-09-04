@@ -67,16 +67,18 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
 
         // 3. Fetch weather forecast
         WeatherForecastData? weather = null;
+        var weatherFailed = false;
         try
         {
             weather = await _weatherProvider.GetWeatherAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
         }
         catch (Exception ex)
         {
+            weatherFailed = true;
             _logger.LogWarning(ex, "Failed to fetch weather forecast for farm {FarmId}", farm.Id);
         }
 
-        if (weather == null)
+        if (weather == null && !weatherFailed)
         {
             try
             {

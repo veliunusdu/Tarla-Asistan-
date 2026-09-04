@@ -81,6 +81,8 @@ public class ProactiveAdvisoryBackgroundService : BackgroundService
                 errorCount++;
                 _logger.LogWarning(ex, "Failed to evaluate proactive advisories for farm {FarmName} ({FarmId}).", farm.Name, farm.Id);
             }
+
+            await Task.Delay(300, ct);
         }
 
         sw.Stop();

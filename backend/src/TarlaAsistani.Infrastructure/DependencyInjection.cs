@@ -79,15 +79,25 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("TarlaAsistani/1.0 (+https://tarla-asistani-api.onrender.com)");
         });
+        services.AddHttpClient<WttrInWeatherProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("TarlaAsistani/1.0 (+https://tarla-asistani-api.onrender.com)");
+        });
         services.AddScoped<IWeatherProvider>(sp =>
         {
             var openMeteo = sp.GetRequiredService<OpenMeteoWeatherProvider>();
             var weatherApi = sp.GetRequiredService<WeatherApiWeatherProvider>();
+            var wttrIn = sp.GetRequiredService<WttrInWeatherProvider>();
             var logger = sp.GetRequiredService<ILogger<FallbackWeatherProvider>>();
 
-            var providers = weatherApi.IsConfigured
-                ? new IWeatherProvider[] { weatherApi, openMeteo }
-                : new IWeatherProvider[] { openMeteo };
+            var providers = new List<IWeatherProvider>();
+            if (weatherApi.IsConfigured)
+            {
+                providers.Add(weatherApi);
+            }
+            providers.Add(wttrIn);
+            providers.Add(openMeteo);
 
             return new FallbackWeatherProvider(providers, logger);
         });
