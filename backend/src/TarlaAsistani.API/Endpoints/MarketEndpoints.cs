@@ -17,7 +17,7 @@ public static class MarketEndpoints
                        .WithTags("Market");
 
         // GET /api/v1/market?category={category}
-        group.MapGet("", async (
+        group.MapGet("/", async (
             [FromQuery] string? category,
             IMediator mediator,
             CancellationToken ct) =>
