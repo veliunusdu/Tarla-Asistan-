@@ -56,6 +56,11 @@
 	<string>Tarla fotoğrafı seçmek için fotoğraf kütüphanesi erişimi gerekiyor.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Çekilen fotoğrafı kaydetmek için fotoğraf kütüphanesi yazma erişimi gerekiyor.</string>
+	<!-- Sesli asistan ve konuşma tanıma erişimi (speech_to_text) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Tarla Asistanı sesli sorularınızı algılamak için mikrofon erişimine ihtiyaç duyar.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Tarla Asistanı konuşmanızı metne dönüştürmek için konuşma tanıma iznine ihtiyaç duyar.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

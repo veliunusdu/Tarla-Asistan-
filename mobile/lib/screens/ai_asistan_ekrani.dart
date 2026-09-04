@@ -8,6 +8,9 @@ import '../app/theme/app_spacing.dart';
 import '../features/ai_assistant/data/ai_assistant_repository.dart';
 import '../features/ai_assistant/data/image_picker_service.dart';
 import '../features/ai_assistant/data/unavailable_ai_assistant_repository.dart';
+import '../features/ai_assistant/data/voice_input_service.dart';
+import '../features/ai_assistant/data/voice_output_service.dart';
+import '../features/ai_assistant/data/voice_assistant_preferences.dart';
 import '../features/ai_assistant/domain/ai_chat_message.dart';
 import '../services/api_client.dart';
 
@@ -30,13 +33,22 @@ class AiAsistanEkrani extends StatefulWidget {
     super.key,
     AiAssistantRepository? repository,
     ImagePickerService? imagePickerService,
+    VoiceInputService? voiceInputService,
+    VoiceOutputService? voiceOutputService,
+    VoiceAssistantPreferences? preferences,
     this.fieldId,
-  })  : _repo = repository ?? const UnavailableAiAssistantRepository(),
-        _imagePickerService =
-            imagePickerService ?? const DefaultImagePickerService();
+  }) : _repo = repository ?? const UnavailableAiAssistantRepository(),
+       _imagePickerService =
+           imagePickerService ?? const DefaultImagePickerService(),
+       _injectedVoiceService = voiceInputService,
+       _injectedVoiceOutputService = voiceOutputService,
+       _injectedPreferences = preferences;
 
   final AiAssistantRepository _repo;
   final ImagePickerService _imagePickerService;
+  final VoiceInputService? _injectedVoiceService;
+  final VoiceOutputService? _injectedVoiceOutputService;
+  final VoiceAssistantPreferences? _injectedPreferences;
   final String? fieldId;
 
   @override
@@ -47,14 +59,83 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   final List<AiChatMessage> _mesajlar = [];
   final _ctrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  late final VoiceInputService _voiceService;
+  late final bool _ownsVoiceService;
+  late final VoiceOutputService _voiceOutputService;
+  late final bool _ownsVoiceOutputService;
+  late final VoiceAssistantPreferences _preferences;
+
   PickedImageData? _secilenFoto;
   String? _conversationId;
   bool _gonderiyor = false;
+  bool _isListening = false;
+  bool _isDisposed = false;
+  String _voiceBaseText = '';
+  int? _speakingMessageIndex;
+  bool _voiceOutputInitialized = false;
+  int _ttsSession = 0;
+  bool _voiceResponsesEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget._injectedVoiceService != null) {
+      _voiceService = widget._injectedVoiceService!;
+      _ownsVoiceService = false;
+    } else {
+      _voiceService = DefaultVoiceInputService();
+      _ownsVoiceService = true;
+    }
+
+    if (widget._injectedVoiceOutputService != null) {
+      _voiceOutputService = widget._injectedVoiceOutputService!;
+      _ownsVoiceOutputService = false;
+    } else {
+      _voiceOutputService = DefaultVoiceOutputService();
+      _ownsVoiceOutputService = true;
+    }
+
+    _preferences =
+        widget._injectedPreferences ??
+        const SharedPreferencesVoiceAssistantPreferences();
+    _loadVoicePreferences();
+
+    _voiceOutputService.onSpeakingChanged = (speaking) {
+      if (_isDisposed || !mounted) return;
+      if (!speaking) {
+        setState(() => _speakingMessageIndex = null);
+      }
+    };
+
+    _voiceOutputService.onError = (error) {
+      if (_isDisposed || !mounted) return;
+      setState(() => _speakingMessageIndex = null);
+      _hataGosterTts(error);
+    };
+  }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _ctrl.dispose();
     _scrollCtrl.dispose();
+    if (_isListening) {
+      _isListening = false;
+      try {
+        _voiceService.stopListening();
+      } catch (_) {}
+    }
+    if (_speakingMessageIndex != null || _voiceOutputService.isSpeaking) {
+      try {
+        _voiceOutputService.stop();
+      } catch (_) {}
+    }
+    if (_ownsVoiceService) {
+      _voiceService.dispose();
+    }
+    if (_ownsVoiceOutputService) {
+      _voiceOutputService.dispose();
+    }
     super.dispose();
   }
 
@@ -101,13 +182,17 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
   // ---------------------------------------------------------------------------
 
   Future<void> _gonder() async {
+    if (_isListening) {
+      await _durdurSesliGiris();
+    }
+    if (_speakingMessageIndex != null || _voiceOutputService.isSpeaking) {
+      await _durdurSesliCikti();
+    }
     final metin = _ctrl.text.trim();
     if (metin.isEmpty) {
       if (_secilenFoto != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Lütfen fotoğrafla ilgili bir soru veya açıklama yazın.'),
-          ),
+        _hataMesajiGoster(
+          'Lütfen fotoğrafla ilgili bir soru veya açıklama yazın.',
         );
       }
       return;
@@ -132,6 +217,8 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
     });
 
     _scrollToBottom();
+
+    var streamSuccess = false;
 
     try {
       final stream = widget._repo.streamMessage(
@@ -175,6 +262,7 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
         });
         _scrollToBottom();
       }
+      streamSuccess = hasAssistantMessage && assistantText.trim().isNotEmpty;
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -187,20 +275,263 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
       final errorMsg = e is ApiException
           ? e.message
           : 'AI Asistan bağlantısında bir hata oluştu.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMsg)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMsg)));
     } finally {
       if (mounted) setState(() => _gonderiyor = false);
     }
+
+    // Sesli yanıtlar tercihi açıksa tamamlanmış yeni yanıtı otomatik seslendir
+    if (mounted &&
+        !_isDisposed &&
+        streamSuccess &&
+        _voiceResponsesEnabled &&
+        !_isListening &&
+        !_voiceService.isListening &&
+        _mesajlar.isNotEmpty &&
+        !_mesajlar.last.isUser) {
+      await _dinleTetikle(_mesajlar.length - 1);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sesli giriş (Voice Input / Push-to-Talk)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _sesliGirisTetikle() async {
+    if (_gonderiyor) return;
+
+    if (_isListening) {
+      await _durdurSesliGiris();
+      return;
+    }
+
+    if (_speakingMessageIndex != null || _voiceOutputService.isSpeaking) {
+      await _durdurSesliCikti();
+    }
+
+    _voiceBaseText = _ctrl.text;
+
+    try {
+      await _voiceService.startListening(
+        onResult: (result) {
+          if (_isDisposed || !mounted) return;
+          final recognized = result.recognizedWords.trim();
+          setState(() {
+            if (recognized.isEmpty) {
+              _ctrl.text = _voiceBaseText;
+            } else {
+              final separator =
+                  (_voiceBaseText.isNotEmpty && !_voiceBaseText.endsWith(' '))
+                  ? ' '
+                  : '';
+              _ctrl.text = '$_voiceBaseText$separator$recognized';
+            }
+            _ctrl.selection = TextSelection.fromPosition(
+              TextPosition(offset: _ctrl.text.length),
+            );
+          });
+        },
+        onError: (error) {
+          if (_isDisposed || !mounted) return;
+          setState(() => _isListening = false);
+          _hataGoster(error);
+        },
+        onListeningChanged: (listening) {
+          if (_isDisposed || !mounted) return;
+          setState(() => _isListening = listening);
+        },
+      );
+      if (!_isDisposed && mounted) {
+        setState(() => _isListening = true);
+      }
+    } catch (_) {
+      if (!_isDisposed && mounted) {
+        setState(() => _isListening = false);
+        _hataMesajiGoster('Dinleme başlatılamadı. Lütfen tekrar deneyin.');
+      }
+    }
+  }
+
+  Future<void> _durdurSesliGiris() async {
+    try {
+      await _voiceService.stopListening();
+    } catch (_) {}
+    if (!_isDisposed && mounted) {
+      setState(() => _isListening = false);
+    }
+  }
+
+  void _hataGoster(VoiceInputException error) {
+    final String mesaj;
+    switch (error.type) {
+      case VoiceInputErrorType.permissionDenied:
+        mesaj =
+            'Mikrofon izni verilmedi. Sesli giriş için mikrofon erişimine izin verin.';
+        break;
+      case VoiceInputErrorType.unavailable:
+        mesaj = 'Bu cihazda konuşma tanıma kullanılamıyor.';
+        break;
+      case VoiceInputErrorType.initializeFailed:
+        mesaj = 'Sesli giriş başlatılamadı.';
+        break;
+      case VoiceInputErrorType.startListeningFailed:
+        mesaj = 'Dinleme başlatılamadı. Lütfen tekrar deneyin.';
+        break;
+      case VoiceInputErrorType.runtimeError:
+      case VoiceInputErrorType.notListening:
+        mesaj = 'Ses tanıma sırasında bir sorun oluştu.';
+        break;
+    }
+    _hataMesajiGoster(mesaj);
+  }
+
+  void _hataMesajiGoster(String mesaj) {
+    if (_isDisposed || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mesaj)));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sesli yanıt (Voice Output / Text-to-Speech)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _dinleTetikle(int index) async {
+    if (_isListening || _voiceService.isListening) return;
+    if (index < 0 || index >= _mesajlar.length) return;
+    final mesaj = _mesajlar[index];
+    if (mesaj.isUser || mesaj.text.trim().isEmpty) return;
+
+    // Aynı mesaj zaten okunuyorsa durdur
+    if (_speakingMessageIndex == index) {
+      await _durdurSesliCikti();
+      return;
+    }
+
+    // Başka bir mesaj okunuyorsa önce durdur
+    if (_speakingMessageIndex != null || _voiceOutputService.isSpeaking) {
+      await _durdurSesliCikti();
+    }
+
+    // Lazy initialize
+    if (!_voiceOutputInitialized) {
+      final ok = await _voiceOutputService.initialize();
+      if (_isDisposed || !mounted) return;
+      if (!ok) {
+        _hataMesajiGoster('Sesli yanıt sistemi başlatılamadı.');
+        return;
+      }
+      _voiceOutputInitialized = true;
+    }
+
+    final currentSession = ++_ttsSession;
+    setState(() => _speakingMessageIndex = index);
+
+    try {
+      await _voiceOutputService.speak(
+        mesaj.text,
+        onSpeakingChanged: (speaking) {
+          if (_isDisposed || !mounted) return;
+          if (_ttsSession != currentSession) return;
+          if (!speaking) {
+            setState(() => _speakingMessageIndex = null);
+          }
+        },
+        onError: (error) {
+          if (_isDisposed || !mounted) return;
+          if (_ttsSession != currentSession) return;
+          setState(() => _speakingMessageIndex = null);
+          _hataGosterTts(error);
+        },
+      );
+    } catch (_) {
+      if (_isDisposed || !mounted) return;
+      if (_ttsSession == currentSession) {
+        setState(() => _speakingMessageIndex = null);
+        _hataMesajiGoster('Yanıt seslendirilemedi. Lütfen tekrar deneyin.');
+      }
+    }
+  }
+
+  Future<void> _durdurSesliCikti() async {
+    try {
+      await _voiceOutputService.stop();
+    } catch (_) {}
+    if (!_isDisposed && mounted) {
+      setState(() => _speakingMessageIndex = null);
+    }
+  }
+
+  void _hataGosterTts(VoiceOutputException error) {
+    final String mesaj;
+    switch (error.type) {
+      case VoiceOutputErrorType.unavailable:
+        mesaj = 'Bu cihazda sesli yanıt kullanılamıyor.';
+        break;
+      case VoiceOutputErrorType.initializeFailed:
+        mesaj = 'Sesli yanıt sistemi başlatılamadı.';
+        break;
+      case VoiceOutputErrorType.speakFailed:
+        mesaj = 'Yanıt seslendirilemedi. Lütfen tekrar deneyin.';
+        break;
+      case VoiceOutputErrorType.stopFailed:
+        mesaj = 'Seslendirme durdurulurken bir sorun oluştu.';
+        break;
+      case VoiceOutputErrorType.runtimeError:
+        mesaj = 'Sesli yanıt sırasında bir sorun oluştu.';
+        break;
+    }
+    _hataMesajiGoster(mesaj);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sesli yanıt tercihleri (Voice Responses Preferences)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _loadVoicePreferences() async {
+    try {
+      final enabled = await _preferences.getVoiceResponsesEnabled();
+      if (_isDisposed || !mounted) return;
+      setState(() => _voiceResponsesEnabled = enabled);
+    } catch (_) {
+      // Hata durumunda varsayılan false kalır
+    }
+  }
+
+  Future<void> _setVoiceResponsesEnabled(bool enabled) async {
+    if (_voiceResponsesEnabled == enabled) return;
+    setState(() => _voiceResponsesEnabled = enabled);
+
+    // Kapatılıyorsa ve aktif TTS varsa hemen durdur
+    if (!enabled &&
+        (_speakingMessageIndex != null || _voiceOutputService.isSpeaking)) {
+      await _durdurSesliCikti();
+    }
+
+    try {
+      await _preferences.setVoiceResponsesEnabled(enabled);
+    } catch (_) {}
+  }
+
+  void _toggleVoiceResponses() {
+    _setVoiceResponsesEnabled(!_voiceResponsesEnabled);
   }
 
   void _yeniSohbet() {
+    if (_isListening) {
+      _durdurSesliGiris();
+    }
+    if (_speakingMessageIndex != null || _voiceOutputService.isSpeaking) {
+      _durdurSesliCikti();
+    }
     setState(() {
       _mesajlar.clear();
       _conversationId = null;
       _secilenFoto = null;
       _ctrl.clear();
+      _isListening = false;
+      _voiceBaseText = '';
+      _speakingMessageIndex = null;
     });
   }
 
@@ -236,6 +567,40 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
               tooltip: 'Yeni Sohbet',
               onPressed: _gonderiyor ? null : _yeniSohbet,
             ),
+          PopupMenuButton<void>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Seçenekler',
+            itemBuilder: (context) => [
+              PopupMenuItem<void>(
+                onTap: _toggleVoiceResponses,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Sesli yanıtlar',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Semantics(
+                      label: _voiceResponsesEnabled
+                          ? 'Sesli yanıtları kapat'
+                          : 'Sesli yanıtları aç',
+                      child: IgnorePointer(
+                        child: Switch(
+                          value: _voiceResponsesEnabled,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          onChanged: (_) {},
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Column(
@@ -247,6 +612,9 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
                     mesajlar: _mesajlar,
                     gonderiyor: _gonderiyor,
                     scrollCtrl: _scrollCtrl,
+                    speakingMessageIndex: _speakingMessageIndex,
+                    canListen: !_isListening,
+                    onDinle: _dinleTetikle,
                   ),
           ),
           _GirisBolumu(
@@ -256,6 +624,8 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
             onFotoEkle: _fotoCek,
             onGonder: _gonder,
             gonderiyor: _gonderiyor,
+            isListening: _isListening,
+            onSesliGiris: _sesliGirisTetikle,
           ),
         ],
       ),
@@ -339,11 +709,17 @@ class _MesajListesi extends StatelessWidget {
     required this.mesajlar,
     required this.gonderiyor,
     required this.scrollCtrl,
+    required this.speakingMessageIndex,
+    required this.canListen,
+    required this.onDinle,
   });
 
   final List<AiChatMessage> mesajlar;
   final bool gonderiyor;
   final ScrollController scrollCtrl;
+  final int? speakingMessageIndex;
+  final bool canListen;
+  final ValueChanged<int> onDinle;
 
   @override
   Widget build(BuildContext context) {
@@ -355,7 +731,14 @@ class _MesajListesi extends StatelessWidget {
         if (i == mesajlar.length) {
           return const _YuklenigorGostergesi();
         }
-        return _MesajBubble(mesaj: mesajlar[i]);
+        final isStreaming = gonderiyor && i == mesajlar.length - 1;
+        return _MesajBubble(
+          mesaj: mesajlar[i],
+          isSpeaking: speakingMessageIndex == i,
+          canListen: canListen,
+          isStreaming: isStreaming,
+          onDinle: () => onDinle(i),
+        );
       },
     );
   }
@@ -393,9 +776,19 @@ class _YuklenigorGostergesi extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _MesajBubble extends StatelessWidget {
-  const _MesajBubble({required this.mesaj});
+  const _MesajBubble({
+    required this.mesaj,
+    this.isSpeaking = false,
+    this.canListen = true,
+    this.isStreaming = false,
+    this.onDinle,
+  });
 
   final AiChatMessage mesaj;
+  final bool isSpeaking;
+  final bool canListen;
+  final bool isStreaming;
+  final VoidCallback? onDinle;
 
   @override
   Widget build(BuildContext context) {
@@ -441,6 +834,61 @@ class _MesajBubble extends StatelessWidget {
               ],
               if (mesaj.text.isNotEmpty)
                 Text(mesaj.text, style: theme.textTheme.bodyMedium),
+              // AI yanıtları için Dinle / Durdur butonu
+              if (!isUser && mesaj.text.isNotEmpty && !isStreaming) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Semantics(
+                    label: isSpeaking ? 'Seslendirmeyi durdur' : 'Yanıtı dinle',
+                    button: true,
+                    enabled: canListen,
+                    child: Tooltip(
+                      message: isSpeaking
+                          ? 'Seslendirmeyi durdur'
+                          : 'Yanıtı dinle',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: canListen ? onDinle : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xs,
+                            vertical: 2,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isSpeaking
+                                    ? Icons.stop
+                                    : Icons.volume_up_outlined,
+                                size: 16,
+                                color: canListen
+                                    ? (isSpeaking
+                                          ? theme.colorScheme.error
+                                          : theme.colorScheme.primary)
+                                    : theme.disabledColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isSpeaking ? 'Durdur' : 'Dinle',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: canListen
+                                      ? (isSpeaking
+                                            ? theme.colorScheme.error
+                                            : theme.colorScheme.primary)
+                                      : theme.disabledColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -461,6 +909,8 @@ class _GirisBolumu extends StatelessWidget {
     required this.onFotoEkle,
     required this.onGonder,
     required this.gonderiyor,
+    required this.isListening,
+    required this.onSesliGiris,
   });
 
   final TextEditingController ctrl;
@@ -469,6 +919,8 @@ class _GirisBolumu extends StatelessWidget {
   final VoidCallback onFotoEkle;
   final VoidCallback onGonder;
   final bool gonderiyor;
+  final bool isListening;
+  final VoidCallback onSesliGiris;
 
   @override
   Widget build(BuildContext context) {
@@ -490,6 +942,32 @@ class _GirisBolumu extends StatelessWidget {
               _FotoOnizleme(foto: secilenFoto!, onKaldir: onFotoKaldir),
               const SizedBox(height: AppSpacing.sm),
             ],
+            // Dinleme durumu göstergesi
+            if (isListening) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.error,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.xs),
+                    Text(
+                      'Dinliyorum...',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             // Giriş satırı
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -497,7 +975,7 @@ class _GirisBolumu extends StatelessWidget {
                 // Fotoğraf ekleme butonu
                 IconButton(
                   icon: const Icon(Icons.add_photo_alternate_outlined),
-                  onPressed: gonderiyor ? null : onFotoEkle,
+                  onPressed: (gonderiyor || isListening) ? null : onFotoEkle,
                   tooltip: 'Fotoğraf Ekle',
                 ),
                 // Metin alanı
@@ -505,12 +983,35 @@ class _GirisBolumu extends StatelessWidget {
                   child: TextField(
                     controller: ctrl,
                     enabled: !gonderiyor,
+                    readOnly: isListening,
                     minLines: 1,
                     maxLines: 4,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Sorunu veya sorununu anlat...',
+                    decoration: InputDecoration(
+                      hintText: isListening
+                          ? 'Dinleniyor... Konuşun'
+                          : 'Sorunu veya sorununu anlat...',
                     ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                // Mikrofon butonu (Push-to-Talk)
+                Semantics(
+                  label: isListening
+                      ? 'Sesli girişi durdur'
+                      : 'Sesli giriş başlat',
+                  button: true,
+                  child: IconButton(
+                    icon: Icon(
+                      isListening ? Icons.mic : Icons.mic_none,
+                      color: isListening
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.primary,
+                    ),
+                    onPressed: gonderiyor ? null : onSesliGiris,
+                    tooltip: isListening
+                        ? 'Sesli girişi durdur'
+                        : 'Sesli giriş başlat',
                   ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
@@ -526,7 +1027,7 @@ class _GirisBolumu extends StatelessWidget {
                           ),
                         )
                       : const Icon(Icons.send),
-                  onPressed: gonderiyor ? null : onGonder,
+                  onPressed: (gonderiyor || isListening) ? null : onGonder,
                   tooltip: 'Gönder',
                 ),
               ],
