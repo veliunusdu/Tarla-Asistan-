@@ -42,7 +42,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
 
         var latStr = latitude.ToString("F4", CultureInfo.InvariantCulture);
         var lonStr = longitude.ToString("F4", CultureInfo.InvariantCulture);
-        var url = $"{_baseUrl.TrimEnd('/')}/forecast.json?key={_apiKey}&q={latStr},{lonStr}&days=3&aqi=no&alerts=no&lang=tr";
+        var url = $"{_baseUrl.TrimEnd('/')}/forecast.json?key={Uri.EscapeDataString(_apiKey)}&q={latStr},{lonStr}&days=3&aqi=no&alerts=no&lang=tr";
 
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -109,7 +109,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
             foreach (var dayEl in forecastDayArray.EnumerateArray())
             {
                 DateOnly? date = null;
-                if (dayEl.TryGetProperty("date", out var dStr) && DateOnly.TryParse(dStr.GetString(), out var parsedDate))
+                if (dayEl.TryGetProperty("date", out var dStr) && DateOnly.TryParse(dStr.GetString(), CultureInfo.InvariantCulture, out var parsedDate))
                 {
                     date = parsedDate;
                 }
