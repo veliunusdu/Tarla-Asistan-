@@ -48,8 +48,7 @@ abstract final class Migrations {
     // Check whether ALL five columns are already nullable.
     final cols = await db.rawQuery('PRAGMA table_info(tarlalar)');
     final colMap = <String, Map<String, Object?>>{
-      for (final c in cols)
-        c['name'] as String: Map<String, Object?>.from(c),
+      for (final c in cols) c['name'] as String: Map<String, Object?>.from(c),
     };
     const needsNullable = [
       'latitude',
@@ -124,6 +123,8 @@ abstract final class Migrations {
         client_operation_id TEXT NOT NULL,
         local_image_path TEXT,
         uploaded_media_id TEXT,
+        local_audio_path TEXT,
+        uploaded_audio_media_id TEXT,
         created_at_utc TEXT NOT NULL,
         attempt_count INTEGER NOT NULL DEFAULT 0,
         last_attempt_at_utc TEXT,
@@ -131,8 +132,27 @@ abstract final class Migrations {
         state TEXT NOT NULL DEFAULT 'pending'
       )
     ''');
-    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_cases_user_operation ON pending_case_submissions(user_id, client_operation_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS ix_pending_cases_user_created ON pending_case_submissions(user_id, created_at_utc)');
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_cases_user_operation ON pending_case_submissions(user_id, client_operation_id)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS ix_pending_cases_user_created ON pending_case_submissions(user_id, created_at_utc)',
+    );
+  }
+
+  /// Version 8 -> 9: pending case audio fallback fields.
+  static Future<void> v8ToV9(Database db) async {
+    final columns = await _columnNames(db, 'pending_case_submissions');
+    if (!columns.contains('local_audio_path')) {
+      await db.execute(
+        'ALTER TABLE pending_case_submissions ADD COLUMN local_audio_path TEXT',
+      );
+    }
+    if (!columns.contains('uploaded_audio_media_id')) {
+      await db.execute(
+        'ALTER TABLE pending_case_submissions ADD COLUMN uploaded_audio_media_id TEXT',
+      );
+    }
   }
 
   /// [table] tablosundaki mevcut kolon adlarını döndürür.

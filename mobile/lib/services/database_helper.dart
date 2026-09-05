@@ -17,11 +17,9 @@ class DatabaseHelper implements SyncOperationStore {
 
   DatabaseHelper._init();
 
-  DatabaseHelper.withDatabase(
-    Database db, {
-    String? Function()? userIdProvider,
-  })  : _providedDatabase = db,
-        currentUserIdProvider = userIdProvider;
+  DatabaseHelper.withDatabase(Database db, {String? Function()? userIdProvider})
+    : _providedDatabase = db,
+      currentUserIdProvider = userIdProvider;
 
   Database? _providedDatabase;
   String? Function()? currentUserIdProvider;
@@ -35,7 +33,7 @@ class DatabaseHelper implements SyncOperationStore {
 
   @visibleForTesting
   static Future<void> createTablesForTesting(Database db) async {
-    await instance._createDB(db, 8);
+    await instance._createDB(db, 9);
   }
 
   String? get currentUserId {
@@ -62,7 +60,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -133,6 +131,9 @@ class DatabaseHelper implements SyncOperationStore {
     }
     if (oldVersion < 8) {
       await _createPendingCaseTable(db);
+    }
+    if (oldVersion < 9) {
+      await Migrations.v8ToV9(db);
     }
   }
 
@@ -252,10 +253,7 @@ class DatabaseHelper implements SyncOperationStore {
         whereArgs: [activeUserId],
       );
     } else {
-      result = await db.query(
-        'tarlalar',
-        where: 'userId IS NULL',
-      );
+      result = await db.query('tarlalar', where: 'userId IS NULL');
     }
     return result.map((json) => Tarla.fromJson(json)).toList();
   }
@@ -316,7 +314,10 @@ class DatabaseHelper implements SyncOperationStore {
     return await db.insert('faaliyetler', map);
   }
 
-  Future<void> insertFaaliyetWithSync(Faaliyet faaliyet, {String? userId}) async {
+  Future<void> insertFaaliyetWithSync(
+    Faaliyet faaliyet, {
+    String? userId,
+  }) async {
     final db = await database;
     final activeUserId = userId ?? currentUserId;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -349,7 +350,10 @@ class DatabaseHelper implements SyncOperationStore {
     });
   }
 
-  Future<List<Faaliyet>> getFaaliyetler(String tarlaId, {String? userId}) async {
+  Future<List<Faaliyet>> getFaaliyetler(
+    String tarlaId, {
+    String? userId,
+  }) async {
     final db = await database;
     final activeUserId = userId ?? currentUserId;
     final List<Map<String, dynamic>> result;
@@ -382,10 +386,7 @@ class DatabaseHelper implements SyncOperationStore {
         whereArgs: [activeUserId],
       );
     } else {
-      result = await db.query(
-        'faaliyetler',
-        where: 'userId IS NULL',
-      );
+      result = await db.query('faaliyetler', where: 'userId IS NULL');
     }
     return result.map((json) => Faaliyet.fromJson(json)).toList();
   }
@@ -529,15 +530,27 @@ class DatabaseHelper implements SyncOperationStore {
     }
     try {
       final db = await database;
-      final farmRows = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL'),
-      ) ?? 0;
-      final activityRows = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM faaliyetler WHERE userId IS NULL'),
-      ) ?? 0;
-      final syncRows = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL'),
-      ) ?? 0;
+      final farmRows =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              'SELECT COUNT(*) FROM tarlalar WHERE userId IS NULL',
+            ),
+          ) ??
+          0;
+      final activityRows =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              'SELECT COUNT(*) FROM faaliyetler WHERE userId IS NULL',
+            ),
+          ) ??
+          0;
+      final syncRows =
+          Sqflite.firstIntValue(
+            await db.rawQuery(
+              'SELECT COUNT(*) FROM sync_operations WHERE userId IS NULL',
+            ),
+          ) ??
+          0;
 
       return OrphanedDataSummary(
         farmCount: farmRows,
@@ -568,7 +581,10 @@ class DatabaseHelper implements SyncOperationStore {
         deleted += await txn.delete('faaliyetler', where: 'userId IS NULL');
         deleted += await txn.delete('sync_operations', where: 'userId IS NULL');
         try {
-          deleted += await txn.delete('pending_task_actions', where: 'user_id IS NULL');
+          deleted += await txn.delete(
+            'pending_task_actions',
+            where: 'user_id IS NULL',
+          );
         } catch (_) {}
       });
       return deleted;
@@ -586,15 +602,39 @@ class DatabaseHelper implements SyncOperationStore {
       final db = await database;
       await db.transaction((txn) async {
         if (activeUserId != null) {
-          await txn.delete('tarlalar', where: 'userId = ?', whereArgs: [activeUserId]);
-          await txn.delete('faaliyetler', where: 'userId = ?', whereArgs: [activeUserId]);
-          await txn.delete('sync_operations', where: 'userId = ?', whereArgs: [activeUserId]);
+          await txn.delete(
+            'tarlalar',
+            where: 'userId = ?',
+            whereArgs: [activeUserId],
+          );
+          await txn.delete(
+            'faaliyetler',
+            where: 'userId = ?',
+            whereArgs: [activeUserId],
+          );
+          await txn.delete(
+            'sync_operations',
+            where: 'userId = ?',
+            whereArgs: [activeUserId],
+          );
           try {
-            await txn.delete('pending_task_actions', where: 'user_id = ?', whereArgs: [activeUserId]);
+            await txn.delete(
+              'pending_task_actions',
+              where: 'user_id = ?',
+              whereArgs: [activeUserId],
+            );
           } catch (_) {}
           try {
-            final rows = await txn.query('pending_case_submissions', where: 'user_id = ?', whereArgs: [activeUserId]);
-            await txn.delete('pending_case_submissions', where: 'user_id = ?', whereArgs: [activeUserId]);
+            final rows = await txn.query(
+              'pending_case_submissions',
+              where: 'user_id = ?',
+              whereArgs: [activeUserId],
+            );
+            await txn.delete(
+              'pending_case_submissions',
+              where: 'user_id = ?',
+              whereArgs: [activeUserId],
+            );
             for (final row in rows) {
               final path = row['local_image_path'] as String?;
               if (path != null) {
@@ -622,8 +662,14 @@ class DatabaseHelper implements SyncOperationStore {
           await txn.delete('pending_task_actions', where: 'user_id IS NULL');
         } catch (_) {}
         try {
-          final rows = await txn.query('pending_case_submissions', where: 'user_id IS NULL');
-          await txn.delete('pending_case_submissions', where: 'user_id IS NULL');
+          final rows = await txn.query(
+            'pending_case_submissions',
+            where: 'user_id IS NULL',
+          );
+          await txn.delete(
+            'pending_case_submissions',
+            where: 'user_id IS NULL',
+          );
           for (final row in rows) {
             final path = row['local_image_path'] as String?;
             if (path != null) {
@@ -656,5 +702,6 @@ class OrphanedDataSummary {
   final int activityCount;
   final int syncCount;
 
-  bool get hasOrphanedData => farmCount > 0 || activityCount > 0 || syncCount > 0;
+  bool get hasOrphanedData =>
+      farmCount > 0 || activityCount > 0 || syncCount > 0;
 }

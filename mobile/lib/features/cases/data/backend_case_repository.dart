@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:typed_data';
+import 'dart:io';
 
 import '../../../config/app_config.dart';
 import '../../../services/api_client.dart';
@@ -27,10 +28,11 @@ class BackendCaseRepository implements CaseRepository {
     Uuid uuid = const Uuid(),
     LocalPendingCaseRepository? pendingRepository,
     String? Function()? userIdProvider,
-  })  : _api = apiClient,
-        _uuid = uuid,
-        _pendingRepository = pendingRepository ?? const LocalPendingCaseRepository(),
-        _userIdProvider = userIdProvider ?? _currentFirebaseUserId;
+  }) : _api = apiClient,
+       _uuid = uuid,
+       _pendingRepository =
+           pendingRepository ?? const LocalPendingCaseRepository(),
+       _userIdProvider = userIdProvider ?? _currentFirebaseUserId;
 
   final ApiClient _api;
   final Uuid _uuid;
@@ -51,45 +53,79 @@ class BackendCaseRepository implements CaseRepository {
   Future<String> createCase(CreateCaseInput input) async {
     final clientOperationId = _uuid.v4();
     String? uploadedMediaId;
+    String? uploadedAudioMediaId;
     try {
-    List<String>? mediaIds;
+      final mediaIds = <String>[];
 
-    if (input.imageBytes != null && input.imageBytes!.isNotEmpty) {
-      final fileName = input.imageFileName ?? 'case_image.jpg';
-      final mediaResponse = await _api.postMultipart(
-        '/media',
-        files: [
-          ApiMultipartFile(
-            field: 'file',
-            bytes: input.imageBytes!,
-            filename: fileName,
-            contentType: 'image/jpeg',
-          ),
-        ],
-      );
-      final mediaId = mediaResponse['id']?.toString();
-      if (mediaId == null || mediaId.isEmpty) {
-        throw const ApiException('Fotoğraf yüklendi ancak medya kimliği alınamadı.');
+      if (input.imageBytes != null && input.imageBytes!.isNotEmpty) {
+        final fileName = input.imageFileName ?? 'case_image.jpg';
+        final mediaResponse = await _api.postMultipart(
+          '/media',
+          files: [
+            ApiMultipartFile(
+              field: 'file',
+              bytes: input.imageBytes!,
+              filename: fileName,
+              contentType: 'image/jpeg',
+            ),
+          ],
+        );
+        final mediaId = mediaResponse['id']?.toString();
+        if (mediaId == null || mediaId.isEmpty) {
+          throw const ApiException(
+            'Fotoğraf yüklendi ancak medya kimliği alınamadı.',
+          );
+        }
+        mediaIds.add(mediaId);
+        uploadedMediaId = mediaId;
       }
-      mediaIds = [mediaId];
-      uploadedMediaId = mediaId;
-    }
 
-    final payload = <String, dynamic>{
-      'farm_id': input.farmId,
-      'category': input.category.backendValue,
-      'title': input.title.trim(),
-      'description': input.description.trim(),
-      'media_ids': mediaIds,
-      'client_operation_id': clientOperationId,
-    };
+      if (input.audioFilePath != null && input.audioFilePath!.isNotEmpty) {
+        final mediaResponse = await _api.postMultipart(
+          '/media',
+          files: [
+            ApiMultipartFile(
+              field: 'file',
+              bytes: await File(input.audioFilePath!).readAsBytes(),
+              filename: 'case_audio.m4a',
+              contentType: 'audio/mp4',
+            ),
+          ],
+        );
+        final mediaId = mediaResponse['id']?.toString();
+        if (mediaId == null || mediaId.isEmpty) {
+          throw const ApiException(
+            'Ses yüklendi ancak medya kimliği alınamadı.',
+          );
+        }
+        mediaIds.add(mediaId);
+        uploadedAudioMediaId = mediaId;
+      }
 
-    final response = await _api.postJson('/cases', payload);
-    final caseId = response['id']?.toString();
-    if (caseId == null || caseId.isEmpty) {
-      throw const ApiException('Vaka oluşturuldu ancak yanıt kimliği alınamadı.');
-    }
-    return caseId;
+      final payload = <String, dynamic>{
+        'farm_id': input.farmId,
+        'category': input.category.backendValue,
+        'title': input.title.trim(),
+        'description': input.description.trim(),
+        'media_ids': mediaIds.isEmpty ? null : mediaIds,
+        'client_operation_id': clientOperationId,
+      };
+
+      final response = await _api.postJson('/cases', payload);
+      final caseId = response['id']?.toString();
+      if (caseId == null || caseId.isEmpty) {
+        throw const ApiException(
+          'Vaka oluşturuldu ancak yanıt kimliği alınamadı.',
+        );
+      }
+      if (input.audioFilePath != null) {
+        try {
+          await File(input.audioFilePath!).delete();
+        } on FileSystemException {
+          // A successful remote case must not be resent because local cleanup failed.
+        }
+      }
+      return caseId;
     } on ApiException catch (error) {
       if (!error.retryable) rethrow;
       final userId = _userIdProvider();
@@ -100,27 +136,39 @@ class BackendCaseRepository implements CaseRepository {
         title: input.title,
         description: input.description,
         clientOperationId: clientOperationId,
-        imageBytes: input.imageBytes == null ? null : Uint8List.fromList(input.imageBytes!),
+        imageBytes: input.imageBytes == null
+            ? null
+            : Uint8List.fromList(input.imageBytes!),
         uploadedMediaId: uploadedMediaId,
+        audioFilePath: input.audioFilePath,
+        uploadedAudioMediaId: uploadedAudioMediaId,
       );
       return 'pending:$pendingId';
     }
   }
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async {
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async {
     final query = <String, String>{};
     if (farmId != null && farmId.isNotEmpty) query['farmId'] = farmId;
     if (status != null) query['status'] = status.backendValue;
 
-    final response = await _api.getJson('/cases', queryParameters: query.isNotEmpty ? query : null);
+    final response = await _api.getJson(
+      '/cases',
+      queryParameters: query.isNotEmpty ? query : null,
+    );
     final items = response['items'] as List<dynamic>? ?? [];
 
     return items.map((raw) {
       final m = raw as Map<String, dynamic>;
       final catStr = m['category']?.toString().toLowerCase();
       final cat = CaseCategory.values.firstWhere(
-        (c) => c.name.toLowerCase() == catStr || c.backendValue.toLowerCase() == catStr,
+        (c) =>
+            c.name.toLowerCase() == catStr ||
+            c.backendValue.toLowerCase() == catStr,
         orElse: () => CaseCategory.other,
       );
 
@@ -131,8 +179,12 @@ class BackendCaseRepository implements CaseRepository {
         category: cat,
         status: CaseStatus.fromString(m['status']?.toString()),
         title: m['title']?.toString() ?? '',
-        createdAt: DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ?? DateTime.now(),
-        updatedAt: DateTime.tryParse(m['updated_at_utc']?.toString() ?? '') ?? DateTime.now(),
+        createdAt:
+            DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ??
+            DateTime.now(),
+        updatedAt:
+            DateTime.tryParse(m['updated_at_utc']?.toString() ?? '') ??
+            DateTime.now(),
         messageCount: (m['message_count'] as num?)?.toInt() ?? 0,
         mediaCount: (m['media_count'] as num?)?.toInt() ?? 0,
       );
@@ -144,26 +196,42 @@ class BackendCaseRepository implements CaseRepository {
     final m = await _api.getJson('/cases/$caseId');
     final catStr = m['category']?.toString().toLowerCase();
     final cat = CaseCategory.values.firstWhere(
-      (c) => c.name.toLowerCase() == catStr || c.backendValue.toLowerCase() == catStr,
+      (c) =>
+          c.name.toLowerCase() == catStr ||
+          c.backendValue.toLowerCase() == catStr,
       orElse: () => CaseCategory.other,
     );
 
-    final mediaList = (m['media'] as List<dynamic>?)
-            ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
+    final mediaList =
+        (m['media'] as List<dynamic>?)
+            ?.map(
+              (e) => _resolveMediaUrl(
+                (e as Map<String, dynamic>)['url']?.toString(),
+              ),
+            )
             .whereType<String>()
             .toList() ??
         [];
 
-    final messagesList = (m['messages'] as List<dynamic>?)?.map((rawMsg) {
+    final messagesList =
+        (m['messages'] as List<dynamic>?)?.map((rawMsg) {
           final msgMap = rawMsg as Map<String, dynamic>;
-          final msgMedia = (msgMap['media'] as List<dynamic>?)
-                  ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
+          final msgMedia =
+              (msgMap['media'] as List<dynamic>?)
+                  ?.map(
+                    (e) => _resolveMediaUrl(
+                      (e as Map<String, dynamic>)['url']?.toString(),
+                    ),
+                  )
                   .whereType<String>()
                   .toList() ??
               [];
 
-          final msgType = CaseMessageType.fromString(msgMap['message_type']?.toString());
-          final isFromExpert = msgType == CaseMessageType.expertResponse ||
+          final msgType = CaseMessageType.fromString(
+            msgMap['message_type']?.toString(),
+          );
+          final isFromExpert =
+              msgType == CaseMessageType.expertResponse ||
               msgType == CaseMessageType.additionalInfoRequest;
 
           return CaseMessage(
@@ -174,7 +242,9 @@ class BackendCaseRepository implements CaseRepository {
             messageType: msgType,
             body: msgMap['body']?.toString() ?? '',
             mediaUrls: msgMedia,
-            createdAt: DateTime.tryParse(msgMap['created_at_utc']?.toString() ?? '') ?? DateTime.now(),
+            createdAt:
+                DateTime.tryParse(msgMap['created_at_utc']?.toString() ?? '') ??
+                DateTime.now(),
             isCurrentUser: !isFromExpert,
           );
         }).toList() ??
@@ -190,7 +260,9 @@ class BackendCaseRepository implements CaseRepository {
       description: m['description']?.toString() ?? '',
       initialMediaUrls: mediaList,
       messages: messagesList,
-      createdAt: DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -218,7 +290,9 @@ class BackendCaseRepository implements CaseRepository {
       );
       final mediaId = mediaResponse['id']?.toString();
       if (mediaId == null || mediaId.isEmpty) {
-        throw const ApiException('Fotoğraf yüklendi ancak medya kimliği alınamadı.');
+        throw const ApiException(
+          'Fotoğraf yüklendi ancak medya kimliği alınamadı.',
+        );
       }
       mediaIds = [mediaId];
     }
@@ -232,14 +306,22 @@ class BackendCaseRepository implements CaseRepository {
 
     final response = await _api.postJson('/cases/$caseId/messages', payload);
 
-    final mediaUrls = (response['media'] as List<dynamic>?)
-            ?.map((e) => _resolveMediaUrl((e as Map<String, dynamic>)['url']?.toString()))
+    final mediaUrls =
+        (response['media'] as List<dynamic>?)
+            ?.map(
+              (e) => _resolveMediaUrl(
+                (e as Map<String, dynamic>)['url']?.toString(),
+              ),
+            )
             .whereType<String>()
             .toList() ??
         [];
 
-    final msgType = CaseMessageType.fromString(response['message_type']?.toString());
-    final isFromExpert = msgType == CaseMessageType.expertResponse ||
+    final msgType = CaseMessageType.fromString(
+      response['message_type']?.toString(),
+    );
+    final isFromExpert =
+        msgType == CaseMessageType.expertResponse ||
         msgType == CaseMessageType.additionalInfoRequest;
 
     return CaseMessage(
@@ -250,7 +332,9 @@ class BackendCaseRepository implements CaseRepository {
       messageType: msgType,
       body: response['body']?.toString() ?? '',
       mediaUrls: mediaUrls,
-      createdAt: DateTime.tryParse(response['created_at_utc']?.toString() ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(response['created_at_utc']?.toString() ?? '') ??
+          DateTime.now(),
       isCurrentUser: !isFromExpert,
     );
   }

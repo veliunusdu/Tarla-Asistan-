@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/ai_assistant/data/image_picker_service.dart';
 import 'package:mobile/features/ai_assistant/data/voice_input_service.dart';
@@ -114,6 +116,7 @@ class MockVoiceInputService implements VoiceInputService {
   @override
   Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
+    bool onDevice = false,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
   }) async {
@@ -176,7 +179,40 @@ class MockVoiceInputService implements VoiceInputService {
   }
 }
 
+class MockConnectivity implements Connectivity {
+  MockConnectivity({List<ConnectivityResult>? results})
+      : results = results ?? [ConnectivityResult.wifi];
+
+  List<ConnectivityResult> results;
+  int checkConnectivityCalls = 0;
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async {
+    checkConnectivityCalls++;
+    return results;
+  }
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      Stream.value(results);
+}
+
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'check') {
+          return ['wifi'];
+        }
+        return null;
+      },
+    );
+  });
+
   final sampleTarla1 = Tarla(
     id: 'tarla-1',
     name: 'Büyük Tarla',
@@ -1116,6 +1152,327 @@ void main() {
       await tester.pump();
 
       expect(mockVoice.stopListeningCalls, greaterThan(0));
+    });
+
+    group('SorunBildirEkrani - Sesli Anlatım & Offline Keyboard Mic Fallback', () {
+      testWidgets('1. Online + microphone tap -> VoiceInputService çağrılır', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.wifi]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(mockVoice.startListeningCalls, 1);
+        expect(mockVoice.isListening, true);
+      });
+
+      testWidgets('2. Offline + microphone tap -> VoiceInputService çağrılmaz', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.none]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(mockVoice.startListeningCalls, 0);
+        expect(mockVoice.isListening, false);
+      });
+
+      testWidgets('3. Offline + microphone tap -> description FocusNode focus alır', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.none]);
+        final focusNode = FocusNode();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+              descriptionFocusNode: focusNode,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(focusNode.hasFocus, false);
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(focusNode.hasFocus, true);
+        focusNode.dispose();
+      });
+
+      testWidgets('4. Offline + microphone tap -> keyboard fallback mesajı görünür', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.none]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(
+          find.text('İnternet yok. Klavyenizdeki mikrofonu kullanarak konuşabilirsiniz.'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('5. Offline durumda Dinliyorum... görünmez', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.none]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(find.byKey(const Key('voice_listening_banner')), findsNothing);
+        expect(find.text('🎙️ Dinliyorum... Konuşabilirsiniz'), findsNothing);
+      });
+
+      testWidgets('6. Online STT result -> description\'a yazılmaya devam eder', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.wifi]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        mockVoice.emitResult('Yapraklarda sararma başladı.');
+        await tester.pump();
+
+        expect(find.text('Yapraklarda sararma başladı.'), findsOneWidget);
+      });
+
+      testWidgets('7. Online STT network failure -> listening kapanır', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.wifi]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+        expect(find.byKey(const Key('voice_listening_banner')), findsOneWidget);
+
+        mockVoice.emitError(
+          const VoiceInputException(
+            type: VoiceInputErrorType.network,
+            message: 'Ağ bağlantı hatası',
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byKey(const Key('voice_listening_banner')), findsNothing);
+        expect(find.text('🎙️ Dinliyorum... Konuşabilirsiniz'), findsNothing);
+      });
+
+      testWidgets('8. STT network failure -> keyboard fallback açılır', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.wifi]);
+        final focusNode = FocusNode();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+              descriptionFocusNode: focusNode,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        mockVoice.emitError(
+          const VoiceInputException(
+            type: VoiceInputErrorType.network,
+            message: 'Ağ bağlantı hatası',
+          ),
+        );
+        await tester.pump();
+
+        expect(focusNode.hasFocus, true);
+        expect(
+          find.text('Sesle yazma kullanılamadı. Klavyenizdeki mikrofonu deneyebilirsiniz.'),
+          findsOneWidget,
+        );
+        focusNode.dispose();
+      });
+
+      testWidgets('9. Kullanıcı klavyeden text girip submit edebilir', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.none]);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              connectivity: mockConnectivity,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Gboard veya klavye ile girilen metin
+        await tester.enterText(
+          find.byKey(const Key('field_description')),
+          'Klavye mikrofonuyla girilen açıklama metni.',
+        );
+        await tester.pump();
+
+        await tester.ensureVisible(find.byKey(const Key('btn_submit_case')));
+        await tester.tap(find.byKey(const Key('btn_submit_case')));
+        await tester.pumpAndSettle();
+
+        expect(caseRepo.createCaseCallCount, 1);
+        expect(
+          caseRepo.lastInput?.description,
+          'Klavye mikrofonuyla girilen açıklama metni.',
+        );
+      });
+
+      testWidgets('10. Dinamik network değişimi: buton anında offline ise fallback açılır', (tester) async {
+        final caseRepo = MockCaseRepository();
+        final tarlaRepo = MockTarlaRepository([sampleTarla1]);
+        final mockVoice = MockVoiceInputService();
+        final mockConnectivity = MockConnectivity(results: [ConnectivityResult.wifi]);
+        final focusNode = FocusNode();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SorunBildirEkrani(
+              initialTarla: sampleTarla1,
+              caseRepository: caseRepo,
+              tarlaRepository: tarlaRepo,
+              voiceInputService: mockVoice,
+              connectivity: mockConnectivity,
+              descriptionFocusNode: focusNode,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Ekran açıldıktan sonra internet kesildi
+        mockConnectivity.results = [ConnectivityResult.none];
+
+        await tester.ensureVisible(find.byKey(const Key('btn_voice_input')));
+        await tester.tap(find.byKey(const Key('btn_voice_input')));
+        await tester.pump();
+
+        expect(mockVoice.startListeningCalls, 0);
+        expect(focusNode.hasFocus, true);
+        expect(
+          find.text('İnternet yok. Klavyenizdeki mikrofonu kullanarak konuşabilirsiniz.'),
+          findsOneWidget,
+        );
+        focusNode.dispose();
+      });
     });
   });
 }

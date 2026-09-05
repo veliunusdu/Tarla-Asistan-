@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../app/theme/app_spacing.dart';
@@ -8,6 +10,7 @@ import '../../../features/ai_assistant/data/voice_input_service.dart';
 import '../../../features/fields/data/tarla_repository.dart';
 import '../../../models/tarla.dart';
 import '../../../services/api_client.dart';
+import '../../../services/database_helper.dart';
 import '../data/case_repository.dart';
 import '../domain/models/case_category.dart';
 import '../domain/models/create_case_input.dart';
@@ -71,6 +74,8 @@ class SorunBildirEkrani extends StatefulWidget {
     required this.tarlaRepository,
     this.imagePickerService,
     this.voiceInputService,
+    this.connectivity,
+    this.descriptionFocusNode,
   });
 
   /// Opsiyonel başlangıç tarla nesnesi.
@@ -83,6 +88,8 @@ class SorunBildirEkrani extends StatefulWidget {
   final TarlaRepository tarlaRepository;
   final ImagePickerService? imagePickerService;
   final VoiceInputService? voiceInputService;
+  final Connectivity? connectivity;
+  final FocusNode? descriptionFocusNode;
 
   @override
   State<SorunBildirEkrani> createState() => _SorunBildirEkraniState();
@@ -91,10 +98,13 @@ class SorunBildirEkrani extends StatefulWidget {
 class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
+  late final FocusNode _descriptionFocusNode;
+  late final bool _ownsDescriptionFocusNode;
 
   late final ImagePickerService _pickerService;
   late final VoiceInputService _voiceService;
   late final bool _ownsVoiceService;
+  late final Connectivity _connectivity;
 
   List<Tarla> _tarlalar = [];
   String? _selectedTarlaId;
@@ -123,7 +133,16 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
   @override
   void initState() {
     super.initState();
-    _pickerService = widget.imagePickerService ?? const DefaultImagePickerService();
+    if (widget.descriptionFocusNode != null) {
+      _descriptionFocusNode = widget.descriptionFocusNode!;
+      _ownsDescriptionFocusNode = false;
+    } else {
+      _descriptionFocusNode = FocusNode();
+      _ownsDescriptionFocusNode = true;
+    }
+    _connectivity = widget.connectivity ?? Connectivity();
+    _pickerService =
+        widget.imagePickerService ?? const DefaultImagePickerService();
     if (widget.voiceInputService != null) {
       _voiceService = widget.voiceInputService!;
       _ownsVoiceService = false;
@@ -143,6 +162,9 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
   void dispose() {
     _disposed = true;
     _descriptionController.dispose();
+    if (_ownsDescriptionFocusNode) {
+      _descriptionFocusNode.dispose();
+    }
     if (_isListening) {
       try {
         _voiceService.stopListening();
@@ -197,9 +219,9 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
       }
     } on FormatException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -259,18 +281,23 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                   itemBuilder: (ctx, i) {
                     final t = _tarlalar[i];
                     final isSelected = t.id == _selectedTarlaId;
-                    final subInfo = (t.cropType != null && t.cropType!.trim().isNotEmpty)
+                    final subInfo =
+                        (t.cropType != null && t.cropType!.trim().isNotEmpty)
                         ? ' • ${t.cropType}'
                         : '';
                     return ListTile(
                       leading: Icon(
                         Icons.grass,
-                        color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
                       ),
                       title: Text(
                         '${t.name}$subInfo',
                         style: TextStyle(
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                       trailing: isSelected
@@ -300,60 +327,107 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
     }
   }
 
+  Future<bool> _isOffline() async {
+    try {
+      final connectivity = await _connectivity.checkConnectivity();
+      return connectivity.isEmpty ||
+          connectivity.every((item) => item == ConnectivityResult.none);
+    } catch (_) {
+      // Test/desktop platforms may not expose a connectivity plugin.
+      return false;
+    }
+  }
+
+  void _openKeyboardFallback(String message) {
+    if (_disposed || !mounted) return;
+    _descriptionFocusNode.requestFocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+  }
+
   Future<void> _startListening() async {
     if (_isListening || _isSubmitting) return;
 
+    final offline = await _isOffline();
+    if (offline) {
+      _openKeyboardFallback(
+        'İnternet yok. Klavyenizdeki mikrofonu kullanarak konuşabilirsiniz.',
+      );
+      return;
+    }
+
     _baseDescription = _descriptionController.text.trim();
 
-    final started = await _voiceService.startListening(
-      onResult: (result) {
-        if (_disposed || !mounted) return;
-        final words = result.recognizedWords.trim();
-        if (words.isEmpty) return;
+    try {
+      final started = await _voiceService.startListening(
+        onDevice: false,
+        onResult: (result) {
+          if (_disposed || !mounted) return;
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) return;
 
-        final newText = _baseDescription.isEmpty
-            ? words
-            : '$_baseDescription $words';
+          final newText = _baseDescription.isEmpty
+              ? words
+              : '$_baseDescription $words';
 
-        setState(() {
-          _descriptionController.text = newText;
-          _descriptionController.selection = TextSelection.fromPosition(
-            TextPosition(offset: newText.length),
-          );
-        });
-      },
-      onError: (error) {
-        if (_disposed || !mounted) return;
+          setState(() {
+            _descriptionController.text = newText;
+            _descriptionController.selection = TextSelection.fromPosition(
+              TextPosition(offset: newText.length),
+            );
+          });
+        },
+        onError: (error) {
+          if (_disposed || !mounted) return;
+          setState(() => _isListening = false);
+
+          if (error.type == VoiceInputErrorType.network ||
+              error.type == VoiceInputErrorType.offlineRecognitionUnavailable) {
+            _openKeyboardFallback(
+              'Sesle yazma kullanılamadı. Klavyenizdeki mikrofonu deneyebilirsiniz.',
+            );
+            return;
+          }
+
+          final String msg;
+          switch (error.type) {
+            case VoiceInputErrorType.permissionDenied:
+              msg = 'Mikrofon izni olmadan sesli anlatım kullanılamıyor.';
+              break;
+            case VoiceInputErrorType.unavailable:
+              msg = 'Bu cihazda ses tanıma özelliği kullanılamıyor.';
+              break;
+            default:
+              msg = 'Ses tanıma başlatılamadı. Lütfen tekrar deneyin.';
+              break;
+          }
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(content: Text(msg), duration: const Duration(seconds: 4)),
+            );
+        },
+        onListeningChanged: (isListening) {
+          if (_disposed || !mounted) return;
+          setState(() => _isListening = isListening);
+        },
+      );
+
+      if (!started && !_disposed && mounted) {
         setState(() => _isListening = false);
-        final String msg;
-        switch (error.type) {
-          case VoiceInputErrorType.permissionDenied:
-            msg = 'Mikrofon izni olmadan sesli anlatım kullanılamıyor.';
-            break;
-          case VoiceInputErrorType.unavailable:
-            msg = 'Bu cihazda ses tanıma özelliği kullanılamıyor.';
-            break;
-          default:
-            msg = 'Ses tanıma başlatılamadı. Lütfen tekrar deneyin.';
-            break;
-        }
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(msg),
-              duration: const Duration(seconds: 4),
-            ),
-          );
-      },
-      onListeningChanged: (isListening) {
-        if (_disposed || !mounted) return;
-        setState(() => _isListening = isListening);
-      },
-    );
-
-    if (!started && !_disposed && mounted) {
-      setState(() => _isListening = false);
+      }
+    } catch (_) {
+      if (!_disposed && mounted) {
+        setState(() => _isListening = false);
+      }
     }
   }
 
@@ -390,7 +464,9 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Lütfen sorununuzu en az 2 karakter ile açıklayın.')),
+          const SnackBar(
+            content: Text('Lütfen sorununuzu en az 2 karakter ile açıklayın.'),
+          ),
         );
       return;
     }
@@ -418,9 +494,11 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
         ..showSnackBar(
           SnackBar(
             backgroundColor: AppColors.primary,
-            content: Text(queued
-                ? 'Sorununuz kaydedildi. İnternet bağlantısı geldiğinde uzmana gönderilecek.'
-                : 'Sorununuz uzmana gönderildi.'),
+            content: Text(
+              queued
+                  ? 'Sorununuz kaydedildi. İnternet bağlantısı geldiğinde uzmana gönderilecek.'
+                  : 'Sorununuz uzmana gönderildi.',
+            ),
           ),
         );
       Navigator.of(context).pop(true);
@@ -448,9 +526,7 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
       style: FilledButton.styleFrom(
         minimumSize: const Size(double.infinity, 50),
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       onPressed: _isSubmitting ? null : _submit,
       child: _isSubmitting
@@ -468,19 +544,13 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                 SizedBox(width: 10),
                 Text(
                   'Gönderiliyor...',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ],
             )
           : const Text(
               'Uzmana Gönder',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
     );
   }
@@ -488,9 +558,7 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sorun Bildir'),
-      ),
+      appBar: AppBar(title: const Text('Sorun Bildir')),
       body: _loadingFarms
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -569,7 +637,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                         margin: EdgeInsets.zero,
                         color: AppColors.surface,
                         child: ListTile(
-                          leading: const Icon(Icons.location_on, color: AppColors.primary),
+                          leading: const Icon(
+                            Icons.location_on,
+                            color: AppColors.primary,
+                          ),
                           title: const Text('İlgili Tarla'),
                           subtitle: Text(
                             '${widget.initialTarla!.name}${(widget.initialTarla!.cropType != null && widget.initialTarla!.cropType!.isNotEmpty) ? ' • ${widget.initialTarla!.cropType}' : ''}',
@@ -584,7 +655,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                           padding: EdgeInsets.all(12),
                           child: Row(
                             children: [
-                              Icon(Icons.info_outline, color: AppColors.warning),
+                              Icon(
+                                Icons.info_outline,
+                                color: AppColors.warning,
+                              ),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -652,9 +726,12 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                                       ),
                                       label: const Text(
                                         'Fotoğrafı Kaldır',
-                                        style: TextStyle(color: AppColors.error),
+                                        style: TextStyle(
+                                          color: AppColors.error,
+                                        ),
                                       ),
-                                      onPressed: () => setState(() => _selectedImage = null),
+                                      onPressed: () =>
+                                          setState(() => _selectedImage = null),
                                     ),
                                   ),
                                 ],
@@ -677,7 +754,8 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                                   const SizedBox(width: AppSpacing.md),
                                   const Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'Sorunun fotoğrafını ekleyin',
@@ -702,19 +780,26 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                               const SizedBox(height: AppSpacing.md),
                               LayoutBuilder(
                                 builder: (context, constraints) {
-                                  final isVeryCompact = constraints.maxWidth < 280;
+                                  final isVeryCompact =
+                                      constraints.maxWidth < 280;
                                   if (isVeryCompact) {
                                     return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
                                         Semantics(
                                           label: 'Fotoğraf çek',
                                           button: true,
                                           child: OutlinedButton.icon(
                                             key: const Key('btn_pick_camera'),
-                                            icon: const Icon(Icons.camera_alt, size: 18),
+                                            icon: const Icon(
+                                              Icons.camera_alt,
+                                              size: 18,
+                                            ),
                                             label: const Text('Fotoğraf Çek'),
-                                            onPressed: () => _pickPhotoFrom(ImageSource.camera),
+                                            onPressed: () => _pickPhotoFrom(
+                                              ImageSource.camera,
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(height: 8),
@@ -723,9 +808,14 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                                           button: true,
                                           child: OutlinedButton.icon(
                                             key: const Key('btn_pick_gallery'),
-                                            icon: const Icon(Icons.photo_library, size: 18),
+                                            icon: const Icon(
+                                              Icons.photo_library,
+                                              size: 18,
+                                            ),
                                             label: const Text('Galeriden Seç'),
-                                            onPressed: () => _pickPhotoFrom(ImageSource.gallery),
+                                            onPressed: () => _pickPhotoFrom(
+                                              ImageSource.gallery,
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -739,12 +829,17 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                                           button: true,
                                           child: OutlinedButton.icon(
                                             key: const Key('btn_pick_camera'),
-                                            icon: const Icon(Icons.camera_alt, size: 18),
+                                            icon: const Icon(
+                                              Icons.camera_alt,
+                                              size: 18,
+                                            ),
                                             label: const Text(
                                               'Fotoğraf Çek',
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            onPressed: () => _pickPhotoFrom(ImageSource.camera),
+                                            onPressed: () => _pickPhotoFrom(
+                                              ImageSource.camera,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -755,12 +850,17 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                                           button: true,
                                           child: OutlinedButton.icon(
                                             key: const Key('btn_pick_gallery'),
-                                            icon: const Icon(Icons.photo_library, size: 18),
+                                            icon: const Icon(
+                                              Icons.photo_library,
+                                              size: 18,
+                                            ),
                                             label: const Text(
                                               'Galeriden Seç',
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                            onPressed: () => _pickPhotoFrom(ImageSource.gallery),
+                                            onPressed: () => _pickPhotoFrom(
+                                              ImageSource.gallery,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -778,7 +878,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                     // 3. SORUNU ANLAT (İkinci Ana Aksiyon)
                     const Text(
                       'Sorunu Anlatın',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.xs),
 
@@ -789,7 +892,11 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                         child: OutlinedButton.icon(
                           key: const Key('btn_voice_input'),
                           onPressed: _isSubmitting ? null : _toggleVoiceInput,
-                          icon: const Icon(Icons.mic, size: 22, color: AppColors.primary),
+                          icon: const Icon(
+                            Icons.mic,
+                            size: 22,
+                            color: AppColors.primary,
+                          ),
                           label: const Text(
                             '🎙️ Konuşarak Anlat',
                             style: TextStyle(
@@ -800,8 +907,13 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                           ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 12),
-                            side: const BorderSide(color: AppColors.primary, width: 1.5),
-                            backgroundColor: _primaryLight.withValues(alpha: 0.3),
+                            side: const BorderSide(
+                              color: AppColors.primary,
+                              width: 1.5,
+                            ),
+                            backgroundColor: _primaryLight.withValues(
+                              alpha: 0.3,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -811,7 +923,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                     else
                       Container(
                         key: const Key('voice_listening_banner'),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.error.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
@@ -831,8 +946,8 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),
-                            const Expanded(
-                              child: Text(
+                            Expanded(
+                              child: const Text(
                                 '🎙️ Dinliyorum... Konuşabilirsiniz',
                                 style: TextStyle(
                                   color: AppColors.error,
@@ -843,8 +958,12 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                             ),
                             TextButton.icon(
                               key: const Key('btn_stop_listening'),
-                              onPressed: _stopListening,
-                              icon: const Icon(Icons.stop, size: 18, color: AppColors.error),
+                              onPressed: _toggleVoiceInput,
+                              icon: const Icon(
+                                Icons.stop,
+                                size: 18,
+                                color: AppColors.error,
+                              ),
                               label: const Text(
                                 'Durdur',
                                 style: TextStyle(
@@ -854,7 +973,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                               ),
                               style: TextButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                               ),
                             ),
                           ],
@@ -866,10 +988,12 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                     TextField(
                       key: const Key('field_description'),
                       controller: _descriptionController,
+                      focusNode: _descriptionFocusNode,
                       maxLines: 4,
                       maxLength: 2000,
                       decoration: InputDecoration(
-                        hintText: 'Ne zaman başladı? Nasıl görünüyor? Konuşarak veya yazarak anlatın.',
+                        hintText:
+                            'Ne zaman başladı? Nasıl görünüyor? Konuşarak veya yazarak anlatın.',
                         hintStyle: const TextStyle(
                           color: AppColors.textDisabled,
                           fontSize: 13,
@@ -912,7 +1036,10 @@ class _SorunBildirEkraniState extends State<SorunBildirEkrani> {
                     // Otomatik Başlık Özeti (Sade İkincil Bilgi)
                     Container(
                       key: const Key('badge_auto_title'),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(6),

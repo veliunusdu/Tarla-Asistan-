@@ -207,6 +207,7 @@ class FakeVoiceInputService implements VoiceInputService {
   @override
   Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
+    bool onDevice = false,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
   }) async {

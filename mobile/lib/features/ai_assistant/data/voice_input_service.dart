@@ -41,6 +41,7 @@ enum VoiceInputErrorType {
   notListening,
   network,
   languageUnsupported,
+  offlineRecognitionUnavailable,
 }
 
 /// Sesli giriş işleminde oluşan güvenli ve tipli hata nesnesi.
@@ -76,6 +77,7 @@ abstract class VoiceInputService {
   /// Dinleme oturumu başarıyla başlatıldıysa `true`, başlatılamadıysa `false` döner.
   Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
+    bool onDevice = false,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
   });
@@ -106,7 +108,9 @@ class DefaultVoiceInputService implements VoiceInputService {
   bool _isListening = false;
   bool _isStarting = false;
   bool _isDisposed = false;
+  Timer? _onDeviceFallbackTimer;
   String? _preferredLocaleId;
+  bool _onDeviceMode = false;
 
   ValueChanged<VoiceRecognitionResult>? _onResult;
   void Function(VoiceInputException error)? _onError;
@@ -130,6 +134,7 @@ class DefaultVoiceInputService implements VoiceInputService {
       final available = await _speechToText.initialize(
         onError: _handleSpeechError,
         onStatus: _handleSpeechStatus,
+        debugLogging: kDebugMode,
       );
 
       if (available && _speechToText.isAvailable) {
@@ -175,8 +180,10 @@ class DefaultVoiceInputService implements VoiceInputService {
 
     // 1. Öncelik: Kullanıcının tercih ettiği desteklenen locale
     if (userPreferredLocale != null && userPreferredLocale.trim().isNotEmpty) {
-      final target =
-          userPreferredLocale.trim().toLowerCase().replaceAll('-', '_');
+      final target = userPreferredLocale.trim().toLowerCase().replaceAll(
+        '-',
+        '_',
+      );
       for (final loc in locales) {
         final norm = loc.localeId.toLowerCase().replaceAll('-', '_');
         if (norm == target) {
@@ -247,6 +254,7 @@ class DefaultVoiceInputService implements VoiceInputService {
   @override
   Future<bool> startListening({
     required ValueChanged<VoiceRecognitionResult> onResult,
+    bool onDevice = false,
     void Function(VoiceInputException error)? onError,
     void Function(bool isListening)? onListeningChanged,
   }) async {
@@ -265,6 +273,13 @@ class DefaultVoiceInputService implements VoiceInputService {
     }
 
     _isStarting = true;
+    _onDeviceMode = onDevice;
+    if (kDebugMode) {
+      debugPrint(
+        'VoiceInput mode=${onDevice ? 'on-device' : 'online'} locale=$_preferredLocaleId',
+      );
+    }
+    _onDeviceFallbackTimer?.cancel();
     _onResult = onResult;
     _onError = onError;
     _onListeningChanged = onListeningChanged;
@@ -280,6 +295,9 @@ class DefaultVoiceInputService implements VoiceInputService {
           errorType = VoiceInputErrorType.permissionDenied;
           errorMsg =
               'Mikrofon izni verilmedi. Sesli giriş için mikrofon erişimine izin verin.';
+        } else if (onDevice) {
+          errorType = VoiceInputErrorType.offlineRecognitionUnavailable;
+          errorMsg = 'Bu cihazda Türkçe çevrimdışı ses tanıma kullanılamıyor.';
         } else {
           errorType = VoiceInputErrorType.unavailable;
           errorMsg = 'Bu cihazda konuşma tanıma motoru kullanılamıyor.';
@@ -307,6 +325,9 @@ class DefaultVoiceInputService implements VoiceInputService {
       await _speechToText.listen(
         onResult: (SpeechRecognitionResult result) {
           if (_isDisposed) return;
+          if (result.recognizedWords.trim().isNotEmpty) {
+            _onDeviceFallbackTimer?.cancel();
+          }
           _onResult?.call(
             VoiceRecognitionResult(
               recognizedWords: result.recognizedWords,
@@ -319,10 +340,24 @@ class DefaultVoiceInputService implements VoiceInputService {
           partialResults: true,
           cancelOnError: true,
           localeId: _preferredLocaleId,
+          onDevice: onDevice,
         ),
       );
       _isListening = true;
       _isStarting = false;
+      if (onDevice) {
+        _onDeviceFallbackTimer = Timer(const Duration(seconds: 5), () async {
+          if (_isDisposed || !_isListening) return;
+          await cancelListening();
+          _onError?.call(
+            const VoiceInputException(
+              type: VoiceInputErrorType.offlineRecognitionUnavailable,
+              message:
+                  'Bu cihazda Türkçe çevrimdışı ses tanıma kullanılamıyor.',
+            ),
+          );
+        });
+      }
       _onListeningChanged?.call(true);
       return true;
     } catch (e) {
@@ -346,6 +381,7 @@ class DefaultVoiceInputService implements VoiceInputService {
     try {
       await _speechToText.stop();
     } catch (_) {}
+    _onDeviceFallbackTimer?.cancel();
     _isListening = false;
     _isStarting = false;
     _onListeningChanged?.call(false);
@@ -357,18 +393,27 @@ class DefaultVoiceInputService implements VoiceInputService {
     try {
       await _speechToText.cancel();
     } catch (_) {}
+    _onDeviceFallbackTimer?.cancel();
     _isListening = false;
     _isStarting = false;
+    _onDeviceFallbackTimer?.cancel();
     _onListeningChanged?.call(false);
   }
 
   void _handleSpeechError(SpeechRecognitionError error) {
     if (_isDisposed) return;
+    _onDeviceFallbackTimer?.cancel();
     _isListening = false;
     _isStarting = false;
     _onListeningChanged?.call(false);
 
-    final errorType = mapSpeechError(error.errorMsg, error.permanent);
+    var errorType = mapSpeechError(error.errorMsg, error.permanent);
+    if (_onDeviceMode &&
+        (errorType == VoiceInputErrorType.network ||
+            errorType == VoiceInputErrorType.unavailable ||
+            errorType == VoiceInputErrorType.languageUnsupported)) {
+      errorType = VoiceInputErrorType.offlineRecognitionUnavailable;
+    }
     _onError?.call(
       VoiceInputException(type: errorType, message: error.errorMsg),
     );
@@ -392,6 +437,7 @@ class DefaultVoiceInputService implements VoiceInputService {
   @override
   void dispose() {
     _isDisposed = true;
+    _onDeviceFallbackTimer?.cancel();
     _isStarting = false;
     if (_isListening) {
       _isListening = false;

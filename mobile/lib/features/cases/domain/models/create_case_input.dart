@@ -8,6 +8,7 @@ class CreateCaseInput {
     required this.description,
     this.imageBytes,
     this.imageFileName,
+    this.audioFilePath,
   });
 
   final String farmId;
@@ -16,4 +17,5 @@ class CreateCaseInput {
   final String description;
   final List<int>? imageBytes;
   final String? imageFileName;
+  final String? audioFilePath;
 }

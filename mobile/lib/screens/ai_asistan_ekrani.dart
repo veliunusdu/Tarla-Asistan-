@@ -393,6 +393,9 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
       case VoiceInputErrorType.languageUnsupported:
         mesaj = 'Cihazınızda seçili dil için ses tanıma desteklenmiyor.';
         break;
+      case VoiceInputErrorType.offlineRecognitionUnavailable:
+        mesaj = 'Bu cihazda Türkçe çevrimdışı ses tanıma kullanılamıyor.';
+        break;
       case VoiceInputErrorType.runtimeError:
       case VoiceInputErrorType.notListening:
         mesaj = 'Ses tanıma sırasında bir sorun oluştu.';
