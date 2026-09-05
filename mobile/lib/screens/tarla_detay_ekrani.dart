@@ -232,6 +232,7 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
                           context,
                           MaterialPageRoute(
                             builder: (_) => SorunBildirEkrani(
+                              initialTarla: widget.tarla,
                               initialTarlaId: widget.tarla.id,
                               caseRepository: widget._caseRepository!,
                               tarlaRepository:

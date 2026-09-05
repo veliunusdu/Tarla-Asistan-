@@ -30,5 +30,14 @@ public class UploadMediaCommandValidator : AbstractValidator<UploadMediaCommand>
             .NotEmpty().WithMessage("İçerik türü belirtilmelidir.")
             .Must(ct => AllowedContentTypes.Contains(ct))
             .WithMessage("Yalnızca JPG, PNG, WEBP ve desteklenen ses dosyaları yüklenebilir.");
+
+        RuleFor(x => x.FileName)
+            .NotEmpty().WithMessage("Dosya adı belirtilmelidir.")
+            .Must((command, fileName) => MediaFileSignatureValidator.IsExtensionCompatible(fileName, command.ContentType))
+            .WithMessage("Dosya uzantısı içerik türüyle uyumlu değil.");
+
+        RuleFor(x => x.Data)
+            .Must((command, data) => MediaFileSignatureValidator.IsImageSignatureValid(command.ContentType, data))
+            .WithMessage("Dosya içeriği bildirilen görsel türüyle uyumlu değil.");
     }
 }

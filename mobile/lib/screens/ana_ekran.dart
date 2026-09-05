@@ -7,6 +7,7 @@ import '../features/fields/data/tarla_repository.dart';
 import '../features/market/data/backend_market_repository.dart';
 import '../features/market/data/local_market_repository.dart';
 import '../features/profile/data/profile_repository.dart';
+import '../features/tasks/data/daily_task_repository.dart';
 import '../features/weather/data/weather_repository.dart';
 import '../services/database_helper.dart';
 import '../services/api_client.dart';
@@ -37,6 +38,7 @@ class AnaEkran extends StatefulWidget {
     CaseRepository? caseRepository,
     ApiClient? apiClient,
     BackendMarketRepository? marketRepository,
+    DailyTaskRepository? dailyTaskRepository,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
@@ -47,6 +49,7 @@ class AnaEkran extends StatefulWidget {
        // ignore: prefer_initializing_formals
        _apiClient = apiClient,
        _marketRepo = marketRepository,
+       _dailyTaskRepo = dailyTaskRepository,
        // ignore: prefer_initializing_formals
        _onLogout = onLogout;
 
@@ -58,7 +61,10 @@ class AnaEkran extends StatefulWidget {
   final CaseRepository? _caseRepo;
   final ApiClient? _apiClient;
   final BackendMarketRepository? _marketRepo;
+  final DailyTaskRepository? _dailyTaskRepo;
   final Future<void> Function()? _onLogout;
+
+  DailyTaskRepository? get dailyTaskRepository => _dailyTaskRepo;
 
   @override
   State<AnaEkran> createState() => _AnaEkranState();
@@ -84,6 +90,7 @@ class _AnaEkranState extends State<AnaEkran> {
       AnaSayfaEkrani(
         tarlaRepository: widget._tarlaRepo,
         faaliyetRepository: widget._faaliyetRepo,
+        dailyTaskRepository: widget._dailyTaskRepo,
         weatherRepository: widget._weatherRepo,
         caseRepository: widget._caseRepo,
         marketRepository: widget._marketRepo ??

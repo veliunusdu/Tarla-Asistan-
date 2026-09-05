@@ -1,7 +1,51 @@
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using System.Text.Json;
 
 namespace TarlaAsistani.Application.Features.Cases.DTOs;
+
+public record RecentActivitySnapshotDto(
+    Guid Id,
+    string ActivityName,
+    string? ActivityType,
+    string Status,
+    DateTime OccurredAtUtc,
+    string? Description
+);
+
+public record CaseContextSnapshotDto(
+    string FarmName,
+    double? Latitude,
+    double? Longitude,
+    double? SizeInHectares,
+    string? IrrigationMethod,
+    string? SoilType,
+    string? FarmNote,
+    string? CropName,
+    DateOnly? CropPlantedAt,
+    DateOnly? CropHarvestedAt,
+    int? CropGrowingDay,
+    string? WeatherProvider,
+    DateTime? WeatherFetchedAtUtc,
+    bool IsBasedOnStaleWeather,
+    double? CurrentTemperatureC,
+    double? CurrentHumidityPercent,
+    double? Next24HoursPrecipitationMm,
+    List<RecentActivitySnapshotDto> RecentActivities
+)
+{
+    public static CaseContextSnapshotDto FromEntity(CaseContextSnapshot snapshot)
+    {
+        var activities = JsonSerializer.Deserialize<List<RecentActivitySnapshotDto>>(snapshot.RecentActivitiesJson) ?? [];
+        return new(
+            snapshot.FarmName, snapshot.Latitude, snapshot.Longitude, snapshot.SizeInHectares,
+            snapshot.IrrigationMethod, snapshot.SoilType, snapshot.FarmNote, snapshot.CropName,
+            snapshot.CropPlantedAt, snapshot.CropHarvestedAt, snapshot.CropGrowingDay,
+            snapshot.WeatherProvider, snapshot.WeatherFetchedAtUtc, snapshot.IsBasedOnStaleWeather,
+            snapshot.CurrentTemperatureC, snapshot.CurrentHumidityPercent,
+            snapshot.Next24HoursPrecipitationMm, activities);
+    }
+}
 
 public record CaseMediaDto(
     Guid Id,
@@ -75,7 +119,8 @@ public record CaseDetailDto(
     DateTime UpdatedAtUtc,
     DateTime? ClosedAtUtc,
     List<CaseMediaDto> Media,
-    List<CaseMessageDto> Messages
+    List<CaseMessageDto> Messages,
+    CaseContextSnapshotDto? Context = null
 )
 {
     public static CaseDetailDto FromEntity(SupportCase c) => new(
@@ -93,7 +138,8 @@ public record CaseDetailDto(
         c.UpdatedAtUtc,
         c.ClosedAtUtc,
         c.MediaLinks.Select(ml => CaseMediaDto.FromEntity(ml.Media)).ToList(),
-        c.Messages.Select(m => CaseMessageDto.FromEntity(m)).ToList()
+        c.Messages.Select(m => CaseMessageDto.FromEntity(m)).ToList(),
+        c.Context == null ? null : CaseContextSnapshotDto.FromEntity(c.Context)
     );
 }
 

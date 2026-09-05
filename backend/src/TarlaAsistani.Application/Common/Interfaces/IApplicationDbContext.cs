@@ -27,6 +27,7 @@ public interface IApplicationDbContext
 
     // ── Support Cases ────────────────────────────────────────
     DbSet<SupportCase> SupportCases { get; }
+    DbSet<CaseContextSnapshot> CaseContextSnapshots { get; }
     DbSet<CaseMessage> CaseMessages { get; }
     DbSet<CaseMedia> CaseMedia { get; }
     DbSet<CaseMessageMedia> CaseMessageMedia { get; }

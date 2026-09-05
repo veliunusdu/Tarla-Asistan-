@@ -182,6 +182,15 @@ button:disabled { cursor: wait; opacity: .65; }
 .case-side-panel dl div { border-bottom: 1px solid #edf0ed; padding-bottom: 14px; }
 .case-side-panel dt { color: var(--muted); font-size: 12px; font-weight: 750; margin-bottom: 5px; }
 .case-side-panel dd { font-weight: 750; margin: 0; }
+.context-snapshot { background: #f5f8f3; border: 1px solid #dce8d8; border-radius: 14px; padding: 14px; margin-bottom: 22px; }
+.context-snapshot .muted { font-size: 12px; margin: 0 0 14px; }
+.context-snapshot dl { gap: 10px; margin-bottom: 16px; }
+.context-snapshot dl div { border-bottom: 0; padding-bottom: 0; }
+.context-snapshot dd { font-size: 14px; }
+.context-snapshot h3 { font-size: 14px; margin: 16px 0 8px; }
+.context-snapshot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.context-snapshot li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.context-snapshot li span { color: var(--muted); white-space: nowrap; }
 input, select, textarea {
   background: white;
   border: 1px solid var(--line);

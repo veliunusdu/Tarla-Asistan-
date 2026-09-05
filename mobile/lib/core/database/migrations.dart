@@ -111,6 +111,30 @@ abstract final class Migrations {
     );
   }
 
+  /// Version 7 -> 8: durable offline case submissions.
+  static Future<void> v7ToV8(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pending_case_submissions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        farm_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        client_operation_id TEXT NOT NULL,
+        local_image_path TEXT,
+        uploaded_media_id TEXT,
+        created_at_utc TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at_utc TEXT,
+        last_error_code INTEGER,
+        state TEXT NOT NULL DEFAULT 'pending'
+      )
+    ''');
+    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_cases_user_operation ON pending_case_submissions(user_id, client_operation_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS ix_pending_cases_user_created ON pending_case_submissions(user_id, created_at_utc)');
+  }
+
   /// [table] tablosundaki mevcut kolon adlarını döndürür.
   static Future<Set<String>> _columnNames(Database db, String table) async {
     final rows = await db.rawQuery('PRAGMA table_info($table)');

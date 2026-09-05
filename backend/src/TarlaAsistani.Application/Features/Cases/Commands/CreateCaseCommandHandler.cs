@@ -2,8 +2,11 @@ using System.Security.Cryptography;
 using System.Text;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Cases.DTOs;
+using TarlaAsistani.Application.Features.Cases.Services;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 
@@ -12,10 +15,12 @@ namespace TarlaAsistani.Application.Features.Cases.Commands;
 public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseDetailDto>
 {
     private readonly IApplicationDbContext _db;
+    private readonly CaseContextSnapshotBuilder _snapshotBuilder;
 
-    public CreateCaseCommandHandler(IApplicationDbContext db)
+    public CreateCaseCommandHandler(IApplicationDbContext db, IConfiguration? configuration = null, IMemoryCache? cache = null)
     {
         _db = db;
+        _snapshotBuilder = new CaseContextSnapshotBuilder(db, configuration, cache);
     }
 
     public async Task<CaseDetailDto> Handle(CreateCaseCommand request, CancellationToken cancellationToken)
@@ -40,6 +45,7 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
                     .Include(sc => sc.MediaLinks)
                         .ThenInclude(ml => ml.Media)
                     .Include(sc => sc.Messages)
+                    .Include(sc => sc.Context)
                     .FirstOrDefaultAsync(sc => sc.Id == existingOp.ResourceId, cancellationToken);
 
                 if (replayed != null)
@@ -67,6 +73,8 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
             }
         }
 
+        await using var transaction = await _db.BeginTransactionAsync(cancellationToken);
+
         // 3. Create SupportCase entity
         var now = DateTime.UtcNow;
         var supportCase = new SupportCase
@@ -83,6 +91,9 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
         };
 
         _db.SupportCases.Add(supportCase);
+
+        supportCase.Context = await _snapshotBuilder.BuildAsync(
+            farm, supportCase.Id, now, cancellationToken);
 
         foreach (var mediaId in mediaIds)
         {
@@ -111,12 +122,15 @@ public class CreateCaseCommandHandler : IRequestHandler<CreateCaseCommand, CaseD
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        await transaction.CommitAsync(cancellationToken);
+
         // 4. Return full CaseDetailDto with loaded media and farm
         var created = await _db.SupportCases
             .Include(sc => sc.Farm)
             .Include(sc => sc.MediaLinks)
                 .ThenInclude(ml => ml.Media)
             .Include(sc => sc.Messages)
+            .Include(sc => sc.Context)
             .FirstAsync(sc => sc.Id == supportCase.Id, cancellationToken);
 
         return CaseDetailDto.FromEntity(created);

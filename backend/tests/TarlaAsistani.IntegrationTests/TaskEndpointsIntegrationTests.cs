@@ -140,4 +140,176 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             CustomWebApplicationFactory.JsonOptions);
         tasks.Should().ContainSingle(item => item.Id == task.Id);
     }
+
+    [Fact]
+    public async Task ListDailyTasks_WithMultipleCandidatesAndCriticalAlert_ShouldRankAndLimitCorrectly()
+    {
+        // 1. Arrange: Create user and farm
+        var ownerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = ownerId,
+                PhoneNumber = "+905550000002",
+                Role = UserRole.Farmer,
+                AccountStatus = AccountStatus.Active,
+            });
+
+            db.Farms.Add(new Farm
+            {
+                Id = farmId,
+                OwnerId = ownerId,
+                Name = "Sıralama Test Sahası",
+                SizeInHectares = 10,
+                IrrigationMethod = IrrigationMethod.Drip,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+
+            // 1 Critical Weather Alert
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Don uyarısı",
+                Description = "Don riski bekleniyor",
+                Reason = "Hava tahmininde don riski",
+                Priority = TaskPriority.Critical,
+                Source = TaskSource.Weather,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "cw-1",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            // 5 Active regular tasks with different priorities and sources
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Uzman yaprak kontrolü",
+                Description = "Yaprakları kontrol et",
+                Reason = "Uzman tavsiyesi",
+                Priority = TaskPriority.High,
+                Source = TaskSource.Expert,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "reg-expert-high",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Acil damlama sulama",
+                Description = "Sulama yap",
+                Reason = "Su ihtiyacı",
+                Priority = TaskPriority.High,
+                Source = TaskSource.CropCalendar,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "reg-crop-high",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Gübreleme yapınız",
+                Description = "Üst gübreleme",
+                Reason = "Gelişim dönemi",
+                Priority = TaskPriority.Medium,
+                Source = TaskSource.System,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "reg-sys-med",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Uzman genel kontrol",
+                Description = "Haftalık kontrol",
+                Reason = "Genel gözlem",
+                Priority = TaskPriority.Low,
+                Source = TaskSource.Expert,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "reg-expert-low",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Çiftçi el aletleri kontrolü",
+                Description = "Aletleri temizle",
+                Reason = "Bakım",
+                Priority = TaskPriority.Low,
+                Source = TaskSource.Manual,
+                Status = TaskStatus.New,
+                DueDate = today,
+                DedupeKey = "reg-man-low",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            // 1 Overdue task (DueDate in past)
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Geçmiş kontrol görevi",
+                Description = "Geçmiş iş",
+                Reason = "Zamanı geçmiş",
+                Priority = TaskPriority.High,
+                Source = TaskSource.CropCalendar,
+                Status = TaskStatus.New,
+                DueDate = today.AddDays(-3),
+                DedupeKey = "overdue-1",
+                CreatedAtUtc = DateTime.UtcNow.AddDays(-3)
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        // 2. Act: Send GET /api/v1/farms/{farmId}/tasks
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmId}/tasks?date={today:yyyy-MM-dd}");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+        request.Headers.Add("X-User-Role", "Farmer");
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var result = await response.Content.ReadFromJsonAsync<DailyTaskListDto>(CustomWebApplicationFactory.JsonOptions);
+
+        // 3. Assert
+        result.Should().NotBeNull();
+        result!.CriticalWeatherAlerts.Should().HaveCount(1);
+        result.CriticalWeatherAlerts.First().Title.Should().Be("Don uyarısı");
+
+        result.Items.Should().HaveCount(3);
+        // Correct order: High Expert > High CropCalendar > Medium System
+        result.Items[0].Title.Should().Be("Uzman yaprak kontrolü");
+        result.Items[1].Title.Should().Be("Acil damlama sulama");
+        result.Items[2].Title.Should().Be("Gübreleme yapınız");
+
+        // Items should not include critical weather or low priority tasks
+        result.Items.Should().NotContain(i => i.Title == "Don uyarısı");
+        result.Items.Should().NotContain(i => i.Title == "Uzman genel kontrol");
+        result.Items.Should().NotContain(i => i.Title == "Çiftçi el aletleri kontrolü");
+        result.Items.Should().NotContain(i => i.Title == "Geçmiş kontrol görevi");
+
+        // Overdue list should contain the past task
+        result.Overdue.Should().ContainSingle(o => o.Title == "Geçmiş kontrol görevi");
+    }
 }

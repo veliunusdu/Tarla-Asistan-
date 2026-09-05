@@ -30,6 +30,7 @@ public class GetCaseByIdQueryHandler : IRequestHandler<GetCaseByIdQuery, CaseDet
             .Include(sc => sc.Messages)
                 .ThenInclude(m => m.MediaLinks)
                     .ThenInclude(ml => ml.Media)
+            .Include(sc => sc.Context)
             .Where(sc => sc.Id == request.CaseId && sc.Farm.ArchivedAt == null);
 
         if (request.Role == UserRole.Farmer)

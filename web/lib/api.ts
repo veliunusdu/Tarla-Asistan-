@@ -134,6 +134,36 @@ export type CaseMessage = {
   created_at_utc: string;
 };
 
+export type RecentActivitySnapshot = {
+  id: string;
+  activity_name: string;
+  activity_type: string | null;
+  status: string;
+  occurred_at_utc: string;
+  description: string | null;
+};
+
+export type CaseContextSnapshot = {
+  farm_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  size_in_hectares: number | null;
+  irrigation_method: string | null;
+  soil_type: string | null;
+  farm_note: string | null;
+  crop_name: string | null;
+  crop_planted_at: string | null;
+  crop_harvested_at: string | null;
+  crop_growing_day: number | null;
+  weather_provider: string | null;
+  weather_fetched_at_utc: string | null;
+  is_based_on_stale_weather: boolean;
+  current_temperature_c: number | null;
+  current_humidity_percent: number | null;
+  next24_hours_precipitation_mm: number | null;
+  recent_activities: RecentActivitySnapshot[];
+};
+
 export type SupportCase = {
   id: string;
   farm_id: string;
@@ -150,6 +180,7 @@ export type SupportCase = {
   closed_at_utc: string | null;
   created_at_utc: string;
   updated_at_utc: string;
+  context: CaseContextSnapshot | null;
 };
 
 export type CaseSummary = {

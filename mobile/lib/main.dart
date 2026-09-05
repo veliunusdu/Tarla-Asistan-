@@ -10,12 +10,15 @@ import 'models/notification_target.dart';
 import 'features/activities/data/backend_faaliyet_repository.dart';
 import 'features/ai_assistant/data/backend_ai_assistant_repository.dart';
 import 'features/cases/data/backend_case_repository.dart';
+import 'features/cases/data/local_pending_case_repository.dart';
+import 'features/cases/data/pending_case_sync_service.dart';
 import 'features/weather/data/backend_weather_repository.dart';
 import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
 import 'features/market/data/backend_market_repository.dart';
 import 'features/market/data/local_market_repository.dart';
 import 'features/profile/data/backend_profile_repository.dart';
+import 'features/tasks/data/backend_daily_task_repository.dart';
 import 'screens/giris_ekrani.dart';
 import 'screens/notification_target_screen.dart';
 import 'screens/onboarding_ekrani.dart';
@@ -92,6 +95,8 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   late final FirebaseAuthService _authService;
   late final AuthService _backendAuthService;
   late final SyncService _syncService;
+  late final PendingCaseSyncService _pendingCaseSyncService;
+  late final LocalPendingCaseRepository _pendingCaseRepository;
   late final NotificationService _notificationService;
   late final PostLoginInitializer _postLoginInitializer;
   late bool _isFirstRun;
@@ -108,7 +113,12 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       idTokenProvider: _backendAuthService.currentAccessToken,
       forceRefreshTokenProvider: _refreshBackendSession,
     );
-    _syncService = SyncService(_apiClient);
+    _pendingCaseRepository = const LocalPendingCaseRepository();
+    _pendingCaseSyncService = PendingCaseSyncService(_apiClient, _pendingCaseRepository);
+    _syncService = SyncService(
+      _apiClient,
+      onConnectivityRestored: _pendingCaseSyncService.syncPending,
+    );
     _notificationService = NotificationService(
       _apiClient,
       _navigatorKey,
@@ -117,7 +127,10 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     );
     _postLoginInitializer = PostLoginInitializer(
       profileProvisioner: FirestoreUserProfileService(),
-      initializeSync: _syncService.initialize,
+      initializeSync: () async {
+        await _syncService.initialize();
+        await _pendingCaseSyncService.syncPending();
+      },
       initializeNotifications: _notificationService.initializeAfterLogin,
     );
   }
@@ -328,10 +341,14 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         apiClient: _apiClient,
                         caseRepository: BackendCaseRepository(
                           apiClient: _apiClient,
+                          pendingRepository: _pendingCaseRepository,
                         ),
                         marketRepository: BackendMarketRepository(
                           apiClient: _apiClient,
                           localRepo: const LocalMarketRepository(),
+                        ),
+                        dailyTaskRepository: BackendDailyTaskRepository(
+                          apiClient: _apiClient,
                         ),
                       );
                     },

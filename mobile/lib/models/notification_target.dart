@@ -1,4 +1,4 @@
-enum NotificationTargetType { task, supportCase, advisory, weather, unknown }
+enum NotificationTargetType { task, supportCase, advisory, weather, dailyTasks, unknown }
 
 class NotificationTarget {
   const NotificationTarget({
@@ -16,6 +16,14 @@ class NotificationTarget {
     if (deepLink != null && deepLink.isNotEmpty) {
       final parsed = tryParse(deepLink);
       if (parsed != null) return parsed;
+    }
+    final typeStr = data['type']?.toString();
+    if (typeStr == 'daily_tasks') {
+      return NotificationTarget(
+        type: NotificationTargetType.dailyTasks,
+        resourceId: data['farm_id']?.toString() ?? '',
+        farmId: data['farm_id']?.toString(),
+      );
     }
     final caseId = data['case_id']?.toString();
     if (caseId != null && caseId.isNotEmpty) {
@@ -55,10 +63,17 @@ class NotificationTarget {
     }
     if (uri.host == 'farms' && segments.length >= 2) {
       final farmId = segments[0];
-      if (segments[1] == 'tasks' && segments.length >= 3) {
+      if (segments[1] == 'tasks') {
+        if (segments.length >= 3) {
+          return NotificationTarget(
+            type: NotificationTargetType.task,
+            resourceId: segments[2],
+            farmId: farmId,
+          );
+        }
         return NotificationTarget(
-          type: NotificationTargetType.task,
-          resourceId: segments[2],
+          type: NotificationTargetType.dailyTasks,
+          resourceId: farmId,
           farmId: farmId,
         );
       }

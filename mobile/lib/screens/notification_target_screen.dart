@@ -63,6 +63,7 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
     NotificationTargetType.supportCase => '/cases/${widget.target.resourceId}',
     NotificationTargetType.advisory => '/ai/advisories',
     NotificationTargetType.weather => '/farms/${widget.target.farmId}/weather',
+    NotificationTargetType.dailyTasks => '/farms/${widget.target.farmId ?? widget.target.resourceId}/tasks',
     NotificationTargetType.unknown => '/notifications',
   };
 
@@ -71,6 +72,7 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
     NotificationTargetType.supportCase => 'Vaka detayı',
     NotificationTargetType.advisory => 'AI Tarla Uyarısı',
     NotificationTargetType.weather => 'Hava uyarısı',
+    NotificationTargetType.dailyTasks => 'Günün İşleri',
     NotificationTargetType.unknown => 'Bildirim',
   };
 
@@ -124,6 +126,36 @@ class _NotificationTargetScreenState extends State<NotificationTargetScreen> {
     BuildContext context,
     Map<String, dynamic> data,
   ) {
+    if (widget.target.type == NotificationTargetType.dailyTasks) {
+      final items = data['items'] is List ? data['items'] as List : const [];
+      final alerts = data['critical_weather_alerts'] is List
+          ? data['critical_weather_alerts'] as List
+          : const [];
+      return [
+        const _Header(title: 'Günün Önemli İşleri'),
+        if (alerts.isNotEmpty) ...[
+          for (final alert in alerts.whereType<Map>())
+            Card(
+              color: Colors.amber.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                title: Text(alert['title']?.toString() ?? 'Kritik Hava Uyarısı'),
+                subtitle: Text(alert['description']?.toString() ?? ''),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+        if (items.isEmpty) const Text('Bugün için kayıtlı görev bulunmuyor.'),
+        for (final item in items.whereType<Map>())
+          Card(
+            child: ListTile(
+              title: Text(item['title']?.toString() ?? 'Görev'),
+              subtitle: Text(item['reason']?.toString() ?? item['description']?.toString() ?? ''),
+              trailing: Text(item['priority']?.toString() ?? ''),
+            ),
+          ),
+      ];
+    }
     if (widget.target.type == NotificationTargetType.task) {
       return [
         _Header(title: data['title']?.toString() ?? 'İş'),

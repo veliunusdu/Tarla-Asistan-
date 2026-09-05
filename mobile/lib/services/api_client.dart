@@ -279,7 +279,12 @@ class ApiClient {
     );
 
     if (requiresAuth && response.statusCode == 401) {
-      final freshToken = await _forceRefreshTokenProvider();
+      String? freshToken;
+      try {
+        freshToken = await _forceRefreshTokenProvider();
+      } catch (_) {
+        freshToken = null;
+      }
       if (freshToken == null || freshToken.isEmpty) {
         throw const ApiException(
           'Oturumunuz sona erdi. Tekrar giriş yapın.',

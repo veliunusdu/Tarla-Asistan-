@@ -129,41 +129,69 @@ public static class TaskEngine
         }
 
         // 4. Create tasks with deduplication
+        var distinctSpecs = specs
+            .GroupBy(s => CalculateDedupeKey(s))
+            .Select(g => g.First())
+            .ToList();
+
+        var activeOrOverdueStatuses = new[]
+        {
+            TaskStatus.New,
+            TaskStatus.Viewed,
+            TaskStatus.Planned,
+            TaskStatus.Overdue
+        };
+
         var now = DateTime.UtcNow;
-        foreach (var spec in specs)
+        foreach (var spec in distinctSpecs)
         {
             var dedupeKey = CalculateDedupeKey(spec);
+            var legacyDedupeKey = CalculateLegacyDedupeKey(spec);
 
+            // Prevent duplicate creation:
+            // 1. If task with same dedupeKey (new or legacy) already exists for targetDate (any status)
+            // 2. OR if an active/overdue task with same dedupeKey (new or legacy) already exists for this farm
             var alreadyExists = await db.FarmTasks
-                .AnyAsync(t => t.FarmId == farm.Id && t.DueDate == targetDate && t.DedupeKey == dedupeKey, cancellationToken);
+                .AnyAsync(t => t.FarmId == farm.Id &&
+                               (t.DedupeKey == dedupeKey || t.DedupeKey == legacyDedupeKey) &&
+                               (t.DueDate == targetDate || activeOrOverdueStatuses.Contains(t.Status)),
+                          cancellationToken);
 
             if (!alreadyExists)
             {
-                var task = new FarmTask
+                db.FarmTasks.Add(new FarmTask
                 {
+                    Id = Guid.NewGuid(),
                     FarmId = farm.Id,
-                    CropPeriodId = spec.CropPeriodId,
                     Title = spec.Title,
                     Description = spec.Description,
                     Reason = spec.Reason,
                     Priority = spec.Priority,
-                    Status = TaskStatus.New,
                     Source = spec.Source,
                     Confidence = spec.Confidence,
+                    Status = TaskStatus.New,
                     DueDate = spec.DueDate,
+                    CropPeriodId = spec.CropPeriodId,
                     DedupeKey = dedupeKey,
                     CreatedAtUtc = now,
                     UpdatedAtUtc = now
-                };
-
-                db.FarmTasks.Add(task);
+                });
             }
         }
 
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static string CalculateDedupeKey(TaskSpec spec)
+    public static string CalculateDedupeKey(TaskSpec spec)
+    {
+        var discriminator = string.IsNullOrWhiteSpace(spec.DedupeDiscriminator)
+            ? spec.Title.Trim().ToLowerInvariant()
+            : spec.DedupeDiscriminator.Trim().ToLowerInvariant();
+        var raw = $"{spec.Source}|{discriminator}|{spec.CropPeriodId}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+    }
+
+    public static string CalculateLegacyDedupeKey(TaskSpec spec)
     {
         var raw = $"{spec.Source}|{spec.Title.ToLowerInvariant()}|{spec.Description.ToLowerInvariant()}|{spec.Reason.ToLowerInvariant()}|{spec.CropPeriodId}|{spec.DedupeDiscriminator}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();

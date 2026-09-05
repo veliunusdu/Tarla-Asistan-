@@ -1,4 +1,6 @@
 import 'package:uuid/uuid.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:typed_data';
 
 import '../../../config/app_config.dart';
 import '../../../services/api_client.dart';
@@ -9,16 +11,31 @@ import '../domain/models/case_status.dart';
 import '../domain/models/case_summary.dart';
 import '../domain/models/create_case_input.dart';
 import 'case_repository.dart';
+import 'local_pending_case_repository.dart';
+
+String? _currentFirebaseUserId() {
+  try {
+    return FirebaseAuth.instance.currentUser?.uid;
+  } catch (_) {
+    return null;
+  }
+}
 
 class BackendCaseRepository implements CaseRepository {
   const BackendCaseRepository({
     required ApiClient apiClient,
     Uuid uuid = const Uuid(),
+    LocalPendingCaseRepository? pendingRepository,
+    String? Function()? userIdProvider,
   })  : _api = apiClient,
-        _uuid = uuid;
+        _uuid = uuid,
+        _pendingRepository = pendingRepository ?? const LocalPendingCaseRepository(),
+        _userIdProvider = userIdProvider ?? _currentFirebaseUserId;
 
   final ApiClient _api;
   final Uuid _uuid;
+  final LocalPendingCaseRepository _pendingRepository;
+  final String? Function() _userIdProvider;
 
   String? _resolveMediaUrl(String? rawUrl) {
     if (rawUrl == null || rawUrl.isEmpty) return null;
@@ -32,6 +49,9 @@ class BackendCaseRepository implements CaseRepository {
 
   @override
   Future<String> createCase(CreateCaseInput input) async {
+    final clientOperationId = _uuid.v4();
+    String? uploadedMediaId;
+    try {
     List<String>? mediaIds;
 
     if (input.imageBytes != null && input.imageBytes!.isNotEmpty) {
@@ -52,6 +72,7 @@ class BackendCaseRepository implements CaseRepository {
         throw const ApiException('Fotoğraf yüklendi ancak medya kimliği alınamadı.');
       }
       mediaIds = [mediaId];
+      uploadedMediaId = mediaId;
     }
 
     final payload = <String, dynamic>{
@@ -60,7 +81,7 @@ class BackendCaseRepository implements CaseRepository {
       'title': input.title.trim(),
       'description': input.description.trim(),
       'media_ids': mediaIds,
-      'client_operation_id': _uuid.v4(),
+      'client_operation_id': clientOperationId,
     };
 
     final response = await _api.postJson('/cases', payload);
@@ -69,6 +90,21 @@ class BackendCaseRepository implements CaseRepository {
       throw const ApiException('Vaka oluşturuldu ancak yanıt kimliği alınamadı.');
     }
     return caseId;
+    } on ApiException catch (error) {
+      if (!error.retryable) rethrow;
+      final userId = _userIdProvider();
+      if (userId == null || userId.isEmpty) rethrow;
+      final pendingId = await _pendingRepository.enqueue(
+        farmId: input.farmId,
+        category: input.category.backendValue,
+        title: input.title,
+        description: input.description,
+        clientOperationId: clientOperationId,
+        imageBytes: input.imageBytes == null ? null : Uint8List.fromList(input.imageBytes!),
+        uploadedMediaId: uploadedMediaId,
+      );
+      return 'pending:$pendingId';
+    }
   }
 
   @override

@@ -9,6 +9,10 @@ import 'package:mobile/features/fields/data/farm_summary_repository.dart';
 import 'package:mobile/features/fields/data/tarla_repository.dart';
 import 'package:mobile/features/location/data/location_service.dart';
 import 'package:mobile/features/location/domain/tarla_location.dart';
+import 'package:mobile/features/tasks/data/daily_task_repository.dart';
+import 'package:mobile/features/tasks/domain/farm_task.dart';
+import 'package:mobile/features/tasks/domain/pending_task_action.dart';
+import 'package:mobile/features/tasks/domain/task_enums.dart';
 import 'package:mobile/features/weather/data/weather_repository.dart';
 import 'package:mobile/features/weather/data/backend_weather_repository.dart';
 import 'package:mobile/features/weather/domain/weather_summary.dart';
@@ -127,6 +131,37 @@ class FakeFaaliyetRepository
   Future<void> markAsCompleted(String id) async {}
 }
 
+class FakeDailyTaskRepoForHome implements DailyTaskRepository {
+  FakeDailyTaskRepoForHome(this._taskList);
+  final DailyTaskList _taskList;
+
+  @override
+  Future<DailyTaskList> getDailyTasks(String farmId) async => _taskList;
+
+  @override
+  Future<void> completeTask({
+    required String farmId,
+    required String taskId,
+    String? note,
+  }) async {}
+
+  @override
+  Future<void> markTaskNotApplied({
+    required String farmId,
+    required String taskId,
+    required String reason,
+  }) async {}
+
+  @override
+  Future<void> enqueueTaskAction(PendingTaskAction action) async {}
+
+  @override
+  Future<List<PendingTaskAction>> getPendingActions({String? farmId}) async => const [];
+
+  @override
+  Future<SyncResult> syncPendingTaskActions({String? farmId}) async => const SyncResult();
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -135,6 +170,7 @@ Widget _wrap({
   required TarlaRepository tarlaRepo,
   required WeatherRepository weatherRepo,
   FaaliyetRepository? faaliyetRepo,
+  DailyTaskRepository? dailyTaskRepo,
   LocationService? locationService,
   FieldLocationPicker? locationPicker,
   VoidCallback? onTarlalarimSekme,
@@ -145,6 +181,7 @@ Widget _wrap({
   home: AnaSayfaEkrani(
     tarlaRepository: tarlaRepo,
     faaliyetRepository: faaliyetRepo ?? FakeFaaliyetRepository(),
+    dailyTaskRepository: dailyTaskRepo,
     weatherRepository: weatherRepo,
     locationService: locationService,
     locationPicker: locationPicker,
@@ -709,6 +746,52 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byIcon(Icons.schedule), findsAtLeastNWidgets(1));
+      });
+    });
+
+    // ── Günün İşleri (DailyTaskRepository) ────────────────────────────────
+    group('günün işleri (DailyTaskRepository entegrasyonu)', () {
+      testWidgets('DailyTaskRepository sağlandığında BugununGorevleriWidget gösterilir', (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final dailyRepo = FakeDailyTaskRepoForHome(
+          DailyTaskList(
+            date: DateTime(2026, 9, 5),
+            items: [
+              const FarmTask(
+                id: 't1',
+                farmId: 't1',
+                title: 'Mısır tarlasını sula',
+                description: '',
+                reason: 'Hava sıcaklığı yüksek',
+                priority: TaskPriority.high,
+                status: TaskStatus.newTask,
+                source: TaskSource.system,
+                confidence: TaskConfidence.high,
+                dueDate: null,
+                expertReviewRecommended: false,
+              ),
+            ],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(
+          _wrap(
+            tarlaRepo: FakeTarlaRepository(Future.value([_tarla('t1')])),
+            weatherRepo: FakeWeatherRepository(Future.value(_hava)),
+            dailyTaskRepo: dailyRepo,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Bugünün İşleri'), findsOneWidget);
+        expect(find.text('Mısır tarlasını sula'), findsOneWidget);
+        expect(find.text('Yaklaşan İşler'), findsNothing);
       });
     });
 

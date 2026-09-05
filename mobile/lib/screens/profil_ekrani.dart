@@ -6,6 +6,7 @@ import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/profile/domain/user_profile.dart';
+import '../features/tasks/services/daily_task_notification_service.dart';
 import '../services/api_client.dart';
 import 'bildirimler_ekrani.dart';
 
@@ -16,6 +17,7 @@ class ProfilEkrani extends StatefulWidget {
     this.caseRepository,
     this.tarlaRepository,
     this.apiClient,
+    this.dailyTaskNotificationService,
     this.onLogout,
   });
 
@@ -23,6 +25,7 @@ class ProfilEkrani extends StatefulWidget {
   final CaseRepository? caseRepository;
   final TarlaRepository? tarlaRepository;
   final ApiClient? apiClient;
+  final DailyTaskNotificationService? dailyTaskNotificationService;
   final Future<void> Function()? onLogout;
 
   @override
@@ -34,11 +37,30 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  late final DailyTaskNotificationService _dailyNotificationService;
+  bool _dailyTasksNotificationEnabled = true;
+  TimeOfDay _dailyReminderTime = const TimeOfDay(hour: 8, minute: 0);
 
   @override
   void initState() {
     super.initState();
+    _dailyNotificationService =
+        widget.dailyTaskNotificationService ?? DailyTaskNotificationService();
     _loadProfile();
+    _loadNotificationPreferences();
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    final enabled = await _dailyNotificationService.preferences
+        .isDailyTasksNotificationEnabled();
+    final time =
+        await _dailyNotificationService.preferences.getReminderTime();
+    if (mounted) {
+      setState(() {
+        _dailyTasksNotificationEnabled = enabled;
+        _dailyReminderTime = time;
+      });
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -125,6 +147,14 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           notificationsEnabled: enabled,
         ),
       );
+
+      if (enabled) {
+        if (_dailyTasksNotificationEnabled) {
+          await _dailyNotificationService.scheduleDailySummaryIfNeeded();
+        }
+      } else {
+        await _dailyNotificationService.cancelDailyReminder();
+      }
 
       if (mounted) {
         setState(() {
@@ -215,10 +245,55 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           trailing: profile == null || widget.repository == null
               ? null
               : Switch(
+                  key: const Key('profile_notifications_switch'),
                   value: profile.notificationsEnabled,
                   onChanged: _saving ? null : _toggleNotifications,
                 ),
         ),
+        if (profile?.notificationsEnabled == true) ...[
+          ListTile(
+            contentPadding: const EdgeInsets.only(left: 32, right: 16),
+            title: const Text('Günlük görev hatırlatmaları'),
+            subtitle: Text(
+              _dailyTasksNotificationEnabled
+                  ? 'Sabahları günün önemli işlerini hatırlat'
+                  : 'Kapalı',
+            ),
+            trailing: Switch(
+              key: const Key('daily_tasks_notification_switch'),
+              value: _dailyTasksNotificationEnabled,
+              onChanged: (val) async {
+                await _dailyNotificationService.preferences
+                    .setDailyTasksNotificationEnabled(val);
+                setState(() => _dailyTasksNotificationEnabled = val);
+                if (val) {
+                  await _dailyNotificationService.scheduleDailySummaryIfNeeded();
+                } else {
+                  await _dailyNotificationService.cancelDailyReminder();
+                }
+              },
+            ),
+          ),
+          if (_dailyTasksNotificationEnabled)
+            ListTile(
+              contentPadding: const EdgeInsets.only(left: 32, right: 16),
+              title: const Text('Günlük görev hatırlatma saati'),
+              subtitle: Text(_dailyReminderTime.format(context)),
+              trailing: const Icon(Icons.access_time),
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: _dailyReminderTime,
+                );
+                if (picked != null) {
+                  await _dailyNotificationService.preferences
+                      .setReminderTime(picked);
+                  setState(() => _dailyReminderTime = picked);
+                  await _dailyNotificationService.rescheduleDailyReminder();
+                }
+              },
+            ),
+        ],
         if (widget.apiClient != null)
           ListTile(
             leading: const Icon(Icons.notifications_none_outlined),

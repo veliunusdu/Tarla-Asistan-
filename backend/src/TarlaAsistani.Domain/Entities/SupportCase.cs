@@ -39,4 +39,5 @@ public class SupportCase
     public ICollection<CaseMessage> Messages { get; set; } = new List<CaseMessage>();
 
     public ICollection<CaseMedia> MediaLinks { get; set; } = new List<CaseMedia>();
+    public CaseContextSnapshot? Context { get; set; }
 }

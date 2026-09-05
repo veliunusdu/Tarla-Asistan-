@@ -97,6 +97,9 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         createdCase.Should().NotBeNull();
         createdCase!.Title.Should().Be("Domates Yaprak Kıvırcıklığı");
         createdCase.Status.Should().Be(CaseStatus.Open);
+        createdCase.Context.Should().NotBeNull();
+        createdCase.Context!.FarmName.Should().Be("Vaka Test Tarlası");
+        createdCase.Context.CropName.Should().Be("Domates");
 
         // 3. Add a Message to Case
         var addMessageRequest = new CreateCaseMessageApiRequest(

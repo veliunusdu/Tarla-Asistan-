@@ -173,9 +173,13 @@ class _AiAsistanEkraniState extends State<AiAsistanEkrani> {
 
     if (kaynak == null || !mounted) return;
 
-    final picked = await widget._imagePickerService.pickImage(source: kaynak);
-    if (picked == null || !mounted) return;
-    setState(() => _secilenFoto = picked);
+    try {
+      final picked = await widget._imagePickerService.pickImage(source: kaynak);
+      if (picked == null || !mounted) return;
+      setState(() => _secilenFoto = picked);
+    } on FormatException catch (error) {
+      if (mounted) _hataMesajiGoster(error.message);
+    }
   }
 
   // ---------------------------------------------------------------------------

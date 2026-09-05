@@ -72,7 +72,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.byKey(const Key('profile_notifications_switch')));
     await tester.pump();
     await tester.pump();
 

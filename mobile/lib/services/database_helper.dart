@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -34,7 +35,7 @@ class DatabaseHelper implements SyncOperationStore {
 
   @visibleForTesting
   static Future<void> createTablesForTesting(Database db) async {
-    await instance._createDB(db, 6);
+    await instance._createDB(db, 8);
   }
 
   String? get currentUserId {
@@ -61,7 +62,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 8,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -107,6 +108,8 @@ class DatabaseHelper implements SyncOperationStore {
 
     await _createSyncOperationsTable(db);
     await _createMarketCacheTable(db);
+    await _createDailyTaskTables(db);
+    await _createPendingCaseTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -125,6 +128,53 @@ class DatabaseHelper implements SyncOperationStore {
     if (oldVersion < 6) {
       await _createMarketCacheTable(db);
     }
+    if (oldVersion < 7) {
+      await _createDailyTaskTables(db);
+    }
+    if (oldVersion < 8) {
+      await _createPendingCaseTable(db);
+    }
+  }
+
+  Future<void> _createPendingCaseTable(Database db) async {
+    await Migrations.v7ToV8(db);
+  }
+
+  Future<void> _createDailyTaskTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS daily_tasks_cache (
+        farm_id TEXT PRIMARY KEY,
+        cached_at_utc TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pending_task_actions (
+        id TEXT PRIMARY KEY,
+        farm_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        reason TEXT,
+        note TEXT,
+        created_at_utc TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at_utc TEXT,
+        last_error_code INTEGER,
+        user_id TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS ux_pending_task_actions_farm_task
+      ON pending_task_actions(farm_id, task_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS ix_pending_task_actions_created
+      ON pending_task_actions(created_at_utc)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS ix_pending_task_actions_user_id
+      ON pending_task_actions(user_id)
+    ''');
   }
 
   Future<void> _createMarketCacheTable(Database db) async {
@@ -517,6 +567,9 @@ class DatabaseHelper implements SyncOperationStore {
         deleted += await txn.delete('tarlalar', where: 'userId IS NULL');
         deleted += await txn.delete('faaliyetler', where: 'userId IS NULL');
         deleted += await txn.delete('sync_operations', where: 'userId IS NULL');
+        try {
+          deleted += await txn.delete('pending_task_actions', where: 'user_id IS NULL');
+        } catch (_) {}
       });
       return deleted;
     } catch (_) {
@@ -536,15 +589,55 @@ class DatabaseHelper implements SyncOperationStore {
           await txn.delete('tarlalar', where: 'userId = ?', whereArgs: [activeUserId]);
           await txn.delete('faaliyetler', where: 'userId = ?', whereArgs: [activeUserId]);
           await txn.delete('sync_operations', where: 'userId = ?', whereArgs: [activeUserId]);
+          try {
+            await txn.delete('pending_task_actions', where: 'user_id = ?', whereArgs: [activeUserId]);
+          } catch (_) {}
+          try {
+            final rows = await txn.query('pending_case_submissions', where: 'user_id = ?', whereArgs: [activeUserId]);
+            await txn.delete('pending_case_submissions', where: 'user_id = ?', whereArgs: [activeUserId]);
+            for (final row in rows) {
+              final path = row['local_image_path'] as String?;
+              if (path != null) {
+                try {
+                  await File(path).delete();
+                } on FileSystemException {
+                  // Queue rows are already removed; cleanup can be retried later.
+                }
+              }
+            }
+          } catch (_) {}
         } else {
           await txn.delete('tarlalar');
           await txn.delete('faaliyetler');
           await txn.delete('sync_operations');
+          try {
+            await txn.delete('pending_task_actions');
+          } catch (_) {}
         }
         // Sahipsiz karantina verilerini de temizle (at-rest güvenlik)
         await txn.delete('tarlalar', where: 'userId IS NULL');
         await txn.delete('faaliyetler', where: 'userId IS NULL');
         await txn.delete('sync_operations', where: 'userId IS NULL');
+        try {
+          await txn.delete('pending_task_actions', where: 'user_id IS NULL');
+        } catch (_) {}
+        try {
+          final rows = await txn.query('pending_case_submissions', where: 'user_id IS NULL');
+          await txn.delete('pending_case_submissions', where: 'user_id IS NULL');
+          for (final row in rows) {
+            final path = row['local_image_path'] as String?;
+            if (path != null) {
+              try {
+                await File(path).delete();
+              } on FileSystemException {
+                // Queue rows are already removed; cleanup can be retried later.
+              }
+            }
+          }
+        } catch (_) {}
+        try {
+          await txn.delete('daily_tasks_cache');
+        } catch (_) {}
       });
     } catch (_) {
       // Ignored: Non-fatal on web or if DB is inaccessible

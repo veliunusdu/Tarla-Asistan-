@@ -908,4 +908,22 @@ void main() {
       await db.close();
     });
   });
+
+  group('Migrations.v7ToV8', () {
+    test('pending vaka tablosunu ve kullanıcı-operation unique indexini oluşturur', () async {
+      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+
+      await Migrations.v7ToV8(db);
+
+      final columns = await db.rawQuery('PRAGMA table_info(pending_case_submissions)');
+      expect(columns.map((row) => row['name']), containsAll([
+        'user_id', 'farm_id', 'client_operation_id', 'local_image_path', 'state',
+      ]));
+      final indexes = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='pending_case_submissions'",
+      );
+      expect(indexes.map((row) => row['name']), contains('ux_pending_cases_user_operation'));
+      await db.close();
+    });
+  });
 }

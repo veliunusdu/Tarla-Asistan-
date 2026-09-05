@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart';
 
+import 'image_sanitizer.dart';
+
 class PickedImageData {
   const PickedImageData({
     required this.bytes,
@@ -34,10 +36,12 @@ class DefaultImagePickerService implements ImagePickerService {
     );
     if (file == null) return null;
     final bytes = await file.readAsBytes();
+    final sanitized = ImageSanitizer.sanitize(bytes);
+    final originalName = file.name.replaceFirst(RegExp(r'\.[^.]+$'), '');
     return PickedImageData(
-      bytes: bytes,
-      name: file.name,
-      mimeType: file.mimeType,
+      bytes: sanitized.bytes,
+      name: '${originalName.isEmpty ? 'image' : originalName}${sanitized.fileExtension}',
+      mimeType: sanitized.mimeType,
     );
   }
 }

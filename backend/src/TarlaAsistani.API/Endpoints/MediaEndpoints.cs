@@ -35,6 +35,14 @@ public static class MediaEndpoints
                 return Results.UnprocessableEntity(new { detail = "Boş dosya yüklenemez." });
             }
 
+            if (file.Length > 10 * 1024 * 1024)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["Data"] = ["Dosya en fazla 10 MB olabilir."]
+                });
+            }
+
             using var memoryStream = new MemoryStream();
             await file.CopyToAsync(memoryStream);
             var data = memoryStream.ToArray();

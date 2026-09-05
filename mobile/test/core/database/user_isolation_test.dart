@@ -269,6 +269,64 @@ void main() {
       expect(await dbHelper.getTarlalar().then((t) => t.first.id), 't-userB');
     });
 
+    test('clearUserData pending_task_actions tablosundaki kullanıcıya ait bekleyen aksiyonları temizler', () async {
+      final db = await dbHelper.database;
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS pending_task_actions (
+          id TEXT PRIMARY KEY,
+          farm_id TEXT NOT NULL,
+          task_id TEXT NOT NULL,
+          action_type TEXT NOT NULL,
+          reason TEXT,
+          note TEXT,
+          created_at_utc TEXT NOT NULL,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          last_attempt_at_utc TEXT,
+          last_error_code INTEGER,
+          user_id TEXT
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS daily_tasks_cache (
+          farm_id TEXT PRIMARY KEY,
+          cached_at_utc TEXT NOT NULL,
+          payload_json TEXT NOT NULL
+        )
+      ''');
+
+      await db.insert('pending_task_actions', {
+        'id': 'action-userA',
+        'farm_id': 'farm-1',
+        'task_id': 'task-1',
+        'action_type': 'COMPLETE',
+        'created_at_utc': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'userA',
+      });
+      await db.insert('pending_task_actions', {
+        'id': 'action-userB',
+        'farm_id': 'farm-2',
+        'task_id': 'task-2',
+        'action_type': 'COMPLETE',
+        'created_at_utc': DateTime.now().toUtc().toIso8601String(),
+        'user_id': 'userB',
+      });
+      await db.insert('daily_tasks_cache', {
+        'farm_id': 'farm-1',
+        'cached_at_utc': DateTime.now().toUtc().toIso8601String(),
+        'payload_json': '{}',
+      });
+
+      // Clear for userA
+      await dbHelper.clearUserData(userId: 'userA');
+
+      final remainingActions = await db.query('pending_task_actions');
+      expect(remainingActions.length, equals(1));
+      expect(remainingActions.first['id'], equals('action-userB'));
+
+      final remainingCache = await db.query('daily_tasks_cache');
+      expect(remainingCache, isEmpty);
+    });
+
     test('Sahipsiz eski kayıtlar otomatik olarak yeni kullanıcıya SIZMAZ ve çalınamaz (Anti-Hijacking)', () async {
       // 1. Cihazda eski kullanıcıdan / migration öncesinden kalan sahipsiz kayıtlar (userId = null)
       currentTestUser = null;

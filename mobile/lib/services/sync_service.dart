@@ -26,12 +26,15 @@ class SyncService {
     this._apiClient, {
     SyncOperationStore? database,
     Connectivity? connectivity,
+    Future<void> Function()? onConnectivityRestored,
   }) : _database = database ?? DatabaseHelper.instance,
-       _connectivity = connectivity ?? Connectivity();
+       _connectivity = connectivity ?? Connectivity(),
+       _onConnectivityRestored = onConnectivityRestored;
 
   final ApiClient _apiClient;
   final SyncOperationStore _database;
   final Connectivity _connectivity;
+  final Future<void> Function()? _onConnectivityRestored;
   final state = ValueNotifier<SyncState>(
     const SyncState(phase: SyncPhase.idle, pendingCount: 0),
   );
@@ -52,6 +55,7 @@ class SyncService {
     ) {
       if (_hasConnection(results)) {
         syncNow();
+        _syncAdditionalQueue();
       } else {
         _setOffline();
       }
@@ -59,6 +63,7 @@ class SyncService {
     final current = await _connectivity.checkConnectivity();
     if (_hasConnection(current)) {
       await syncNow();
+      await _syncAdditionalQueue();
     } else {
       await _setOffline();
     }
@@ -118,6 +123,14 @@ class SyncService {
           ? '$pending kayıt bağlantı gelince gönderilecek.'
           : 'Çevrimdışısınız. Yeni kayıtlar cihazda güvenle saklanacak.',
     );
+  }
+
+  Future<void> _syncAdditionalQueue() async {
+    try {
+      await _onConnectivityRestored?.call();
+    } catch (error) {
+      debugPrint('SyncService: additional queue sync failed: $error');
+    }
   }
 
   bool _hasConnection(List<ConnectivityResult> results) =>

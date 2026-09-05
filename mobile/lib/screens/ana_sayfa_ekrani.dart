@@ -12,6 +12,8 @@ import '../features/fields/data/tarla_repository.dart';
 import '../features/location/data/location_service.dart';
 import '../features/market/data/backend_market_repository.dart';
 import '../features/market/presentation/widgets/piyasa_bilgileri_widget.dart';
+import '../features/tasks/data/daily_task_repository.dart';
+import '../features/tasks/presentation/widgets/bugunun_gorevleri_widget.dart';
 import '../features/weather/data/unavailable_weather_repository.dart';
 import '../features/weather/data/backend_weather_repository.dart';
 import '../features/weather/data/weather_repository.dart';
@@ -39,6 +41,7 @@ class AnaSayfaEkrani extends StatefulWidget {
     super.key,
     TarlaRepository? tarlaRepository,
     FaaliyetRepository? faaliyetRepository,
+    DailyTaskRepository? dailyTaskRepository,
     WeatherRepository? weatherRepository,
     CaseRepository? caseRepository,
     BackendMarketRepository? marketRepository,
@@ -49,17 +52,22 @@ class AnaSayfaEkrani extends StatefulWidget {
     this.refreshNotifier,
   }) : _tarlaRepo = tarlaRepository ?? const LocalTarlaRepository(),
        _faaliyetRepo = faaliyetRepository ?? const LocalFaaliyetRepository(),
+       _dailyTaskRepo = dailyTaskRepository,
        _weatherRepo = weatherRepository ?? const UnavailableWeatherRepository(),
        _caseRepo = caseRepository,
        _marketRepo = marketRepository;
 
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
+  final DailyTaskRepository? _dailyTaskRepo;
   final WeatherRepository _weatherRepo;
   final CaseRepository? _caseRepo;
   final BackendMarketRepository? _marketRepo;
   final LocationService? locationService;
   final FieldLocationPicker? locationPicker;
+
+  @visibleForTesting
+  DailyTaskRepository? get dailyTaskRepositoryForTesting => _dailyTaskRepo;
 
   @visibleForTesting
   FaaliyetRepository get faaliyetRepositoryForTesting => _faaliyetRepo;
@@ -94,7 +102,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   List<Tarla> _tarlalarCache = [];
   String? _weatherTarlaName;
   String? _selectedWeatherFarmId;
+  String? _selectedTaskFarmId;
   int _weatherRequestId = 0;
+  int _taskRefreshCounter = 0;
 
   BackendMarketRepository? _marketRepository;
 
@@ -110,6 +120,17 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
       orElse: () => null,
     );
   }
+
+  Tarla? get _selectedTaskFarm {
+    if (_selectedTaskFarmId == null) return null;
+    return _tarlalarCache.cast<Tarla?>().firstWhere(
+      (t) => t?.id == _selectedTaskFarmId,
+      orElse: () => null,
+    );
+  }
+
+  Tarla? get _aktifTarla =>
+      _selectedTaskFarm ?? _selectedWeatherFarm ?? _tarlalarCache.firstOrNull;
 
   @override
   void initState() {
@@ -164,6 +185,11 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
       _tarlalar = summaryFuture.then((s) {
         final list = s.farms.map((f) => f.tarla).toList();
         _tarlalarCache = list;
+        if (_selectedTaskFarmId == null ||
+            !_tarlalarCache.any((t) => t.id == _selectedTaskFarmId)) {
+          _selectedTaskFarmId =
+              _selectedWeatherFarmId ?? _tarlalarCache.firstOrNull?.id;
+        }
         if (mounted) setState(() {});
         return list;
       });
@@ -171,6 +197,11 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     } else {
       _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
         _tarlalarCache = list;
+        if (_selectedTaskFarmId == null ||
+            !_tarlalarCache.any((t) => t.id == _selectedTaskFarmId)) {
+          _selectedTaskFarmId =
+              _selectedWeatherFarmId ?? _tarlalarCache.firstOrNull?.id;
+        }
         if (mounted) setState(() {});
         return list;
       });
@@ -263,8 +294,27 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     setState(() {
       _selectedWeatherFarmId = secilen.id;
       _weatherTarlaName = secilen.name;
+      _selectedTaskFarmId ??= secilen.id;
       final requestId = ++_weatherRequestId;
       _weather = _fetchWeatherForTarla(secilen, requestId);
+    });
+  }
+
+  Future<void> _secTaskFarm() async {
+    if (_tarlalarCache.isEmpty) return;
+
+    final secilen = await TarlaSecimBottomSheet.show(
+      context,
+      tarlalar: _tarlalarCache,
+      title: 'İşler için tarla seçin',
+      selectedTarlaId: _selectedTaskFarmId,
+    );
+
+    if (secilen == null || !mounted) return;
+    if (secilen.id == _selectedTaskFarmId) return;
+
+    setState(() {
+      _selectedTaskFarmId = secilen.id;
     });
   }
 
@@ -272,6 +322,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   /// Hava durumu gereksiz yere yeniden istenmez.
   void _yenileTarlaVeFaaliyetler() {
     setState(() {
+      _taskRefreshCounter++;
       final summaryRepo = widget._tarlaRepo is FarmSummaryRepository
           ? widget._tarlaRepo as FarmSummaryRepository
           : null;
@@ -281,12 +332,22 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         _tarlalar = summaryFuture.then((s) {
           final list = s.farms.map((f) => f.tarla).toList();
           _tarlalarCache = list;
+          if (_selectedTaskFarmId == null ||
+              !_tarlalarCache.any((t) => t.id == _selectedTaskFarmId)) {
+            _selectedTaskFarmId =
+                _selectedWeatherFarmId ?? _tarlalarCache.firstOrNull?.id;
+          }
           return list;
         });
         _faaliyetler = summaryFuture.then((s) => s.upcomingTasks);
       } else {
         _tarlalar = widget._tarlaRepo.getTarlalar().then((list) {
           _tarlalarCache = list;
+          if (_selectedTaskFarmId == null ||
+              !_tarlalarCache.any((t) => t.id == _selectedTaskFarmId)) {
+            _selectedTaskFarmId =
+                _selectedWeatherFarmId ?? _tarlalarCache.firstOrNull?.id;
+          }
           return list;
         });
         _faaliyetler = _fetchGorevler();
@@ -300,6 +361,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
   void _yenile() {
     _marketRepository?.refreshMarketData();
+    _taskRefreshCounter++;
     setState(_initData);
   }
 
@@ -431,12 +493,15 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
   Future<void> _sorunBildir() async {
     if (widget._caseRepo == null) return;
+    final aktifTarla = _aktifTarla;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SorunBildirEkrani(
           caseRepository: widget._caseRepo!,
           tarlaRepository: widget._tarlaRepo,
+          initialTarla: aktifTarla,
+          initialTarlaId: aktifTarla?.id,
         ),
       ),
     );
@@ -513,15 +578,34 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                // ── Yaklaşan işler ───────────────────────────────────────────
-                _YaklasanGorevlerSection(
-                  gorevVerisi: _gorevVerisi,
-                  onRetry: _yenile,
-                  onFaaliyetPlanla: () => _isEkle(isCompleted: false),
-                  caseRepo: widget._caseRepo,
-                  tarlaRepo: widget._tarlaRepo,
-                ),
-                const SizedBox(height: AppSpacing.lg),
+                // ── Bugünün İşleri ───────────────────────────────────────────
+                if (widget._dailyTaskRepo != null) ...[
+                  BugununGorevleriWidget(
+                    key: ValueKey(
+                      'daily-tasks-${_selectedTaskFarmId ?? _tarlalarCache.firstOrNull?.id ?? 'none'}-$_taskRefreshCounter',
+                    ),
+                    dailyTaskRepository: widget._dailyTaskRepo!,
+                    farmId:
+                        _selectedTaskFarmId ?? _tarlalarCache.firstOrNull?.id,
+                    tarlaAdi: _selectedTaskFarm?.name ??
+                        _tarlalarCache.firstOrNull?.name,
+                    canSelectFarm: _tarlalarCache.length > 1,
+                    onFarmTap: _secTaskFarm,
+                    onTarlaEkle: _tarlaEkle,
+                    refreshNotifier: widget.refreshNotifier,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ] else ...[
+                  // ── Yaklaşan işler (legacy fallback) ───────────────────────
+                  _YaklasanGorevlerSection(
+                    gorevVerisi: _gorevVerisi,
+                    onRetry: _yenile,
+                    onFaaliyetPlanla: () => _isEkle(isCompleted: false),
+                    caseRepo: widget._caseRepo,
+                    tarlaRepo: widget._tarlaRepo,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
 
                 // ── Hızlı işlemler ────────────────────────────────────────────
                 _HizliIslemlerSection(

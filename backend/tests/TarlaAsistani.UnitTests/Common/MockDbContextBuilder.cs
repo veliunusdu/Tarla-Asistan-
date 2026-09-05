@@ -27,6 +27,7 @@ public class MockDbContextBuilder
     private List<FarmTask> _farmTasks = new();
 
     private List<SupportCase> _supportCases = new();
+    private List<CaseContextSnapshot> _caseContextSnapshots = new();
     private List<CaseMessage> _caseMessages = new();
     private List<CaseMedia> _caseMedia = new();
     private List<CaseMessageMedia> _caseMessageMedia = new();
@@ -130,6 +131,12 @@ public class MockDbContextBuilder
         return this;
     }
 
+    public MockDbContextBuilder WithCaseContextSnapshots(params CaseContextSnapshot[] snapshots)
+    {
+        _caseContextSnapshots.AddRange(snapshots);
+        return this;
+    }
+
     public MockDbContextBuilder WithCaseMessages(params CaseMessage[] messages)
     {
         _caseMessages.AddRange(messages);
@@ -191,6 +198,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.FarmTasks, _farmTasks);
 
         SetupDbSet(_mockDb, db => db.SupportCases, _supportCases);
+        SetupDbSet(_mockDb, db => db.CaseContextSnapshots, _caseContextSnapshots);
         SetupDbSet(_mockDb, db => db.CaseMessages, _caseMessages);
         SetupDbSet(_mockDb, db => db.CaseMedia, _caseMedia);
         SetupDbSet(_mockDb, db => db.CaseMessageMedia, _caseMessageMedia);

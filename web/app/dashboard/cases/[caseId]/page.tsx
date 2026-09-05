@@ -180,6 +180,7 @@ export default function CaseDetailPage() {
 
         <aside className="case-side-panel">
           <h2>Tarla bağlamı</h2>
+          {item.context && <ContextSnapshot context={item.context} />}
           <dl>
             <div><dt>Tarla</dt><dd>{item.farm_name}</dd></div>
             <div><dt>Kategori</dt><dd>{item.category}</dd></div>
@@ -242,6 +243,28 @@ export default function CaseDetailPage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+function ContextSnapshot({ context }: { context: NonNullable<SupportCase["context"]> }) {
+  return (
+    <div className="context-snapshot">
+      <p className="muted">Vaka açıldığı andaki değişmez kayıt</p>
+      <dl>
+        <div><dt>Konum</dt><dd>{context.latitude != null && context.longitude != null ? `${context.latitude.toFixed(5)}, ${context.longitude.toFixed(5)}` : "Belirtilmemiş"}</dd></div>
+        <div><dt>Alan</dt><dd>{context.size_in_hectares != null ? `${context.size_in_hectares} ha` : "Belirtilmemiş"}</dd></div>
+        <div><dt>Ürün</dt><dd>{context.crop_name ?? "Belirtilmemiş"}{context.crop_growing_day != null ? ` · ${context.crop_growing_day}. gün` : ""}</dd></div>
+        <div><dt>Sulama</dt><dd>{context.irrigation_method ?? "Belirtilmemiş"}</dd></div>
+        <div><dt>Toprak</dt><dd>{context.soil_type ?? "Belirtilmemiş"}</dd></div>
+        <div><dt>Hava</dt><dd>{context.weather_fetched_at_utc ? `${context.current_temperature_c ?? "?"}°C · ${context.current_humidity_percent ?? "?"}% nem` : "Kayıt yok"}{context.is_based_on_stale_weather ? " · Eski veri" : ""}</dd></div>
+      </dl>
+      <h3>Son faaliyetler</h3>
+      {context.recent_activities.length === 0 ? <p className="muted">Kayıtlı faaliyet yok.</p> : (
+        <ul>
+          {context.recent_activities.map((activity) => <li key={activity.id}><strong>{activity.activity_name}</strong><span>{new Date(activity.occurred_at_utc).toLocaleDateString("tr-TR")}</span></li>)}
+        </ul>
+      )}
+    </div>
   );
 }
 

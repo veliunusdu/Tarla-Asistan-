@@ -45,6 +45,52 @@ public class CaseCommandHandlerTests
     }
 
     [Fact]
+    public async Task CreateCase_ShouldPersistImmutableFarmContextSnapshot()
+    {
+        var farmerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var plantedAt = new DateOnly(2026, 4, 15);
+        var farm = new Farm
+        {
+            Id = farmId,
+            OwnerId = farmerId,
+            Name = "Snapshot Tarlası",
+            Latitude = 38.1,
+            Longitude = 32.4,
+            SizeInHectares = 12.5,
+            IrrigationMethod = IrrigationMethod.Drip,
+            SoilType = "Tınlı",
+            CropPeriods = new List<CropPeriod>
+            {
+                new CropPeriod { Id = Guid.NewGuid(), FarmId = farmId, CropName = "Nohut", PlantedAt = plantedAt, Status = CropPeriodStatus.Active }
+            }
+        };
+        var activity = new Activity
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farmId,
+            ActivityName = "Damla sulama",
+            ActivityType = ActivityType.Irrigation,
+            OccurredAtUtc = DateTime.UtcNow.AddDays(-1)
+        };
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithCropPeriods(farm.CropPeriods.ToArray())
+            .WithActivities(activity)
+            .Build();
+
+        var result = await new CreateCaseCommandHandler(db).Handle(
+            new CreateCaseCommand(farmId, farmerId, CaseCategory.Disease, "Test", "Açıklama"),
+            CancellationToken.None);
+
+        result.Context.Should().NotBeNull();
+        result.Context!.FarmName.Should().Be("Snapshot Tarlası");
+        result.Context.CropName.Should().Be("Nohut");
+        result.Context.Latitude.Should().Be(38.1);
+        result.Context.RecentActivities.Should().ContainSingle(a => a.ActivityName == "Damla sulama");
+    }
+
+    [Fact]
     public async Task UpdateCaseStatus_WhenAgronomistSetsInReview_ShouldUpdateStatus()
     {
         // Arrange

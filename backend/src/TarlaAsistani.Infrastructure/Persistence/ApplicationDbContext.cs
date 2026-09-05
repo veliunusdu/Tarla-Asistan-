@@ -37,6 +37,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // ── Support Cases ────────────────────────────────────────
     public DbSet<SupportCase> SupportCases => Set<SupportCase>();
+    public DbSet<CaseContextSnapshot> CaseContextSnapshots => Set<CaseContextSnapshot>();
     public DbSet<CaseMessage> CaseMessages => Set<CaseMessage>();
     public DbSet<CaseMedia> CaseMedia => Set<CaseMedia>();
     public DbSet<CaseMessageMedia> CaseMessageMedia => Set<CaseMessageMedia>();
@@ -464,6 +465,23 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.HasMany(sc => sc.MediaLinks)
                   .WithOne(cm => cm.Case)
                   .HasForeignKey(cm => cm.CaseId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CaseContextSnapshot>(entity =>
+        {
+            entity.ToTable("case_context_snapshots");
+            entity.HasKey(s => s.CaseId);
+            entity.Property(s => s.FarmName).HasMaxLength(160).IsRequired();
+            entity.Property(s => s.IrrigationMethod).HasMaxLength(50);
+            entity.Property(s => s.SoilType).HasMaxLength(120);
+            entity.Property(s => s.FarmNote).HasMaxLength(2000);
+            entity.Property(s => s.CropName).HasMaxLength(100);
+            entity.Property(s => s.WeatherProvider).HasMaxLength(50);
+            entity.Property(s => s.RecentActivitiesJson).HasColumnType("jsonb").IsRequired();
+            entity.HasOne(s => s.Case)
+                  .WithOne(c => c.Context)
+                  .HasForeignKey<CaseContextSnapshot>(s => s.CaseId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
