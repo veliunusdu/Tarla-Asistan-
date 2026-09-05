@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../app/theme/app_colors.dart';
 import '../services/api_client.dart';
 import '../services/firestore_farm_repository.dart';
 import '../models/tarla.dart';
 import '../services/sync_service.dart';
+import '../shared/widgets/app_logo.dart';
 import 'tarla_listesi_ekrani.dart';
 
 class OzetEkrani extends StatefulWidget {
@@ -58,7 +58,7 @@ class _OzetEkraniState extends State<OzetEkrani> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: const [
-            Icon(Icons.grass, color: AppColors.onPrimary),
+            AppLogo(size: 28),
             SizedBox(width: 8),
             Text('Tarla Asistanı'),
           ],

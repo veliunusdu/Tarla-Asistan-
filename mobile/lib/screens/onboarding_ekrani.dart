@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../shared/widgets/app_logo.dart';
+
 class OnboardingEkrani extends StatefulWidget {
   const OnboardingEkrani({super.key, required this.onFinished});
 
@@ -14,11 +16,12 @@ class _OnboardingEkraniState extends State<OnboardingEkrani> {
   int _currentPage = 0;
   bool _finishing = false;
 
-  static const _pages = [
+  static const List<
+      ({String title, String description, IconData? icon})> _pages = [
     (
       title: "Tarla Asistanı'na hoş geldiniz",
       description: 'Tarlalarınızı ve günlük işlerinizi tek yerden takip edin.',
-      icon: Icons.grass,
+      icon: null,
     ),
     (
       title: 'Sahada çevrimdışı çalışın',
@@ -65,12 +68,16 @@ class _OnboardingEkraniState extends State<OnboardingEkrani> {
                 onPageChanged: (index) => setState(() => _currentPage = index),
                 itemBuilder: (context, index) {
                   final page = _pages[index];
+                  final pageIcon = page.icon;
                   return SingleChildScrollView(
                     padding: const EdgeInsets.all(32),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(page.icon, size: 88, semanticLabel: page.title),
+                        if (pageIcon == null)
+                          AppLogo(size: 88, semanticLabel: page.title)
+                        else
+                          Icon(pageIcon, size: 88, semanticLabel: page.title),
                         const SizedBox(height: 32),
                         Semantics(
                           header: true,

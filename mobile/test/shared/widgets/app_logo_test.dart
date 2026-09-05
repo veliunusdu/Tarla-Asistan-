@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mobile/app/theme/app_colors.dart';
 import 'package:mobile/shared/widgets/app_logo.dart';
 
 void main() {
   group('AppLogo Widget Tests', () {
-    testWidgets('renders Icons.grass matching Tarlalarım identity', (tester) async {
+    testWidgets('renders the selected white-background brand asset', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -14,44 +15,49 @@ void main() {
         ),
       );
 
-      expect(find.byIcon(Icons.grass), findsOneWidget);
+      final image = tester.widget<Image>(find.byType(Image));
+      expect(
+        image.image,
+        isA<AssetImage>().having(
+          (provider) => provider.assetName,
+          'assetName',
+          AppLogo.assetPath,
+        ),
+      );
     });
 
-    testWidgets('renders with transparent background when backgroundColor is null',
-        (tester) async {
+    testWidgets('uses the requested square size', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AppLogo(size: 72),
+          ),
+        ),
+      );
+
+      final image = tester.widget<Image>(find.byType(Image));
+      expect(image.width, 72);
+      expect(image.height, 72);
+    });
+
+    testWidgets('exposes an accessible brand label', (tester) async {
+      final semantics = tester.ensureSemantics();
+      addTearDown(semantics.dispose);
+
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
             body: AppLogo(
-              size: 64,
-              backgroundColor: null,
+              semanticLabel: 'Tarla Asistanı marka işareti',
             ),
           ),
         ),
       );
 
-      expect(find.byIcon(Icons.grass), findsOneWidget);
-      expect(find.byType(Container), findsNothing);
-    });
-
-    testWidgets('supports custom colors and sizing', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: AppLogo(
-              size: 100,
-              iconSize: 50,
-              backgroundColor: AppColors.primary,
-              iconColor: Colors.amber,
-              isCircle: false,
-            ),
-          ),
-        ),
+      expect(
+        find.bySemanticsLabel('Tarla Asistanı marka işareti'),
+        findsOneWidget,
       );
-
-      final icon = tester.widget<Icon>(find.byIcon(Icons.grass));
-      expect(icon.size, equals(50));
-      expect(icon.color, equals(Colors.amber));
     });
   });
 }

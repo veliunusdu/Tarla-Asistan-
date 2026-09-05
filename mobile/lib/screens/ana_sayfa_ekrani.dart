@@ -25,6 +25,7 @@ import '../shared/utils/date_formatter.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
 import '../shared/widgets/app_loading_view.dart';
+import '../shared/widgets/app_logo.dart';
 import '../shared/widgets/tarla_secim_bottom_sheet.dart';
 import 'faaliyet_ekleme_ekrani.dart';
 import 'tarla_detay_ekrani.dart';
@@ -520,7 +521,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: const [
-            Icon(Icons.grass, color: AppColors.onPrimary),
+            AppLogo(size: 28),
             SizedBox(width: AppSpacing.sm),
             Text('Tarla Asistanı'),
           ],

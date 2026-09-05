@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -14,12 +16,22 @@ import 'package:mobile/models/notification_target.dart';
 import 'package:mobile/screens/notification_target_screen.dart';
 import 'package:mobile/services/api_client.dart';
 
+http.Response _utf8JsonResponse(String body, int statusCode) =>
+    http.Response.bytes(
+      utf8.encode(body),
+      statusCode,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+
 class _MockCaseRepo implements CaseRepository {
   @override
   Future<String> createCase(CreateCaseInput input) async => 'id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async => [];
 
   @override
   Future<CaseDetail> getCaseById(String caseId) async {
@@ -72,10 +84,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: NotificationTargetScreen(
-          target: target,
-          apiClient: client,
-        ),
+        home: NotificationTargetScreen(target: target, apiClient: client),
       ),
     );
     await tester.pumpAndSettle();
@@ -85,33 +94,34 @@ void main() {
     expect(find.text('Tarlayı sula'), findsOneWidget);
   });
 
-  testWidgets('NotificationTargetScreen renders VakaDetayEkrani for supportCase target', (
-    tester,
-  ) async {
-    final client = ApiClient(
-      httpClient: MockClient((request) async => http.Response('{}', 200)),
-      idTokenProvider: () async => 'token',
-    );
+  testWidgets(
+    'NotificationTargetScreen renders VakaDetayEkrani for supportCase target',
+    (tester) async {
+      final client = ApiClient(
+        httpClient: MockClient((request) async => http.Response('{}', 200)),
+        idTokenProvider: () async => 'token',
+      );
 
-    final target = NotificationTarget(
-      type: NotificationTargetType.supportCase,
-      resourceId: 'case-123',
-    );
+      final target = NotificationTarget(
+        type: NotificationTargetType.supportCase,
+        resourceId: 'case-123',
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: NotificationTargetScreen(
-          target: target,
-          apiClient: client,
-          caseRepository: _MockCaseRepo(),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationTargetScreen(
+            target: target,
+            apiClient: client,
+            caseRepository: _MockCaseRepo(),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(VakaDetayEkrani), findsOneWidget);
-    expect(find.text('Zeytin Güvesi'), findsOneWidget);
-  });
+      expect(find.byType(VakaDetayEkrani), findsOneWidget);
+      expect(find.text('Zeytin Güvesi'), findsOneWidget);
+    },
+  );
 
   testWidgets('NotificationTargetScreen renders proactive advisory content', (
     tester,
@@ -120,10 +130,9 @@ void main() {
       httpClient: MockClient((request) async {
         expect(request.url.path, '/api/v1/ai/advisories');
         expect(request.url.queryParameters['farm_id'], 'farm-1');
-        return http.Response(
+        return _utf8JsonResponse(
           '[{"id":"advisory-1","title":"Sulamayı erteleyin","summary":"Yarın yağış bekleniyor","severity":"Warning","action_recommendation":"Sulamayı yağış sonrasına bırakın"}]',
           200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
         );
       }),
       idTokenProvider: () async => 'token',
