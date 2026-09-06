@@ -89,6 +89,17 @@ public enum ActivitySource
     Task,
 }
 
+public enum ExpenseCategory
+{
+    Seed,
+    Fertilizer,
+    Pesticide,
+    Fuel,
+    Irrigation,
+    Labor,
+    Other,
+}
+
 public enum MediaKind
 {
     Image,

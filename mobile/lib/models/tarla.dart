@@ -17,6 +17,7 @@ class Tarla {
     this.size,
     this.cropType,
     this.plantingDate,
+    this.currentCropPeriodId,
   });
 
   final String id;
@@ -36,6 +37,7 @@ class Tarla {
 
   /// Date the current crop was planted. Null when no crop period is active.
   final DateTime? plantingDate;
+  final String? currentCropPeriodId;
 
   /// Constructs a [Tarla] from a SQLite row or a legacy JSON map.
   ///
@@ -53,6 +55,7 @@ class Tarla {
       plantingDate: json['plantingDate'] == null
           ? null
           : DateTime.parse(json['plantingDate'] as String),
+      currentCropPeriodId: json['currentCropPeriodId'] as String?,
     );
   }
 
@@ -68,6 +71,7 @@ class Tarla {
       'size': size,
       'cropType': cropType,
       'plantingDate': plantingDate?.toIso8601String(),
+      'currentCropPeriodId': currentCropPeriodId,
     };
   }
 }

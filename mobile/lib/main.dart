@@ -17,6 +17,7 @@ import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
 import 'features/market/data/backend_market_repository.dart';
 import 'features/market/data/local_market_repository.dart';
+import 'features/finances/data/backend_financial_repository.dart';
 import 'features/profile/data/backend_profile_repository.dart';
 import 'features/tasks/data/backend_daily_task_repository.dart';
 import 'screens/giris_ekrani.dart';
@@ -347,6 +348,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           apiClient: _apiClient,
                           localRepo: const LocalMarketRepository(),
                         ),
+                        financialRepository: BackendFinancialRepository(apiClient: _apiClient),
                         dailyTaskRepository: BackendDailyTaskRepository(
                           apiClient: _apiClient,
                         ),

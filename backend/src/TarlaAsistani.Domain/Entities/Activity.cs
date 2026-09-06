@@ -53,6 +53,7 @@ public sealed class Activity
     public CropPeriod? CropPeriod { get; set; }
     public User? CreatedBy { get; set; }
     public ICollection<ActivityRevision> Revisions { get; set; } = new List<ActivityRevision>();
+    public Expense? Expense { get; set; }
 
     // -- Domain methods -------------------------------------------------------
 

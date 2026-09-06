@@ -22,6 +22,8 @@ public class Farm
     public ICollection<Activity> Activities { get; set; } = new List<Activity>();
     public ICollection<FarmTask> Tasks { get; set; } = new List<FarmTask>();
     public ICollection<WeatherSnapshot> WeatherSnapshots { get; set; } = new List<WeatherSnapshot>();
+    public ICollection<Expense> Expenses { get; set; } = new List<Expense>();
+    public ICollection<CropSale> CropSales { get; set; } = new List<CropSale>();
 
     public void Archive()
     {

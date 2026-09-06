@@ -11,6 +11,7 @@ import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/location/data/location_service.dart';
 import '../features/market/data/backend_market_repository.dart';
+import '../features/finances/data/finance_repository.dart';
 import '../features/market/presentation/widgets/piyasa_bilgileri_widget.dart';
 import '../features/tasks/data/daily_task_repository.dart';
 import '../features/tasks/presentation/widgets/bugunun_gorevleri_widget.dart';
@@ -50,12 +51,14 @@ class AnaSayfaEkrani extends StatefulWidget {
     this.onTarlalarimSekme,
     this.onGunlukSekme,
     this.refreshNotifier,
+    FinancialRepository? financialRepository,
   }) : _tarlaRepo = tarlaRepository ?? const LocalTarlaRepository(),
        _faaliyetRepo = faaliyetRepository ?? const LocalFaaliyetRepository(),
        _dailyTaskRepo = dailyTaskRepository,
        _weatherRepo = weatherRepository ?? const UnavailableWeatherRepository(),
        _caseRepo = caseRepository,
-       _marketRepo = marketRepository;
+       _marketRepo = marketRepository,
+       _financialRepo = financialRepository;
 
   final TarlaRepository _tarlaRepo;
   final FaaliyetRepository _faaliyetRepo;
@@ -63,6 +66,7 @@ class AnaSayfaEkrani extends StatefulWidget {
   final WeatherRepository _weatherRepo;
   final CaseRepository? _caseRepo;
   final BackendMarketRepository? _marketRepo;
+  final FinancialRepository? _financialRepo;
   final LocationService? locationService;
   final FieldLocationPicker? locationPicker;
 
@@ -603,6 +607,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                     onFaaliyetPlanla: () => _isEkle(isCompleted: false),
                     caseRepo: widget._caseRepo,
                     tarlaRepo: widget._tarlaRepo,
+                    financialRepository: widget._financialRepo,
                   ),
                   const SizedBox(height: AppSpacing.lg),
                 ],
@@ -985,6 +990,7 @@ class _YaklasanGorevlerSection extends StatelessWidget {
     required this.onFaaliyetPlanla,
     this.caseRepo,
     this.tarlaRepo,
+    this.financialRepository,
   });
 
   final Future<(List<Tarla>, List<Faaliyet>)> gorevVerisi;
@@ -992,6 +998,7 @@ class _YaklasanGorevlerSection extends StatelessWidget {
   final VoidCallback onFaaliyetPlanla;
   final CaseRepository? caseRepo;
   final TarlaRepository? tarlaRepo;
+  final FinancialRepository? financialRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -1042,6 +1049,7 @@ class _YaklasanGorevlerSection extends StatelessWidget {
                   tarla: tarla,
                   caseRepo: caseRepo,
                   tarlaRepo: tarlaRepo,
+                  financialRepository: financialRepository,
                 );
               }).toList(),
             );
@@ -1059,6 +1067,7 @@ class _GorevKarti extends StatelessWidget {
     this.tarla,
     this.caseRepo,
     this.tarlaRepo,
+    this.financialRepository,
   });
 
   final Faaliyet faaliyet;
@@ -1066,6 +1075,7 @@ class _GorevKarti extends StatelessWidget {
   final Tarla? tarla;
   final CaseRepository? caseRepo;
   final TarlaRepository? tarlaRepo;
+  final FinancialRepository? financialRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -1081,6 +1091,7 @@ class _GorevKarti extends StatelessWidget {
                     tarla: tarla!,
                     caseRepository: caseRepo,
                     tarlaRepository: tarlaRepo,
+                    financialRepository: financialRepository,
                   ),
                 ),
               )

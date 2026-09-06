@@ -22,6 +22,18 @@ class BackendFaaliyetRepository
   final ApiClient _api;
   final TarlaRepository _tarlaRepo;
   final Uuid _uuid;
+  static final Object _omitted = Object();
+
+  Future<void> updateFaaliyet(
+    String id, {
+    String? note,
+    Object? cost = _omitted,
+  }) async {
+    await _api.patchJson('/activities/$id', {
+      if (note != null) 'description': note,
+      if (!identical(cost, _omitted)) 'cost': cost,
+    });
+  }
 
   @override
   Future<void> deleteFaaliyet(String id) => _api.delete('/activities/$id');
@@ -61,6 +73,7 @@ class BackendFaaliyetRepository
       'occurred_at': occurredAt,
       'input_method': 'Manual',
       'client_operation_id': clientOperationId,
+      if (faaliyet.cost != null) 'cost': faaliyet.cost,
     };
 
     await _api.postJson('/farms/${faaliyet.tarlaId}/activities', payload);
@@ -221,7 +234,9 @@ class BackendFaaliyetRepository
     final backendType = json['activity_type']?.toString();
     final mobileType = (rawActivityName != null && rawActivityName.isNotEmpty)
         ? rawActivityName
-        : (backendType != null ? _mapActivityTypeToMobile(backendType) : 'Faaliyet');
+        : (backendType != null
+              ? _mapActivityTypeToMobile(backendType)
+              : 'Faaliyet');
     final description = json['description']?.toString() ?? '';
     final occurredAtUtcStr = json['occurred_at_utc']?.toString();
     final timestamp = occurredAtUtcStr != null

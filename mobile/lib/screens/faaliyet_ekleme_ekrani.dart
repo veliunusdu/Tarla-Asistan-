@@ -41,6 +41,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   final _formKey = GlobalKey<FormState>();
   final _isTuruController = TextEditingController();
   final _noteController = TextEditingController();
+  final _costController = TextEditingController();
   final _speechToText = SpeechToText();
 
   late IsDurumu _durum;
@@ -60,6 +61,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
   void dispose() {
     _isTuruController.dispose();
     _noteController.dispose();
+    _costController.dispose();
     _speechToText.stop();
     super.dispose();
   }
@@ -191,6 +193,18 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
         }
         await (repository as PlanliGorevRepository).addPlanliGorev(gorev);
       } else {
+        final costText = _costController.text.trim();
+        final cost = costText.isEmpty
+            ? null
+            : double.tryParse(costText.replaceAll(',', '.'));
+        if (costText.isNotEmpty && (cost == null || cost <= 0)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Maliyet pozitif bir sayı olmalıdır.'),
+            ),
+          );
+          return;
+        }
         final faaliyet = Faaliyet(
           id: const Uuid().v4(),
           tarlaId: widget.tarlaId,
@@ -199,6 +213,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
           timestamp: _secilenTarih!,
           dueDate: null,
           isCompleted: true,
+          cost: cost,
         );
 
         await widget._repo.addFaaliyet(faaliyet);
@@ -275,6 +290,25 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                           });
                         }
                       },
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              TextFormField(
+                controller: _costController,
+                enabled: !_kaydediliyor,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                ],
+                decoration: const InputDecoration(
+                  labelText: 'Maliyet / Harcama Tutarı (TL)',
+                  helperText:
+                      'Bu faaliyet için yaptığınız harcamayı kaydedebilirsiniz.',
+                  prefixIcon: Icon(Icons.payments_outlined),
+                ),
               ),
 
               const SizedBox(height: AppSpacing.md),
@@ -360,9 +394,7 @@ class _FaaliyetEklemeEkraniState extends State<FaaliyetEklemeEkrani> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(
-                        _durum == IsDurumu.planla
-                            ? 'İşi Planla'
-                            : 'İşi Kaydet',
+                        _durum == IsDurumu.planla ? 'İşi Planla' : 'İşi Kaydet',
                       ),
               ),
             ],

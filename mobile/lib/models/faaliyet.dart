@@ -7,6 +7,7 @@ class Faaliyet {
   final DateTime? dueDate;
   final bool isCompleted;
   final String inputMethod;
+  final double? cost;
 
   Faaliyet({
     required this.id,
@@ -17,6 +18,7 @@ class Faaliyet {
     this.dueDate,
     this.isCompleted = false,
     this.inputMethod = 'MANUAL',
+    this.cost,
   });
 
   factory Faaliyet.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class Faaliyet {
       dueDate: json['dueDate'] != null ? DateTime.parse(json['dueDate']) : null,
       isCompleted: json['isCompleted'] == 1,
       inputMethod: json['inputMethod']?.toString() ?? 'MANUAL',
+      cost: (json['cost'] as num?)?.toDouble(),
     );
   }
 

@@ -52,6 +52,10 @@ public interface IApplicationDbContext
     // ── Market Data ──────────────────────────────────────────
     DbSet<MarketPrice> MarketPrices { get; }
 
+    // ── Financial Records ──────────────────────────────────
+    DbSet<Expense> Expenses { get; }
+    DbSet<CropSale> CropSales { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 }

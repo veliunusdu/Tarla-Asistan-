@@ -4,6 +4,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Activities.DTOs;
+using TarlaAsistani.Application.Features.Finance;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 
@@ -54,6 +55,19 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
             }
         }
 
+        // A cost requires a concrete crop period. If omitted, resolve the sole active period.
+        Guid? resolvedCropPeriodId = request.CropPeriodId;
+        if (request.Cost is > 0 && !resolvedCropPeriodId.HasValue)
+        {
+            resolvedCropPeriodId = await _db.CropPeriods
+                .Where(cp => cp.FarmId == request.FarmId && cp.Status == CropPeriodStatus.Active)
+                .Select(cp => (Guid?)cp.Id)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            if (!resolvedCropPeriodId.HasValue)
+                throw new ArgumentException("Maliyetli faaliyet için aktif üretim dönemi gereklidir.");
+        }
+
         // 4. Determine status based on input method
         var isVoiceDraft = request.InputMethod == ActivitySource.Voice;
         var now = DateTime.UtcNow;
@@ -78,7 +92,7 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
         var activity = new Activity
         {
             FarmId = farm.Id,
-            CropPeriodId = request.CropPeriodId,
+            CropPeriodId = resolvedCropPeriodId,
             CreatedById = request.CreatedById,
             ActivityName = resolvedName,
             ActivityType = request.ActivityType,
@@ -103,7 +117,22 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
         };
 
         _db.Activities.Add(activity);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        if (activity.Cost is > 0 && activity.CropPeriodId.HasValue)
+        {
+            _db.Expenses.Add(new Expense
+            {
+                FarmId = activity.FarmId,
+                CropPeriodId = activity.CropPeriodId.Value,
+                ActivityId = activity.Id,
+                CreatedById = request.CreatedById,
+                Category = FinancialMath.MapActivityCategory(activity.ActivityType),
+                Amount = FinancialMath.NormalizeActivityCost(activity.Cost.Value),
+                OccurredAtUtc = activity.OccurredAtUtc,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+        }
 
         if (request.ClientOperationId.HasValue)
         {
@@ -118,8 +147,9 @@ public class CreateActivityCommandHandler : IRequestHandler<CreateActivityComman
                 ResourceId = activity.Id,
                 CreatedAtUtc = now
             });
-            await _db.SaveChangesAsync(cancellationToken);
         }
+
+        await _db.SaveChangesAsync(cancellationToken);
 
         return ActivityDto.FromEntity(activity);
     }

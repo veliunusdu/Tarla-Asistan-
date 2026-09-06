@@ -29,4 +29,6 @@ public class CropPeriod
 
     // Navigation properties
     public Farm Farm { get; set; } = null!;
+    public ICollection<Expense> Expenses { get; set; } = new List<Expense>();
+    public ICollection<CropSale> CropSales { get; set; } = new List<CropSale>();
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using TarlaAsistani.Application.Common.AI;
@@ -49,10 +50,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         {
             logging.ClearProviders();
             logging.AddDebug();
+            // Test hosts must not attempt to write Windows Event Log entries.
+            logging.AddFilter(static (_, _) => false);
         });
 
         builder.ConfigureServices(services =>
         {
+            // WebApplicationFactory may re-add the Windows EventLog provider after ConfigureLogging.
+            services.RemoveAll<ILoggerProvider>();
+
             // 1. Remove existing ApplicationDbContext registration
             var dbContextDescriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));

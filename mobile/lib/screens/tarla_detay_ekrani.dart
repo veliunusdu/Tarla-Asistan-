@@ -9,6 +9,9 @@ import '../features/cases/presentation/sorun_bildir_ekrani.dart';
 import '../features/cases/presentation/vaka_listesi_ekrani.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/finances/data/finance_repository.dart';
+import '../features/finances/data/backend_financial_repository.dart';
+import 'tarla_sezon_finans_ekrani.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
 import '../shared/utils/date_formatter.dart';
@@ -39,6 +42,7 @@ class TarlaDetayEkrani extends StatefulWidget {
     CaseRepository? caseRepository,
     this.onArchive,
     this.onEdit,
+    this.financialRepository,
   }) : _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository(),
        _tarlaRepository = tarlaRepository,
@@ -50,6 +54,7 @@ class TarlaDetayEkrani extends StatefulWidget {
   final CaseRepository? _caseRepository;
   final Future<void> Function()? onArchive;
   final Future<bool> Function()? onEdit;
+  final FinancialRepository? financialRepository;
 
   @visibleForTesting
   FaaliyetRepository get repositoryForTesting => _faaliyetRepository;
@@ -97,7 +102,9 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
         .toList();
 
     return _TarlaDetayVerisi(
-      faaliyetler: faaliyetler.where((faaliyet) => faaliyet.isCompleted).toList(),
+      faaliyetler: faaliyetler
+          .where((faaliyet) => faaliyet.isCompleted)
+          .toList(),
       planliGorevler: planliGorevler,
     );
   }
@@ -124,8 +131,10 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
 
     setState(() => _tamamlananGorevId = gorev.id);
     try {
-      await (repository as PlanliGorevCompletionRepository)
-          .completePlanliGorev(gorev.id, note: gorev.note);
+      await (repository as PlanliGorevCompletionRepository).completePlanliGorev(
+        gorev.id,
+        note: gorev.note,
+      );
       if (!mounted) return;
       _yenile();
       ScaffoldMessenger.of(
@@ -260,6 +269,28 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
                         );
                       }
                     : null,
+                onFinance:
+                    widget.financialRepository != null &&
+                        widget.tarla.currentCropPeriodId != null
+                    ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TarlaSezonFinansEkrani(
+                            farmId: widget.tarla.id,
+                            cropPeriodId: widget.tarla.currentCropPeriodId!,
+                            farmName: widget.tarla.name,
+                            repository: widget.financialRepository!,
+                            periodSource:
+                                widget.financialRepository
+                                    is BackendFinancialRepository
+                                ? (widget.financialRepository!
+                                          as BackendFinancialRepository)
+                                      .periodSource
+                                : null,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
             ),
           ),
@@ -310,8 +341,8 @@ class _TarlaDetayEkraniState extends State<TarlaDetayEkrani>
               isGecmis: false,
               onDelete: null,
               completingId: _tamamlananGorevId,
-              onComplete: widget._faaliyetRepository
-                      is PlanliGorevCompletionRepository
+              onComplete:
+                  widget._faaliyetRepository is PlanliGorevCompletionRepository
                   ? _goreviTamamla
                   : null,
             ),
@@ -338,11 +369,13 @@ class _TarlaBilgiKarti extends StatelessWidget {
     required this.tarla,
     this.onReportProblem,
     this.onViewCases,
+    this.onFinance,
   });
 
   final Tarla tarla;
   final VoidCallback? onReportProblem;
   final VoidCallback? onViewCases;
+  final VoidCallback? onFinance;
 
   @override
   Widget build(BuildContext context) {
@@ -388,7 +421,9 @@ class _TarlaBilgiKarti extends StatelessWidget {
               deger: konumMetin,
               renkli: konumYok,
             ),
-            if (onReportProblem != null || onViewCases != null) ...[
+            if (onReportProblem != null ||
+                onViewCases != null ||
+                onFinance != null) ...[
               const SizedBox(height: AppSpacing.sm),
               Wrap(
                 spacing: AppSpacing.sm,
@@ -408,6 +443,12 @@ class _TarlaBilgiKarti extends StatelessWidget {
                       icon: const Icon(Icons.history_outlined),
                       label: const Text('Bildirimleri Gör'),
                       onPressed: onViewCases,
+                    ),
+                  if (onFinance != null)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.account_balance_wallet_outlined),
+                      label: const Text('Sezon Finansı'),
+                      onPressed: onFinance,
                     ),
                 ],
               ),
@@ -485,9 +526,7 @@ class _FaaliyetListesi extends StatelessWidget {
     if (faaliyetler.isEmpty) {
       return AppEmptyView(
         icon: isGecmis ? Icons.history : Icons.event_note,
-        title: isGecmis
-            ? 'Henüz tamamlanmış iş yok.'
-            : 'Planlanmış iş yok.',
+        title: isGecmis ? 'Henüz tamamlanmış iş yok.' : 'Planlanmış iş yok.',
         description: isGecmis
             ? 'Tamamlanan işler burada görünecek.'
             : 'Bu tarla için yeni bir iş planlayabilirsin.',

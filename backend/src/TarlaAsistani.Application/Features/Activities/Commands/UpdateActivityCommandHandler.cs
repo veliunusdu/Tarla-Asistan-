@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Activities.DTOs;
+using TarlaAsistani.Application.Features.Finance;
 using TarlaAsistani.Domain.Entities;
 
 namespace TarlaAsistani.Application.Features.Activities.Commands;
@@ -27,6 +28,9 @@ public class UpdateActivityCommandHandler : IRequestHandler<UpdateActivityComman
         {
             return null;
         }
+
+        var linkedExpense = await _db.Expenses.FirstOrDefaultAsync(
+            e => e.ActivityId == activity.Id, cancellationToken);
 
         // 2. Validate crop period if updating
         if (request.CropPeriodId.HasValue)
@@ -122,10 +126,42 @@ public class UpdateActivityCommandHandler : IRequestHandler<UpdateActivityComman
             activity.PerformedBy = string.IsNullOrWhiteSpace(request.PerformedBy) ? null : request.PerformedBy.Trim();
         }
 
-        if (request.Cost.HasValue && request.Cost != activity.Cost)
+        if ((request.Cost.HasValue || request.CostWasProvided) && request.Cost != activity.Cost)
         {
             previousValues["cost"] = activity.Cost;
             activity.Cost = request.Cost;
+        }
+
+        if (activity.Cost is > 0)
+        {
+            if (!activity.CropPeriodId.HasValue)
+                throw new ArgumentException("Maliyetli faaliyet için aktif üretim dönemi gereklidir.");
+
+            var now = DateTime.UtcNow;
+            if (linkedExpense is null)
+            {
+                linkedExpense = new Expense
+                {
+                    FarmId = activity.FarmId,
+                    CropPeriodId = activity.CropPeriodId.Value,
+                    ActivityId = activity.Id,
+                    CreatedById = request.UserId,
+                    CreatedAtUtc = now
+                };
+                _db.Expenses.Add(linkedExpense);
+            }
+
+            linkedExpense.CropPeriodId = activity.CropPeriodId.Value;
+            linkedExpense.Amount = FinancialMath.NormalizeActivityCost(activity.Cost.Value);
+            linkedExpense.Category = FinancialMath.MapActivityCategory(activity.ActivityType);
+            linkedExpense.OccurredAtUtc = activity.OccurredAtUtc;
+            linkedExpense.ArchivedAtUtc = null;
+            linkedExpense.UpdatedAtUtc = now;
+        }
+        else if (linkedExpense is not null && linkedExpense.ArchivedAtUtc is null)
+        {
+            linkedExpense.ArchivedAtUtc = DateTime.UtcNow;
+            linkedExpense.UpdatedAtUtc = linkedExpense.ArchivedAtUtc.Value;
         }
 
         // If there were any changes, write revision history

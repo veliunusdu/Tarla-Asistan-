@@ -6,6 +6,7 @@ import '../features/cases/data/case_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
 import '../features/market/data/backend_market_repository.dart';
 import '../features/market/data/local_market_repository.dart';
+import '../features/finances/data/finance_repository.dart';
 import '../features/profile/data/profile_repository.dart';
 import '../features/tasks/data/daily_task_repository.dart';
 import '../features/weather/data/weather_repository.dart';
@@ -39,6 +40,7 @@ class AnaEkran extends StatefulWidget {
     ApiClient? apiClient,
     BackendMarketRepository? marketRepository,
     DailyTaskRepository? dailyTaskRepository,
+    FinancialRepository? financialRepository,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
@@ -50,6 +52,7 @@ class AnaEkran extends StatefulWidget {
        _apiClient = apiClient,
        _marketRepo = marketRepository,
        _dailyTaskRepo = dailyTaskRepository,
+       _financialRepo = financialRepository,
        // ignore: prefer_initializing_formals
        _onLogout = onLogout;
 
@@ -62,6 +65,7 @@ class AnaEkran extends StatefulWidget {
   final ApiClient? _apiClient;
   final BackendMarketRepository? _marketRepo;
   final DailyTaskRepository? _dailyTaskRepo;
+  final FinancialRepository? _financialRepo;
   final Future<void> Function()? _onLogout;
 
   DailyTaskRepository? get dailyTaskRepository => _dailyTaskRepo;
@@ -103,6 +107,7 @@ class _AnaEkranState extends State<AnaEkran> {
         onTarlalarimSekme: _gotoTarlalarim,
         onGunlukSekme: _gotoGunlugum,
         refreshNotifier: _refreshNotifier,
+        financialRepository: widget._financialRepo,
       ),
       // 1 — İş Planım
       TarlaGunluguEkrani(
@@ -118,6 +123,7 @@ class _AnaEkranState extends State<AnaEkran> {
         caseRepository: widget._caseRepo,
         onDataChanged: _onDataChanged,
         refreshNotifier: _refreshNotifier,
+        financialRepository: widget._financialRepo,
       ),
       // 3 — Asistan
       AiAsistanEkrani(repository: widget._aiRepo),

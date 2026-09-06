@@ -19,5 +19,6 @@ public record UpdateActivityCommand(
     string? VoiceUrl = null,
     string? VoiceTranscript = null,
     string? PerformedBy = null,
-    float? Cost = null
+    float? Cost = null,
+    bool CostWasProvided = false
 ) : IRequest<ActivityDto?>;

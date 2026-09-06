@@ -7,6 +7,7 @@ import '../features/cases/data/case_repository.dart';
 import '../features/fields/data/farm_summary_repository.dart';
 import '../features/fields/data/local_tarla_repository.dart';
 import '../features/fields/data/tarla_repository.dart';
+import '../features/finances/data/finance_repository.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
 import '../shared/utils/date_formatter.dart';
@@ -78,16 +79,19 @@ class TarlaListesiEkrani extends StatefulWidget {
     TarlaRepository? repository,
     FaaliyetRepository? faaliyetRepository,
     CaseRepository? caseRepository,
+    FinancialRepository? financialRepository,
     this.onDataChanged,
     this.refreshNotifier,
   }) : _repository = repository ?? const LocalTarlaRepository(),
        _faaliyetRepository =
            faaliyetRepository ?? const LocalFaaliyetRepository(),
-       _caseRepository = caseRepository;
+       _caseRepository = caseRepository,
+       _financialRepository = financialRepository;
 
   final TarlaRepository _repository;
   final FaaliyetRepository _faaliyetRepository;
   final CaseRepository? _caseRepository;
+  final FinancialRepository? _financialRepository;
 
   @visibleForTesting
   FaaliyetRepository get faaliyetRepositoryForTesting =>
@@ -522,6 +526,7 @@ class _TarlaListesiEkraniState
                           caseRepository:
                               widget
                                   ._caseRepository,
+                          financialRepository: widget._financialRepository,
                           onEdit: widget
                                       ._repository
                                   is TarlaUpdateRepository

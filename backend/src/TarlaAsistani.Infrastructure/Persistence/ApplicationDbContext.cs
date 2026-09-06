@@ -62,6 +62,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // ── Market Data ──────────────────────────────────────────
     public DbSet<MarketPrice> MarketPrices => Set<MarketPrice>();
 
+    // ── Financial Records ──────────────────────────────────
+    public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<CropSale> CropSales => Set<CropSale>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -466,6 +470,82 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithOne(cm => cm.Case)
                   .HasForeignKey(cm => cm.CaseId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // EXPENSE
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<Expense>(entity =>
+        {
+            entity.ToTable("expenses");
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.FarmId, e.CropPeriodId, e.ArchivedAtUtc })
+                  .HasDatabaseName("ix_expenses_farm_crop_period_archived");
+            entity.HasIndex(e => e.ActivityId)
+                  .IsUnique()
+                  .HasFilter("\"ActivityId\" IS NOT NULL")
+                  .HasDatabaseName("uq_expenses_activity_id");
+            entity.HasIndex(e => new { e.CreatedById, e.ClientOperationId })
+                  .IsUnique()
+                  .HasFilter("\"ClientOperationId\" IS NOT NULL")
+                  .HasDatabaseName("uq_expenses_client_operation");
+
+            entity.Property(e => e.Category).HasConversion<string>();
+            entity.Property(e => e.Amount).HasPrecision(18, 2).IsRequired();
+            entity.Property(e => e.Note).HasMaxLength(500);
+
+            entity.HasOne(e => e.Farm)
+                  .WithMany(f => f.Expenses)
+                  .HasForeignKey(e => e.FarmId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.CropPeriod)
+                  .WithMany(cp => cp.Expenses)
+                  .HasForeignKey(e => e.CropPeriodId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Activity)
+                  .WithOne(a => a.Expense)
+                  .HasForeignKey<Expense>(e => e.ActivityId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.CreatedBy)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedById)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // CROP SALE
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<CropSale>(entity =>
+        {
+            entity.ToTable("crop_sales");
+            entity.HasKey(s => s.Id);
+
+            entity.HasIndex(s => new { s.FarmId, s.CropPeriodId, s.ArchivedAtUtc })
+                  .HasDatabaseName("ix_crop_sales_farm_crop_period_archived");
+            entity.HasIndex(s => new { s.CreatedById, s.ClientOperationId })
+                  .IsUnique()
+                  .HasFilter("\"ClientOperationId\" IS NOT NULL")
+                  .HasDatabaseName("uq_crop_sales_client_operation");
+
+            entity.Property(s => s.HarvestQuantity).HasPrecision(18, 2).IsRequired();
+            entity.Property(s => s.Unit).HasMaxLength(30).IsRequired();
+            entity.Property(s => s.UnitPrice).HasPrecision(18, 4).IsRequired();
+            entity.Property(s => s.TotalAmount).HasPrecision(18, 2).IsRequired();
+            entity.Property(s => s.BuyerOrMarketNote).HasMaxLength(500);
+
+            entity.HasOne(s => s.Farm)
+                  .WithMany(f => f.CropSales)
+                  .HasForeignKey(s => s.FarmId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(s => s.CropPeriod)
+                  .WithMany(cp => cp.CropSales)
+                  .HasForeignKey(s => s.CropPeriodId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(s => s.CreatedBy)
+                  .WithMany()
+                  .HasForeignKey(s => s.CreatedById)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CaseContextSnapshot>(entity =>

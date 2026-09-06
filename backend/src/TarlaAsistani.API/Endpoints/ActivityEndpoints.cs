@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
@@ -189,10 +190,27 @@ public static class ActivityEndpoints
             Guid id,
             HttpContext httpContext,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
-            UpdateActivityApiRequest req,
+            JsonElement body,
             IMediator mediator,
             IValidator<UpdateActivityCommand> validator) =>
         {
+            var req = JsonSerializer.Deserialize<UpdateActivityApiRequest>(body.GetRawText(), new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            }) ?? new UpdateActivityApiRequest();
+            var costWasProvided = false;
+            var costElement = default(JsonElement);
+            if (body.ValueKind == JsonValueKind.Object)
+                costWasProvided = body.TryGetProperty("cost", out costElement);
+            float? cost = null;
+            if (costWasProvided && costElement.ValueKind != JsonValueKind.Null)
+            {
+                if (!costElement.TryGetSingle(out var parsedCost))
+                    return Results.ValidationProblem(new Dictionary<string, string[]> { ["cost"] = ["Cost geçerli bir sayı olmalıdır."] });
+                cost = parsedCost;
+            }
+
             var userId = httpContext.ResolveUserId(req.UserId, headerUserId);
             if (userId == Guid.Empty)
             {
@@ -214,7 +232,8 @@ public static class ActivityEndpoints
                 VoiceUrl: req.VoiceUrl,
                 VoiceTranscript: req.VoiceTranscript,
                 PerformedBy: req.PerformedBy,
-                Cost: req.Cost
+                Cost: cost,
+                CostWasProvided: costWasProvided
             );
 
             var validationResult = await validator.ValidateAsync(command);

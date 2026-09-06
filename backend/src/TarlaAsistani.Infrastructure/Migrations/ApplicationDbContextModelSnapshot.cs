@@ -523,6 +523,72 @@ namespace TarlaAsistani.Infrastructure.Migrations
                     b.ToTable("crop_periods", (string)null);
                 });
 
+            modelBuilder.Entity("TarlaAsistani.Domain.Entities.CropSale", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BuyerOrMarketNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ClientOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CropPeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FarmId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("HarvestQuantity")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly>("SoldAt")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CropPeriodId");
+
+                    b.HasIndex("CreatedById", "ClientOperationId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_crop_sales_client_operation")
+                        .HasFilter("\"ClientOperationId\" IS NOT NULL");
+
+                    b.HasIndex("FarmId", "CropPeriodId", "ArchivedAtUtc")
+                        .HasDatabaseName("ix_crop_sales_farm_crop_period_archived");
+
+                    b.ToTable("crop_sales", (string)null);
+                });
+
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.DeviceToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -562,6 +628,71 @@ namespace TarlaAsistani.Infrastructure.Migrations
                         .HasDatabaseName("ix_device_tokens_user_active");
 
                     b.ToTable("device_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("TarlaAsistani.Domain.Entities.Expense", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ClientOperationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CropPeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FarmId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActivityId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_expenses_activity_id")
+                        .HasFilter("\"ActivityId\" IS NOT NULL");
+
+                    b.HasIndex("CropPeriodId");
+
+                    b.HasIndex("CreatedById", "ClientOperationId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_expenses_client_operation")
+                        .HasFilter("\"ClientOperationId\" IS NOT NULL");
+
+                    b.HasIndex("FarmId", "CropPeriodId", "ArchivedAtUtc")
+                        .HasDatabaseName("ix_expenses_farm_crop_period_archived");
+
+                    b.ToTable("expenses", (string)null);
                 });
 
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.Farm", b =>
@@ -1626,6 +1757,32 @@ namespace TarlaAsistani.Infrastructure.Migrations
                     b.Navigation("Farm");
                 });
 
+            modelBuilder.Entity("TarlaAsistani.Domain.Entities.CropSale", b =>
+                {
+                    b.HasOne("User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TarlaAsistani.Domain.Entities.CropPeriod", "CropPeriod")
+                        .WithMany("CropSales")
+                        .HasForeignKey("CropPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TarlaAsistani.Domain.Entities.Farm", "Farm")
+                        .WithMany("CropSales")
+                        .HasForeignKey("FarmId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("CropPeriod");
+
+                    b.Navigation("Farm");
+                });
+
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.DeviceToken", b =>
                 {
                     b.HasOne("User", "User")
@@ -1635,6 +1792,39 @@ namespace TarlaAsistani.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TarlaAsistani.Domain.Entities.Expense", b =>
+                {
+                    b.HasOne("TarlaAsistani.Domain.Entities.Activity", "Activity")
+                        .WithOne("Expense")
+                        .HasForeignKey("TarlaAsistani.Domain.Entities.Expense", "ActivityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TarlaAsistani.Domain.Entities.CropPeriod", "CropPeriod")
+                        .WithMany("Expenses")
+                        .HasForeignKey("CropPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TarlaAsistani.Domain.Entities.Farm", "Farm")
+                        .WithMany("Expenses")
+                        .HasForeignKey("FarmId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Activity");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("CropPeriod");
+
+                    b.Navigation("Farm");
                 });
 
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.Farm", b =>
@@ -1832,6 +2022,8 @@ namespace TarlaAsistani.Infrastructure.Migrations
 
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.Activity", b =>
                 {
+                    b.Navigation("Expense");
+
                     b.Navigation("Revisions");
                 });
 
@@ -1840,11 +2032,22 @@ namespace TarlaAsistani.Infrastructure.Migrations
                     b.Navigation("MediaLinks");
                 });
 
+            modelBuilder.Entity("TarlaAsistani.Domain.Entities.CropPeriod", b =>
+                {
+                    b.Navigation("CropSales");
+
+                    b.Navigation("Expenses");
+                });
+
             modelBuilder.Entity("TarlaAsistani.Domain.Entities.Farm", b =>
                 {
                     b.Navigation("Activities");
 
                     b.Navigation("CropPeriods");
+
+                    b.Navigation("CropSales");
+
+                    b.Navigation("Expenses");
 
                     b.Navigation("Tasks");
 

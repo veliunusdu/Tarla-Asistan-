@@ -25,6 +25,9 @@ public class ArchiveActivityCommandHandler : IRequestHandler<ArchiveActivityComm
             return false;
         }
 
+        var linkedExpense = await _db.Expenses.FirstOrDefaultAsync(
+            e => e.ActivityId == activity.Id && e.ArchivedAtUtc == null, cancellationToken);
+
         var now = DateTime.UtcNow;
         var revision = new ActivityRevision
         {
@@ -38,6 +41,12 @@ public class ArchiveActivityCommandHandler : IRequestHandler<ArchiveActivityComm
 
         activity.ArchivedAtUtc = now;
         activity.UpdatedAtUtc = now;
+
+        if (linkedExpense is not null)
+        {
+            linkedExpense.ArchivedAtUtc = now;
+            linkedExpense.UpdatedAtUtc = now;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 

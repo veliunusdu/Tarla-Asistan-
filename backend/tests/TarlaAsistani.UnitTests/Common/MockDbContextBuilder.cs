@@ -40,6 +40,8 @@ public class MockDbContextBuilder
     private List<PilotFeedback> _pilotFeedbacks = new();
     private List<AiUsageLog> _aiUsageLogs = new();
     private List<ProactiveAdvisory> _proactiveAdvisories = new();
+    private List<Expense> _expenses = new();
+    private List<CropSale> _cropSales = new();
 
     public MockDbContextBuilder WithAiUsageLogs(params AiUsageLog[] logs)
     {
@@ -131,6 +133,18 @@ public class MockDbContextBuilder
         return this;
     }
 
+    public MockDbContextBuilder WithExpenses(params Expense[] expenses)
+    {
+        _expenses.AddRange(expenses);
+        return this;
+    }
+
+    public MockDbContextBuilder WithCropSales(params CropSale[] cropSales)
+    {
+        _cropSales.AddRange(cropSales);
+        return this;
+    }
+
     public MockDbContextBuilder WithCaseContextSnapshots(params CaseContextSnapshot[] snapshots)
     {
         _caseContextSnapshots.AddRange(snapshots);
@@ -211,6 +225,8 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.PilotFeedbacks, _pilotFeedbacks);
         SetupDbSet(_mockDb, db => db.AiUsageLogs, _aiUsageLogs);
         SetupDbSet(_mockDb, db => db.ProactiveAdvisories, _proactiveAdvisories);
+        SetupDbSet(_mockDb, db => db.Expenses, _expenses);
+        SetupDbSet(_mockDb, db => db.CropSales, _cropSales);
 
         _mockDb.Setup(db => db.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);

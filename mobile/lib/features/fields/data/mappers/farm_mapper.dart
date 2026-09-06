@@ -25,6 +25,7 @@ class FarmMapper {
       size: dto.sizeInHectares,
       cropType: dto.currentCrop?.cropName ?? dto.currentCrop?.cropType,
       plantingDate: dto.currentCrop?.plantedAt,
+      currentCropPeriodId: dto.currentCrop?.id,
     );
   }
 
