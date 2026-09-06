@@ -8,22 +8,18 @@ class AppLogo extends StatelessWidget {
     this.semanticLabel = 'Tarla Asistanı logosu',
   });
 
-  static const assetPath =
-      'assets/branding/concepts/concept_c_white.png';
+  static const assetPath = 'assets/branding/concepts/concept_c_white.png';
 
   final double size;
   final String semanticLabel;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    image: true,
-    label: semanticLabel,
-    child: Image.asset(
-      assetPath,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-    ),
+  Widget build(BuildContext context) => Image.asset(
+    assetPath,
+    width: size,
+    height: size,
+    fit: BoxFit.contain,
+    filterQuality: FilterQuality.high,
+    semanticLabel: semanticLabel,
   );
 }

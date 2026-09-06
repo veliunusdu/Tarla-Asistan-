@@ -8,11 +8,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: AppLogo(size: 80),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: AppLogo(size: 80))),
       );
 
       final image = tester.widget<Image>(find.byType(Image));
@@ -28,11 +24,7 @@ void main() {
 
     testWidgets('uses the requested square size', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: AppLogo(size: 72),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: AppLogo(size: 72))),
       );
 
       final image = tester.widget<Image>(find.byType(Image));
@@ -42,22 +34,22 @@ void main() {
 
     testWidgets('exposes an accessible brand label', (tester) async {
       final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
-
-      await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: AppLogo(
-              semanticLabel: 'Tarla Asistanı marka işareti',
+      try {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: AppLogo(semanticLabel: 'Tarla Asistanı marka işareti'),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(
-        find.bySemanticsLabel('Tarla Asistanı marka işareti'),
-        findsOneWidget,
-      );
+        expect(
+          find.bySemanticsLabel('Tarla Asistanı marka işareti'),
+          findsOneWidget,
+        );
+      } finally {
+        semantics.dispose();
+      }
     });
   });
 }
