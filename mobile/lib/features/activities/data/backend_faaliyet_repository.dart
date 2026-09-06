@@ -22,7 +22,7 @@ class BackendFaaliyetRepository
   final ApiClient _api;
   final TarlaRepository _tarlaRepo;
   final Uuid _uuid;
-  static final Object _omitted = Object();
+  static const Object _omitted = Object();
 
   Future<void> updateFaaliyet(
     String id, {

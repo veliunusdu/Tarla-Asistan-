@@ -155,6 +155,16 @@ abstract final class Migrations {
     }
   }
 
+  /// Version 9 -> 10: adds the nullable active crop period reference.
+  static Future<void> v9ToV10(Database db) async {
+    final columns = await _columnNames(db, 'tarlalar');
+    if (!columns.contains('currentCropPeriodId')) {
+      await db.execute(
+        'ALTER TABLE tarlalar ADD COLUMN currentCropPeriodId TEXT',
+      );
+    }
+  }
+
   /// [table] tablosundaki mevcut kolon adlarını döndürür.
   static Future<Set<String>> _columnNames(Database db, String table) async {
     final rows = await db.rawQuery('PRAGMA table_info($table)');

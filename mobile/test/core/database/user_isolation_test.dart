@@ -124,6 +124,7 @@ void main() {
               size REAL,
               cropType TEXT,
               plantingDate TEXT,
+              currentCropPeriodId TEXT,
               userId TEXT
             )
           ''');

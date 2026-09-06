@@ -60,7 +60,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -77,6 +77,7 @@ class DatabaseHelper implements SyncOperationStore {
         size REAL,
         cropType TEXT,
         plantingDate TEXT,
+        currentCropPeriodId TEXT,
         userId TEXT
       )
     ''');
@@ -134,6 +135,9 @@ class DatabaseHelper implements SyncOperationStore {
     }
     if (oldVersion < 9) {
       await Migrations.v8ToV9(db);
+    }
+    if (oldVersion < 10) {
+      await Migrations.v9ToV10(db);
     }
   }
 

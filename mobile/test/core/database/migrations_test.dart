@@ -100,7 +100,9 @@ Future<void> _insertV3Tarla(
 /// Returns a map from column name to PRAGMA table_info row for `tarlalar`.
 Future<Map<String, Map<String, Object?>>> _tarlaColumnInfo(Database db) async {
   final rows = await db.rawQuery('PRAGMA table_info(tarlalar)');
-  return {for (final r in rows) r['name'] as String: Map<String, Object?>.from(r)};
+  return {
+    for (final r in rows) r['name'] as String: Map<String, Object?>.from(r),
+  };
 }
 
 /// Applies the same upgrade chain that DatabaseHelper._upgradeDB does,
@@ -243,7 +245,10 @@ void main() {
     test(
       'tüm 5 kolon nullable olur ve mevcut tarla kayıtları korunur',
       () async {
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
         await _insertV3Tarla(db, id: 't1', name: 'Kuzey Tarla', size: 15.0);
         await _insertV3Tarla(
@@ -296,7 +301,10 @@ void main() {
     );
 
     test('tüm ID\'ler değişmez', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await _insertV3Tarla(db, id: 'uuid-abc-123');
       await _insertV3Tarla(db, id: 'uuid-def-456');
@@ -313,7 +321,10 @@ void main() {
     });
 
     test('idempotent — ikinci çalıştırma hata üretmez', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await _insertV3Tarla(db, id: 't1');
 
@@ -332,7 +343,10 @@ void main() {
     test(
       'yarım kalmış tarlalar_new tablosu varsa hata vermez (crash recovery)',
       () async {
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
         await _insertV3Tarla(db, id: 't1', name: 'Orijinal Tarla');
 
@@ -375,7 +389,10 @@ void main() {
     test(
       'migration sonrası null alanları olan tarla eklenip okunabilir',
       () async {
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
 
         await Migrations.v3ToV4(db);
@@ -407,7 +424,10 @@ void main() {
     );
 
     test('migration öncesi dolu tarlanın tüm değerleri değişmez', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await _insertV3Tarla(
         db,
@@ -439,7 +459,10 @@ void main() {
     });
 
     test('temiz version 4 kurulumunda (onCreate) 5 kolon nullable', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       // Simulate onCreate creating v4 schema directly (nullable from start)
       await db.execute('''
         CREATE TABLE tarlalar (
@@ -478,7 +501,10 @@ void main() {
 
   group('Faaliyet tarlaId ilişkisi migration boyunca korunur', () {
     test('v3→v4 sonrası faaliyetlerin tarlaId değerleri değişmez', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await _createV2Faaliyetler(db);
 
@@ -537,7 +563,10 @@ void main() {
         // The faaliyetler.tarlaId column has no REFERENCES clause, so SQLite
         // does not enforce referential integrity between faaliyetler and tarlalar.
         // This test documents that fact.
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
         await _createV2Faaliyetler(db);
         await db.execute('PRAGMA foreign_keys = ON');
@@ -567,7 +596,10 @@ void main() {
 
   group('Tam upgrade zinciri testleri', () {
     test('v3 → v4: verilerle tam upgrade zinciri', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
 
       // Simulate v3 database state
       await _createV3Tarlalar(db);
@@ -610,7 +642,10 @@ void main() {
     });
 
     test('v2 → v4: v2 şemasından tam upgrade zinciri', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
 
       // Simulate v2 database state (tarlalar NOT NULL, no sync_operations)
       await _createV3Tarlalar(db);
@@ -641,7 +676,10 @@ void main() {
     });
 
     test('v1 → v4: v1 şemasından tam upgrade zinciri', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
 
       // Simulate v1 database state
       await _createV3Tarlalar(db);
@@ -697,7 +735,10 @@ void main() {
     test(
       'v3→v4 sonrası PRAGMA table_info tüm 5 kolon notnull==0 döndürür',
       () async {
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
         await Migrations.v3ToV4(db);
 
@@ -723,7 +764,10 @@ void main() {
     test(
       'v3→v4 sonrası hem null hem dolu tarla kaydı eklenip okunabilir',
       () async {
-        final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
         await _createV3Tarlalar(db);
         await _insertV3Tarla(
           db,
@@ -799,7 +843,10 @@ void main() {
 
   group('Tablo yapısı kontrolü', () {
     test('tarlalar tablosunda index veya trigger yoktur', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await Migrations.v3ToV4(db);
 
@@ -822,7 +869,10 @@ void main() {
     });
 
     test('sync_operations index upgrade sonrası hâlâ var', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
       await _createV3Tarlalar(db);
       await _createSyncOperations(db);
 
@@ -843,13 +893,15 @@ void main() {
   // -------------------------------------------------------------------------
 
   group('Migrations.v4ToV5', () {
-    test('tarlalar, faaliyetler ve sync_operations tablolarına userId ekler ve index oluşturur', () async {
-      final db = await openDatabase(
-        inMemoryDatabasePath,
-        singleInstance: false,
-        version: 4,
-        onCreate: (db, _) async {
-          await db.execute('''
+    test(
+      'tarlalar, faaliyetler ve sync_operations tablolarına userId ekler ve index oluşturur',
+      () async {
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+          version: 4,
+          onCreate: (db, _) async {
+            await db.execute('''
             CREATE TABLE tarlalar (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -860,7 +912,7 @@ void main() {
               plantingDate TEXT
             )
           ''');
-          await db.execute('''
+            await db.execute('''
             CREATE TABLE faaliyetler (
               id TEXT PRIMARY KEY,
               tarlaId TEXT NOT NULL,
@@ -873,7 +925,7 @@ void main() {
               isCompleted INTEGER NOT NULL DEFAULT 1
             )
           ''');
-          await db.execute('''
+            await db.execute('''
             CREATE TABLE sync_operations (
               id TEXT PRIMARY KEY,
               method TEXT NOT NULL,
@@ -885,45 +937,122 @@ void main() {
               updatedAt TEXT NOT NULL
             )
           ''');
-        },
-      );
+          },
+        );
 
-      await Migrations.v4ToV5(db);
+        await Migrations.v4ToV5(db);
 
-      final tIndexes = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tarlalar'",
-      );
-      expect(tIndexes.map((r) => r['name']), contains('ix_tarlalar_user_id'));
+        final tIndexes = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tarlalar'",
+        );
+        expect(tIndexes.map((r) => r['name']), contains('ix_tarlalar_user_id'));
 
-      final fIndexes = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='faaliyetler'",
-      );
-      expect(fIndexes.map((r) => r['name']), contains('ix_faaliyetler_user_id'));
+        final fIndexes = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='faaliyetler'",
+        );
+        expect(
+          fIndexes.map((r) => r['name']),
+          contains('ix_faaliyetler_user_id'),
+        );
 
-      final sIndexes = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='sync_operations'",
-      );
-      expect(sIndexes.map((r) => r['name']), contains('ix_sync_operations_user_id'));
+        final sIndexes = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='sync_operations'",
+        );
+        expect(
+          sIndexes.map((r) => r['name']),
+          contains('ix_sync_operations_user_id'),
+        );
 
-      await db.close();
-    });
+        await db.close();
+      },
+    );
   });
 
   group('Migrations.v7ToV8', () {
-    test('pending vaka tablosunu ve kullanıcı-operation unique indexini oluşturur', () async {
-      final db = await openDatabase(inMemoryDatabasePath, singleInstance: false);
+    test(
+      'pending vaka tablosunu ve kullanıcı-operation unique indexini oluşturur',
+      () async {
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
 
-      await Migrations.v7ToV8(db);
+        await Migrations.v7ToV8(db);
 
-      final columns = await db.rawQuery('PRAGMA table_info(pending_case_submissions)');
-      expect(columns.map((row) => row['name']), containsAll([
-        'user_id', 'farm_id', 'client_operation_id', 'local_image_path', 'state',
-      ]));
-      final indexes = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='pending_case_submissions'",
-      );
-      expect(indexes.map((row) => row['name']), contains('ux_pending_cases_user_operation'));
-      await db.close();
-    });
+        final columns = await db.rawQuery(
+          'PRAGMA table_info(pending_case_submissions)',
+        );
+        expect(
+          columns.map((row) => row['name']),
+          containsAll([
+            'user_id',
+            'farm_id',
+            'client_operation_id',
+            'local_image_path',
+            'state',
+          ]),
+        );
+        final indexes = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='pending_case_submissions'",
+        );
+        expect(
+          indexes.map((row) => row['name']),
+          contains('ux_pending_cases_user_operation'),
+        );
+        await db.close();
+      },
+    );
+  });
+
+  group('Migrations.v9ToV10', () {
+    test(
+      'tarlalara nullable currentCropPeriodId kolonu ekler ve mevcut veriyi korur',
+      () async {
+        final db = await openDatabase(
+          inMemoryDatabasePath,
+          singleInstance: false,
+        );
+        await db.execute('''
+        CREATE TABLE tarlalar (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          size REAL,
+          cropType TEXT,
+          plantingDate TEXT,
+          userId TEXT
+        )
+      ''');
+        await db.insert('tarlalar', {
+          'id': 'farm-1',
+          'name': 'Test Farm',
+          'userId': 'user-1',
+        });
+
+        await Migrations.v9ToV10(db);
+
+        final columns = await db.rawQuery('PRAGMA table_info(tarlalar)');
+        final currentCropColumn = columns.firstWhere(
+          (row) => row['name'] == 'currentCropPeriodId',
+        );
+        expect(currentCropColumn['type'], 'TEXT');
+        expect(currentCropColumn['notnull'], 0);
+        expect((await db.query('tarlalar')).single['id'], 'farm-1');
+
+        await db.update(
+          'tarlalar',
+          {'currentCropPeriodId': 'crop-period-1'},
+          where: 'id = ?',
+          whereArgs: ['farm-1'],
+        );
+        expect(
+          (await db.query('tarlalar')).single['currentCropPeriodId'],
+          'crop-period-1',
+        );
+
+        await db.close();
+      },
+    );
   });
 }

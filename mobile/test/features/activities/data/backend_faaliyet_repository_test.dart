@@ -136,6 +136,65 @@ void main() {
       expect(capturedPath, '/api/v1/activities/activity-1');
     });
 
+    test('updateFaaliyet omits cost when it is not provided', () async {
+      Map<String, dynamic>? body;
+      final client = ApiClient(
+        httpClient: MockClient((request) async {
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('', 204);
+        }),
+        idTokenProvider: () async => 'dummy-token',
+      );
+      final repository = BackendFaaliyetRepository(
+        apiClient: client,
+        tarlaRepository: _FakeTarlaRepository([]),
+      );
+
+      await repository.updateFaaliyet('activity-1', note: 'Yeni not');
+
+      expect(body, {'description': 'Yeni not'});
+      expect(body!.containsKey('cost'), isFalse);
+    });
+
+    test('updateFaaliyet sends explicit null cost', () async {
+      Map<String, dynamic>? body;
+      final client = ApiClient(
+        httpClient: MockClient((request) async {
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('', 204);
+        }),
+        idTokenProvider: () async => 'dummy-token',
+      );
+      final repository = BackendFaaliyetRepository(
+        apiClient: client,
+        tarlaRepository: _FakeTarlaRepository([]),
+      );
+
+      await repository.updateFaaliyet('activity-1', cost: null);
+
+      expect(body, {'cost': null});
+    });
+
+    test('updateFaaliyet sends positive numeric cost', () async {
+      Map<String, dynamic>? body;
+      final client = ApiClient(
+        httpClient: MockClient((request) async {
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('', 204);
+        }),
+        idTokenProvider: () async => 'dummy-token',
+      );
+      final repository = BackendFaaliyetRepository(
+        apiClient: client,
+        tarlaRepository: _FakeTarlaRepository([]),
+      );
+
+      await repository.updateFaaliyet('activity-1', cost: 1250.75);
+
+      expect(body, {'cost': 1250.75});
+      expect(body!['cost'], isA<num>());
+    });
+
     test(
       'getPlanliGorevler includes open planned tasks from backend',
       () async {
