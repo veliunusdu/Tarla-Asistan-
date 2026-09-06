@@ -41,6 +41,15 @@ abstract interface class DailyTaskRepository {
     required String reason,
   });
 
+  /// Applies a weather-based postponement recommendation for a task.
+  ///
+  /// Calls `POST /api/v1/ai/advisories/{advisoryId}/apply`.
+  /// Throws [ApiException] on network or server errors, including HTTP 409 Conflict
+  /// (e.g. when already applied or advisory validity has expired).
+  Future<void> applyWeatherPostponeSuggestion({
+    required String advisoryId,
+  });
+
   /// Enqueues a task action locally in SQLite for offline persistence and later synchronization.
   Future<void> enqueueTaskAction(PendingTaskAction action);
 

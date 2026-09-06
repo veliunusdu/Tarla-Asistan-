@@ -516,4 +516,282 @@ void main() {
       expect(dispatcher.scheduled, isEmpty);
     });
   });
+
+  group('DailyTaskNotificationService - Weather Postpone Synchronization & Authoritative Reconciliation', () {
+    test('22. CriticalAlertNotificationId_UsesSameIdentifierForScheduleAndCancel: Schedule ve cancel ayni merkezi formulu kullanir', () async {
+      const alertId = 'alert-risk-123';
+      final expectedId = DailyTaskNotificationService.notificationIdForCriticalAlert(alertId);
+
+      final taskAlert = createTestTask(id: alertId, title: 'Kritik Don Uyarısı');
+      final list = DailyTaskList(
+        date: testNow,
+        items: [],
+        criticalWeatherAlerts: [taskAlert],
+        overdue: [],
+      );
+
+      await service.evaluateAndNotifyCriticalAlerts(taskList: list, farmId: 'farm-123');
+      expect(dispatcher.shown.last.id, equals(expectedId));
+
+      await service.cancelAlertForTask(alertId);
+      expect(dispatcher.cancelled.last, equals(expectedId));
+    });
+
+    test('23. AlertId_IsOrIsNotTaskId_DocumentedByTest: criticalWeatherAlerts icindeki alert FarmTask modelidir ve alert.id == task.id kontratidir', () async {
+      final json = {
+        'date': '2026-09-06',
+        'items': [],
+        'criticalWeatherAlerts': [
+          {
+            'id': 'task-weather-uuid-456',
+            'farmId': 'farm-123',
+            'title': 'Fırtına Uyarısı',
+            'description': 'Açıklama',
+            'reason': 'Gerekçe',
+            'priority': 'Critical',
+            'status': 'New',
+            'source': 'Weather',
+            'confidence': 'High',
+            'dueDate': '2026-09-06',
+          }
+        ],
+        'overdue': [],
+      };
+
+      final parsed = DailyTaskList.fromJson(json);
+      expect(parsed.criticalWeatherAlerts, hasLength(1));
+      final alertTask = parsed.criticalWeatherAlerts.first;
+      expect(alertTask.id, equals('task-weather-uuid-456'));
+      expect(alertTask.source, equals(TaskSource.weather));
+      expect(alertTask.priority, equals(TaskPriority.critical));
+
+      final alertNotificationId = DailyTaskNotificationService.notificationIdForCriticalAlert(alertTask.id);
+      expect(alertNotificationId, equals(2000 + ('task-weather-uuid-456'.hashCode.abs() % 10000)));
+    });
+
+    test('24. Postpone200_RemovedAlertIsCancelled: Before alerts [taskWindAlert, frostAlert], After reload [frostAlert] -> Yalniz taskWindAlert cancel edilir', () async {
+      final taskWindAlert = createTestTask(id: 'task-wind', title: 'İlaçlama Rüzgar Uyarısı');
+      final frostAlert = createTestTask(id: 'alert-frost-99', title: 'Don Uyarısı');
+
+      final beforeList = DailyTaskList(
+        date: testNow,
+        items: [taskWindAlert],
+        criticalWeatherAlerts: [taskWindAlert, frostAlert],
+        overdue: [],
+      );
+
+      final afterList = DailyTaskList(
+        date: testNow,
+        items: [],
+        criticalWeatherAlerts: [frostAlert],
+        overdue: [],
+      );
+
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: beforeList,
+        currentTaskList: afterList,
+      );
+
+      final windAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('task-wind');
+      final frostAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('alert-frost-99');
+
+      expect(dispatcher.cancelled, contains(windAlertId));
+      expect(dispatcher.cancelled, isNot(contains(frostAlertId)));
+    });
+
+    test('25. Postpone409Expired_StillActiveAlertIsNotCancelled: 409 Expired sonrasi alert authoritative olarak hala varsa bildirim iptal EDILMEZ', () async {
+      final taskWindAlert = createTestTask(id: 'task-wind-expired', title: 'Rüzgar Riski');
+
+      final beforeList = DailyTaskList(
+        date: testNow,
+        items: [taskWindAlert],
+        criticalWeatherAlerts: [taskWindAlert],
+        overdue: [],
+      );
+
+      // 409 Expired oldu, backend'de görev ertelenmedi. Authoritative reload sonucu alert hala bugünün listesinde:
+      final authoritativeReloadList = DailyTaskList(
+        date: testNow,
+        items: [taskWindAlert],
+        criticalWeatherAlerts: [taskWindAlert],
+        overdue: [],
+      );
+
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: beforeList,
+        currentTaskList: authoritativeReloadList,
+      );
+
+      // Hiçbir iptal yapılmamalı, çünkü risk hala bugünün aktif uyarısıdır!
+      expect(dispatcher.cancelled, isEmpty);
+    });
+
+    test('26. Postpone409AlreadyApplied_RemovedAlertIsCancelledAfterReload: 409 Already Applied sonrasi backendde ertelenmis alert authoritative reload sonrasi dogru iptal edilir', () async {
+      final taskWindAlert = createTestTask(id: 'task-wind-applied', title: 'Rüzgar Riski');
+
+      final beforeList = DailyTaskList(
+        date: testNow,
+        items: [taskWindAlert],
+        criticalWeatherAlerts: [taskWindAlert],
+        overdue: [],
+      );
+
+      // 409 Already Applied: Görev sunucuda zaten ertelenmiş olduğundan bugünün listesinden çıkmış:
+      final authoritativeReloadList = DailyTaskList(
+        date: testNow,
+        items: [],
+        criticalWeatherAlerts: [],
+        overdue: [],
+      );
+
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: beforeList,
+        currentTaskList: authoritativeReloadList,
+      );
+
+      final windAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('task-wind-applied');
+      expect(dispatcher.cancelled, contains(windAlertId));
+    });
+
+    test('27. Reconciliation_PreservesUnrelatedFrostAlert: Iliskisiz hava uyarilari reconcilation tarafindan kesinlikle silinmez', () async {
+      final taskWind = createTestTask(id: 'task-wind-1', title: 'Rüzgar');
+      final frostAlert = createTestTask(id: 'frost-permanent', title: 'Kritik Don Uyarısı');
+
+      final beforeList = DailyTaskList(
+        date: testNow,
+        items: [taskWind],
+        criticalWeatherAlerts: [taskWind, frostAlert],
+        overdue: [],
+      );
+
+      final afterList = DailyTaskList(
+        date: testNow,
+        items: [],
+        criticalWeatherAlerts: [frostAlert],
+        overdue: [],
+      );
+
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: beforeList,
+        currentTaskList: afterList,
+      );
+
+      final frostAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('frost-permanent');
+      expect(dispatcher.cancelled, isNot(contains(frostAlertId)));
+    });
+
+    test('28. Reconciliation_IsIdempotent: Ayni state ile ardisik reconcilation calistirildiginda ek bildirim veya fazla cancel uretilmez', () async {
+      final list = DailyTaskList(
+        date: testNow,
+        items: [createTestTask(id: 't1', title: 'Sulama')],
+        criticalWeatherAlerts: [],
+        overdue: [],
+      );
+
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: null,
+        currentTaskList: list,
+      );
+
+      final cancelledCountAfterFirst = dispatcher.cancelled.length;
+
+      // İkinci çağrı (idempotent, current == previous)
+      await service.reconcileTaskNotifications(
+        farmId: 'farm-123',
+        previousTaskList: list,
+        currentTaskList: list,
+      );
+
+      expect(dispatcher.cancelled.length, equals(cancelledCountAfterFirst));
+    });
+
+    test('29. CancelledRemovedAlert_DedupeStateDoesNotBreakFutureNewDueDateAlert: alert.id ayni kalsa bile farkli dueDate yeni dedupe key uretir', () async {
+      final todayAlert = createTestTask(
+        id: 'task-risk-1',
+        title: 'Don Riski',
+        dueDate: DateTime(2026, 9, 6),
+      );
+      final tomorrowAlert = createTestTask(
+        id: 'task-risk-1',
+        title: 'Don Riski',
+        dueDate: DateTime(2026, 9, 7),
+      );
+
+      final todayKey = 'farm-123_${todayAlert.id}_${todayAlert.dueDate?.toIso8601String()}';
+      final tomorrowKey = 'farm-123_${tomorrowAlert.id}_${tomorrowAlert.dueDate?.toIso8601String()}';
+
+      expect(todayKey, isNot(equals(tomorrowKey)));
+
+      await preferences.markCriticalAlertNotified(todayKey);
+      expect(await preferences.isCriticalAlertNotified(todayKey), isTrue);
+      // Yarının tarihi için henüz notified olarak işaretlenmemiş olmalı
+      expect(await preferences.isCriticalAlertNotified(tomorrowKey), isFalse);
+    });
+
+    test('30. DailySummary_UsesCorrectCalendarScope: countActiveTasks tamamlanan veya bekleyen gorevleri haric tutar', () async {
+      final list = DailyTaskList(
+        date: testNow,
+        items: [
+          createTestTask(id: 't1', title: 'Aktif 1', status: TaskStatus.newTask),
+          createTestTask(id: 't2', title: 'Tamamlanan', status: TaskStatus.completed),
+          createTestTask(id: 't3', title: 'Uygulanmayan', status: TaskStatus.notApplied),
+          createTestTask(
+            id: 't4',
+            title: 'Pending',
+            pendingAction: PendingTaskAction(
+              id: 'p1',
+              farmId: 'farm-123',
+              taskId: 't4',
+              actionType: TaskActionType.complete,
+              createdAtUtc: testNow,
+            ),
+          ),
+          createTestTask(id: 't5', title: 'Aktif 2', status: TaskStatus.viewed),
+        ],
+        criticalWeatherAlerts: [],
+        overdue: [],
+      );
+
+      final count = DailyTaskNotificationService.countActiveTasks(list);
+      expect(count, equals(2));
+    });
+
+    test('31. NotificationScheduleAndCancel_UseSameCriticalAlertId', () async {
+      const alertId = 'alert-frost-uuid-789';
+      final expectedNotificationId = DailyTaskNotificationService.notificationIdForCriticalAlert(alertId);
+
+      // Expected formula: 2000 + (alertId.hashCode.abs() % 10000)
+      expect(expectedNotificationId, equals(2000 + (alertId.hashCode.abs() % 10000)));
+
+      // 1. Dispatch critical alert notification
+      final alertTask = createTestTask(id: alertId, title: 'Don riski', priority: TaskPriority.critical);
+      final list = DailyTaskList(
+        date: testNow,
+        items: [],
+        criticalWeatherAlerts: [alertTask],
+        overdue: [],
+        isFromCache: false,
+      );
+
+      final count = await service.evaluateAndNotifyCriticalAlerts(
+        taskList: list,
+        farmId: 'farm-123',
+      );
+      expect(count, equals(1));
+      expect(dispatcher.shown, hasLength(1));
+      expect(dispatcher.shown.first.id, equals(expectedNotificationId));
+
+      // 2. Cancel alert notification using cancelAlertForTask
+      await service.cancelAlertForTask(alertId);
+      expect(dispatcher.cancelled, contains(expectedNotificationId));
+    });
+  });
 }
+
+
+

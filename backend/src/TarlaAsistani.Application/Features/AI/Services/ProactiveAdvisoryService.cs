@@ -1,33 +1,45 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.AI.DTOs;
+using TarlaAsistani.Application.Features.Weather.DTOs;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 using TaskStatus = TarlaAsistani.Domain.Enums.TaskStatus;
 
 namespace TarlaAsistani.Application.Features.AI.Services;
 
 public class ProactiveAdvisoryService : IProactiveAdvisoryService
 {
+    private static readonly JsonSerializerOptions WeatherJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly IApplicationDbContext _db;
     private readonly IWeatherProvider _weatherProvider;
     private readonly IProactiveAdvisoryEngine _engine;
     private readonly IPushNotificationService? _pushService;
     private readonly ILogger<ProactiveAdvisoryService> _logger;
+    private readonly IConfiguration? _configuration;
 
     public ProactiveAdvisoryService(
         IApplicationDbContext db,
         IWeatherProvider weatherProvider,
         IProactiveAdvisoryEngine engine,
         ILogger<ProactiveAdvisoryService> logger,
-        IPushNotificationService? pushService = null)
+        IPushNotificationService? pushService = null,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _weatherProvider = weatherProvider;
         _engine = engine;
         _pushService = pushService;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<IReadOnlyList<ProactiveAdvisoryDto>> EvaluateFarmAdvisoriesAsync(
@@ -67,10 +79,15 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
 
         // 3. Fetch weather forecast
         WeatherForecastData? weather = null;
+        DateTime? weatherFetchedAtUtc = null;
         var weatherFailed = false;
         try
         {
             weather = await _weatherProvider.GetWeatherAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
+            if (weather != null)
+            {
+                weatherFetchedAtUtc = nowUtc;
+            }
         }
         catch (Exception ex)
         {
@@ -78,16 +95,46 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
             _logger.LogWarning(ex, "Failed to fetch weather forecast for farm {FarmId}", farm.Id);
         }
 
-        if (weather == null && !weatherFailed)
+        if ((weather == null || weather.Points == null || weather.Points.Count == 0) && !weatherFailed)
         {
             try
             {
                 var points = await _weatherProvider.ForecastAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
-                weather = new WeatherForecastData(points ?? []);
+                if (points != null && points.Count > 0)
+                {
+                    weather = new WeatherForecastData(points);
+                    weatherFetchedAtUtc = nowUtc;
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to fetch weather forecast points for farm {FarmId}", farm.Id);
+            }
+        }
+
+        // Fallback to persisted database snapshot if live provider produced no forecast points
+        if (weather == null || weather.Points == null || weather.Points.Count == 0)
+        {
+            var latestSnapshot = await _db.WeatherSnapshots
+                .Where(s => s.FarmId == farmId)
+                .OrderByDescending(s => s.FetchedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (latestSnapshot != null && !string.IsNullOrWhiteSpace(latestSnapshot.Payload))
+            {
+                try
+                {
+                    var points = JsonSerializer.Deserialize<List<WeatherPoint>>(latestSnapshot.Payload, WeatherJsonOptions);
+                    if (points != null && points.Count > 0)
+                    {
+                        weather = new WeatherForecastData(points);
+                        weatherFetchedAtUtc = latestSnapshot.FetchedAtUtc;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to deserialize weather snapshot for farm {FarmId}", farmId);
+                }
             }
         }
 
@@ -108,6 +155,17 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
 
             if (exists) continue;
 
+            DateTime? validUntil = nowUtc.AddDays(4);
+            if (result.ActionType == ProactiveActionType.PostponeTask)
+            {
+                var staleHours = WeatherDefaults.GetStaleAfterHours(_configuration);
+                validUntil = WeatherDefaults.CalculateWeatherAdvisoryValidUntil(
+                    weatherFetchedAtUtc,
+                    validUntil,
+                    staleHours,
+                    nowUtc);
+            }
+
             var advisory = new ProactiveAdvisory
             {
                 FarmId = farm.Id,
@@ -124,18 +182,21 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
                 RecommendedDate = result.RecommendedDate,
                 MetricsJson = result.MetricsJson,
                 DedupeKey = result.DedupeKey,
-                ValidUntilUtc = nowUtc.AddDays(4),
+                ValidUntilUtc = validUntil,
                 CreatedAtUtc = nowUtc,
                 UpdatedAtUtc = nowUtc
             };
 
             _db.ProactiveAdvisories.Add(advisory);
 
-            // 6. Notify farmer if Critical or Warning and push is enabled
+            // 6. Notify farmer if Critical or Warning, push is enabled, and advisory is not already expired
             if (result.Severity is AdvisorySeverity.Critical or AdvisorySeverity.Warning &&
                 _pushService != null && (farm.Owner?.Profile?.NotificationsEnabled ?? true))
             {
-                await DispatchNotificationAsync(farm, advisory, cancellationToken);
+                if (advisory.ValidUntilUtc == null || advisory.ValidUntilUtc > nowUtc)
+                {
+                    await DispatchNotificationAsync(farm, advisory, cancellationToken);
+                }
             }
         }
 
@@ -242,6 +303,8 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
         )).ToList();
     }
 
+    private static readonly TaskStatus[] TerminalStatuses = [TaskStatus.Completed, TaskStatus.NotApplied, TaskStatus.Cancelled];
+
     public async Task<bool> ApplyAdvisoryAsync(
         Guid advisoryId,
         Guid userId,
@@ -253,17 +316,51 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
 
         if (advisory == null) return false;
 
-        // Apply action to related task if applicable
-        if (advisory.RelatedTask != null && advisory.RecommendedDate.HasValue)
+        if (advisory.IsApplied)
         {
-            advisory.RelatedTask.DueDate = advisory.RecommendedDate.Value;
-            advisory.RelatedTask.Status = TaskStatus.Planned;
-            advisory.RelatedTask.UpdatedAtUtc = DateTime.UtcNow;
+            throw new ConflictException("Bu tavsiye daha önce uygulanmıştır.");
         }
 
+        if (advisory.IsDismissed)
+        {
+            throw new ConflictException("Kapatılmış (dismissed) bir tavsiye uygulanamaz.");
+        }
+
+        if (advisory.ValidUntilUtc.HasValue && DateTime.UtcNow >= advisory.ValidUntilUtc.Value)
+        {
+            if (advisory.ActionType == ProactiveActionType.PostponeTask ||
+                advisory.AdvisoryType is ProactiveAdvisoryType.FertilizerDelay or ProactiveAdvisoryType.SprayingWindow)
+            {
+                throw new ConflictException("Bu hava önerisinin geçerlilik süresi doldu. Güncel hava durumunu kontrol edin.");
+            }
+
+            throw new ConflictException("Bu tavsiyenin geçerlilik süresi doldu.");
+        }
+
+        if (advisory.RelatedTask == null)
+        {
+            throw new ConflictException("Tavsiyeye bağlı bir görev bulunamadı.");
+        }
+
+        if (!advisory.RecommendedDate.HasValue)
+        {
+            throw new ConflictException("Tavsiye için önerilen bir alternatif tarih bulunamadı.");
+        }
+
+        if (TerminalStatuses.Contains(advisory.RelatedTask.Status))
+        {
+            throw new ConflictException("Sonlandırılmış bir görev üzerinde tavsiye uygulanamaz.");
+        }
+
+        var now = DateTime.UtcNow;
+
+        advisory.RelatedTask.DueDate = advisory.RecommendedDate.Value;
+        advisory.RelatedTask.Status = TaskStatus.Planned;
+        advisory.RelatedTask.UpdatedAtUtc = now;
+
         advisory.IsApplied = true;
-        advisory.AppliedAtUtc = DateTime.UtcNow;
-        advisory.UpdatedAtUtc = DateTime.UtcNow;
+        advisory.AppliedAtUtc = now;
+        advisory.UpdatedAtUtc = now;
 
         await _db.SaveChangesAsync(cancellationToken);
         return true;

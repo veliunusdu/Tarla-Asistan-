@@ -69,7 +69,7 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
         }
 
         var now = DateTime.UtcNow;
-        var staleAfterHours = _config.GetValue("Weather:StaleAfterHours", 4);
+        var staleAfterHours = WeatherDefaults.GetStaleAfterHours(_config);
         var cacheMinutes = _config.GetValue("Weather:CacheMinutes", 10);
         var isStale = false;
         string? staleReason = null;

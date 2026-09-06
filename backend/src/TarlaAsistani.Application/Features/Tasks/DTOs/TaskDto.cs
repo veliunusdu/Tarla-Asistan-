@@ -4,6 +4,20 @@ using TaskStatus = TarlaAsistani.Domain.Enums.TaskStatus;
 
 namespace TarlaAsistani.Application.Features.Tasks.DTOs;
 
+public record WeatherPostponeSuggestionDto(
+    Guid? AdvisoryId,
+    string? RiskLevel,
+    string? Reason,
+    IReadOnlyList<string> Reasons,
+    string? SuggestedAction,
+    DateOnly? RecommendedDate,
+    DateTime EvaluatedAtUtc,
+    DateTime? WeatherFetchedAtUtc,
+    bool IsWeatherStale,
+    string? StaleReason,
+    bool CanApply
+);
+
 public record TaskDto(
     Guid Id,
     Guid FarmId,
@@ -24,10 +38,13 @@ public record TaskDto(
     DateTime? CompletedAtUtc,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
-    bool ExpertReviewRecommended
+    bool ExpertReviewRecommended,
+    WeatherPostponeSuggestionDto? WeatherPostponeSuggestion = null
 )
 {
-    public static TaskDto FromEntity(FarmTask t) => new(
+    public static TaskDto FromEntity(FarmTask t) => FromEntity(t, null);
+
+    public static TaskDto FromEntity(FarmTask t, WeatherPostponeSuggestionDto? weatherPostponeSuggestion) => new(
         t.Id,
         t.FarmId,
         t.CropPeriodId,
@@ -47,7 +64,8 @@ public record TaskDto(
         t.CompletedAtUtc,
         t.CreatedAtUtc,
         t.UpdatedAtUtc,
-        t.ExpertReviewRecommended
+        t.ExpertReviewRecommended,
+        weatherPostponeSuggestion
     );
 }
 

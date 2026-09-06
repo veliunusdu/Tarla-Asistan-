@@ -598,7 +598,7 @@ void main() {
         expect(capturedRequest.url.path, endsWith('/tasks/task-123/status'));
         final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
         expect(body['status'], 'NOT_APPLIED');
-        expect(body['notAppliedReason'], 'Hava sartlari uygun degil');
+        expect(body['not_applied_reason'], 'Hava sartlari uygun degil');
       });
 
       test('reason bos veya whitespace ise istek atilmaz ve ArgumentError firlatilir', () async {
@@ -649,7 +649,7 @@ void main() {
 
         expect(capturedRequest.method, 'PATCH');
         final body = jsonDecode(capturedRequest.body) as Map<String, dynamic>;
-        expect(body['notAppliedReason'], 'Hava sartlari uygun degildi');
+        expect(body['not_applied_reason'], 'Hava sartlari uygun degildi');
       });
 
       test('backend hata verirse ApiException firlatir', () async {
@@ -669,6 +669,105 @@ void main() {
             reason: 'Hava sartlari uygun degildi',
           ),
           throwsA(isA<ApiException>()),
+        );
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // applyWeatherPostponeSuggestion
+    // -----------------------------------------------------------------------
+    group('applyWeatherPostponeSuggestion', () {
+      test('ApplyWeatherPostponeSuggestion_When200_CompletesSuccessfully', () async {
+        late http.Request capturedRequest;
+        final client = _clientWithHandler((request) async {
+          capturedRequest = request;
+          return http.Response(
+            jsonEncode({'message': 'Tavsiye uygulandı ve görev takvimi güncellendi.'}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+
+        final repo = BackendDailyTaskRepository(apiClient: client);
+        await repo.applyWeatherPostponeSuggestion(advisoryId: 'adv-guid-123');
+
+        expect(capturedRequest.method, 'POST');
+        expect(capturedRequest.url.path, endsWith('/ai/advisories/adv-guid-123/apply'));
+      });
+
+      test('ApplyWeatherPostponeSuggestion_When409_PropagatesConflict', () async {
+        final client = _clientWithHandler((request) async {
+          return http.Response(
+            jsonEncode({
+              'detail': 'Bu hava önerisinin geçerlilik süresi doldu. Güncel hava durumunu kontrol edin.',
+              'status': 409,
+            }),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+
+        final repo = BackendDailyTaskRepository(apiClient: client);
+
+        expect(
+          () => repo.applyWeatherPostponeSuggestion(advisoryId: 'adv-guid-expired'),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.statusCode, 'statusCode', 409)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  'Bu hava önerisinin geçerlilik süresi doldu. Güncel hava durumunu kontrol edin.',
+                ),
+          ),
+        );
+      });
+
+      test('ApplyWeatherPostponeSuggestion_WhenAlreadyApplied409_PropagatesConflict', () async {
+        final client = _clientWithHandler((request) async {
+          return http.Response(
+            jsonEncode({
+              'detail': 'Bu tavsiye daha önce uygulanmıştır.',
+              'status': 409,
+            }),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        });
+
+        final repo = BackendDailyTaskRepository(apiClient: client);
+
+        expect(
+          () => repo.applyWeatherPostponeSuggestion(advisoryId: 'adv-guid-already-applied'),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.statusCode, 'statusCode', 409)
+                .having(
+                  (e) => e.message,
+                  'message',
+                  'Bu tavsiye daha önce uygulanmıştır.',
+                ),
+          ),
+        );
+      });
+
+      test('ApplyWeatherPostponeSuggestion_WhenNetworkFails_UsesExistingNetworkErrorBehavior', () async {
+        final client = ApiClient(
+          httpClient: MockClient((request) async {
+            throw http.ClientException('Connection failed');
+          }),
+          idTokenProvider: () async => 'test-token',
+        );
+
+        final repo = BackendDailyTaskRepository(apiClient: client);
+
+        expect(
+          () => repo.applyWeatherPostponeSuggestion(advisoryId: 'adv-guid-net-fail'),
+          throwsA(
+            isA<ApiException>()
+                .having((e) => e.retryable, 'retryable', isTrue)
+                .having((e) => e.message, 'message', contains('Sunucuya ulaşılamadı')),
+          ),
         );
       });
     });

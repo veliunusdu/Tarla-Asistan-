@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using TarlaAsistani.API.Endpoints;
+using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Tasks.DTOs;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
@@ -311,5 +314,124 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
 
         // Overdue list should contain the past task
         result.Overdue.Should().ContainSingle(o => o.Title == "Geçmiş kontrol görevi");
+    }
+
+    [Fact]
+    public async Task SuggestionAdvisoryId_CanActuallyBeApplied()
+    {
+        // 1. Arrange: Create user and farm
+        var ownerId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var alternativeDate = today.AddDays(1);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = ownerId,
+                PhoneNumber = $"+90555{Random.Shared.Next(1000000, 9999999)}",
+                Role = UserRole.Farmer,
+                AccountStatus = AccountStatus.Active,
+            });
+
+            db.Farms.Add(new Farm
+            {
+                Id = farmId,
+                OwnerId = ownerId,
+                Name = "İlaçlama Test Tarlası",
+                Latitude = 38.0,
+                Longitude = 32.0,
+                SizeInHectares = 5,
+                IrrigationMethod = IrrigationMethod.Drip,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow
+            });
+
+            // Add a planned spraying task for today
+            db.FarmTasks.Add(new FarmTask
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                Title = "Zararlı böceklere karşı ilaçlama yap",
+                Description = "İlaçlama rüzgarsız havada uygulanmalı",
+                Reason = "Böcek popülasyonu arttı",
+                Priority = TaskPriority.High,
+                Source = TaskSource.System,
+                Status = TaskStatus.Planned,
+                DueDate = today,
+                DedupeKey = $"spray-task-{Guid.NewGuid():N}",
+                CreatedAtUtc = DateTime.UtcNow
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        // Mock weather: today has high wind (25 km/h), tomorrow has calm wind (8 km/h)
+        var points = new List<WeatherPoint>
+        {
+            new(DateTime.UtcNow, TemperatureC: 22, PrecipitationProbability: 0, PrecipitationMm: 0, WindSpeedKmh: 25),
+            new(DateTime.UtcNow.AddDays(1), TemperatureC: 20, PrecipitationProbability: 0, PrecipitationMm: 0, WindSpeedKmh: 8),
+            new(DateTime.UtcNow.AddDays(2), TemperatureC: 21, PrecipitationProbability: 0, PrecipitationMm: 0, WindSpeedKmh: 8)
+        };
+
+        _factory.MockWeatherProvider
+            .Setup(w => w.ForecastAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(points);
+        _factory.MockWeatherProvider
+            .Setup(w => w.GetWeatherAsync(It.IsAny<double>(), It.IsAny<double>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeatherForecastData(points));
+
+        // 2. Act: Call GET /api/v1/farms/{farmId}/tasks
+        var getTasksRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmId}/tasks?date={today:yyyy-MM-dd}");
+        getTasksRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        getTasksRequest.Headers.Add("X-User-Role", "Farmer");
+
+        var getTasksResponse = await _client.SendAsync(getTasksRequest);
+        getTasksResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dailyTasks = await getTasksResponse.Content.ReadFromJsonAsync<DailyTaskListDto>(CustomWebApplicationFactory.JsonOptions);
+        dailyTasks.Should().NotBeNull();
+        dailyTasks!.Items.Should().NotBeEmpty();
+
+        var sprayingTask = dailyTasks.Items.First(t => t.Title.Contains("ilaçlama", StringComparison.OrdinalIgnoreCase));
+        sprayingTask.WeatherPostponeSuggestion.Should().NotBeNull();
+        var suggestion = sprayingTask.WeatherPostponeSuggestion!;
+
+        suggestion.CanApply.Should().BeTrue();
+        suggestion.AdvisoryId.Should().NotBeNull();
+        suggestion.RecommendedDate.Should().Be(alternativeDate);
+        suggestion.IsWeatherStale.Should().BeFalse();
+
+        // 3. Act: Apply the advisory via POST /api/v1/ai/advisories/{id}/apply
+        var applyRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{suggestion.AdvisoryId}/apply");
+        applyRequest.Headers.Add("X-User-Id", ownerId.ToString());
+
+        var applyResponse = await _client.SendAsync(applyRequest);
+        applyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // 4. Assert: FarmTask.DueDate is updated to RecommendedDate, advisory is marked IsApplied
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var updatedTask = await db.FarmTasks.FirstAsync(t => t.Id == sprayingTask.Id);
+            updatedTask.DueDate.Should().Be(alternativeDate);
+
+            var updatedAdvisory = await db.ProactiveAdvisories.FirstAsync(a => a.Id == suggestion.AdvisoryId);
+            updatedAdvisory.IsApplied.Should().BeTrue();
+        }
+
+        // 5. Assert via GET contract: Query tasks on target new date (alternativeDate); task must appear with DueDate == alternativeDate
+        var getNewDateTasksRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmId}/tasks?date={alternativeDate:yyyy-MM-dd}");
+        getNewDateTasksRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        getNewDateTasksRequest.Headers.Add("X-User-Role", "Farmer");
+
+        var getNewDateResponse = await _client.SendAsync(getNewDateTasksRequest);
+        getNewDateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var newDateTasks = await getNewDateResponse.Content.ReadFromJsonAsync<DailyTaskListDto>(CustomWebApplicationFactory.JsonOptions);
+        newDateTasks.Should().NotBeNull();
+        newDateTasks!.Items.Should().Contain(t => t.Id == sprayingTask.Id && t.DueDate == alternativeDate);
     }
 }

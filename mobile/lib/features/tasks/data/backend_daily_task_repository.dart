@@ -147,8 +147,18 @@ class BackendDailyTaskRepository implements DailyTaskRepository {
       '/tasks/$taskId/status',
       {
         'status': 'NOT_APPLIED',
-        'notAppliedReason': trimmedReason,
+        'not_applied_reason': trimmedReason,
       },
+    );
+  }
+
+  @override
+  Future<void> applyWeatherPostponeSuggestion({
+    required String advisoryId,
+  }) async {
+    await _api.postJson(
+      '/ai/advisories/$advisoryId/apply',
+      const {},
     );
   }
 
@@ -196,7 +206,7 @@ class BackendDailyTaskRepository implements DailyTaskRepository {
               '/tasks/${action.taskId}/status',
               {
                 'status': 'NOT_APPLIED',
-                'notAppliedReason': reason,
+                'not_applied_reason': reason,
               },
             );
           }

@@ -1,11 +1,12 @@
 import 'pending_task_action.dart';
 import 'task_enums.dart';
+import 'task_weather_suggestion.dart';
 
 /// Domain model for a single agronomic task returned by
 /// `GET /api/v1/farms/{farmId}/tasks`.
 ///
-/// Field names follow the project''s Dart/Flutter camelCase convention.
-/// The [fromJson] factory handles the backend''s camelCase JSON serialisation.
+/// Field names follow the project's Dart/Flutter camelCase convention.
+/// The [fromJson] factory handles the backend's camelCase JSON serialisation.
 ///
 /// All optional backend fields are represented as nullable — a missing or null
 /// JSON value must not produce a fake default.
@@ -32,6 +33,7 @@ class FarmTask {
     this.createdAtUtc,
     this.updatedAtUtc,
     this.pendingAction,
+    this.weatherPostponeSuggestion,
   });
 
   final String id;
@@ -70,6 +72,9 @@ class FarmTask {
 
   /// Bu görev için yerel SQLite kuyruğunda bekleyen çevrimdışı işlem (varsa).
   final PendingTaskAction? pendingAction;
+
+  /// Hava durumu kaynaklı görev erteleme önerisi (varsa).
+  final TaskWeatherSuggestion? weatherPostponeSuggestion;
 
   /// Bu görev için gönderilmeyi bekleyen bir çevrimdışı işlem olup olmadığını belirtir.
   bool get hasPendingAction => pendingAction != null;
@@ -112,6 +117,10 @@ class FarmTask {
           _parseUtc(json['completedAtUtc'] ?? json['completed_at_utc']),
       createdAtUtc: _parseUtc(json['createdAtUtc'] ?? json['created_at_utc']),
       updatedAtUtc: _parseUtc(json['updatedAtUtc'] ?? json['updated_at_utc']),
+      weatherPostponeSuggestion: _parseWeatherSuggestion(
+        json['weather_postpone_suggestion'] ??
+            json['weatherPostponeSuggestion'],
+      ),
     );
   }
 
@@ -139,6 +148,8 @@ class FarmTask {
     DateTime? updatedAtUtc,
     PendingTaskAction? pendingAction,
     bool clearPendingAction = false,
+    TaskWeatherSuggestion? weatherPostponeSuggestion,
+    bool clearWeatherPostponeSuggestion = false,
   }) {
     return FarmTask(
       id: id ?? this.id,
@@ -164,6 +175,9 @@ class FarmTask {
       updatedAtUtc: updatedAtUtc ?? this.updatedAtUtc,
       pendingAction:
           clearPendingAction ? null : (pendingAction ?? this.pendingAction),
+      weatherPostponeSuggestion: clearWeatherPostponeSuggestion
+          ? null
+          : (weatherPostponeSuggestion ?? this.weatherPostponeSuggestion),
     );
   }
 
@@ -191,6 +205,7 @@ class FarmTask {
         'completedAtUtc': completedAtUtc?.toUtc().toIso8601String(),
         'createdAtUtc': createdAtUtc?.toUtc().toIso8601String(),
         'updatedAtUtc': updatedAtUtc?.toUtc().toIso8601String(),
+        'weatherPostponeSuggestion': weatherPostponeSuggestion?.toJson(),
       };
 
   /// Parses a `DateOnly` style string (`"2026-09-05"`) as a midnight local
@@ -206,6 +221,17 @@ class FarmTask {
     if (raw == null) return null;
     final parsed = DateTime.tryParse(raw.toString());
     return parsed?.toLocal();
+  }
+
+  static TaskWeatherSuggestion? _parseWeatherSuggestion(Object? raw) {
+    if (raw == null) return null;
+    if (raw is Map<String, dynamic>) {
+      return TaskWeatherSuggestion.fromJson(raw);
+    }
+    if (raw is Map) {
+      return TaskWeatherSuggestion.fromJson(Map<String, dynamic>.from(raw));
+    }
+    return null;
   }
 }
 

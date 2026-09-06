@@ -153,6 +153,11 @@ class FakeDailyTaskRepoForHome implements DailyTaskRepository {
   }) async {}
 
   @override
+  Future<void> applyWeatherPostponeSuggestion({
+    required String advisoryId,
+  }) async {}
+
+  @override
   Future<void> enqueueTaskAction(PendingTaskAction action) async {}
 
   @override

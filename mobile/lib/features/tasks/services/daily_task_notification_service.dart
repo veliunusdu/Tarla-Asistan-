@@ -67,6 +67,7 @@ class DailyTaskNotificationService {
     required DailyTaskList taskList,
     required String farmId,
     String? farmName,
+    bool forceUpdate = false,
   }) async {
     final enabled = await _preferences.isDailyTasksNotificationEnabled();
     if (!enabled) return false;
@@ -82,7 +83,7 @@ class DailyTaskNotificationService {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
     final lastNotifiedDate = await _preferences.getLastDailyNotificationDate();
-    if (lastNotifiedDate == todayIso) {
+    if (!forceUpdate && lastNotifiedDate == todayIso) {
       return false;
     }
 
@@ -124,6 +125,9 @@ class DailyTaskNotificationService {
       // Live data
       if (activeTasks.isEmpty && taskList.criticalWeatherAlerts.isEmpty) {
         // No tasks and no alerts -> Do not dispatch empty notification
+        if (forceUpdate) {
+          await _dispatcher.cancel(dailyNotificationId);
+        }
         return false;
       }
 
@@ -192,7 +196,7 @@ class DailyTaskNotificationService {
           ? '$farmName için kritik hava uyarısı: ${alert.description}'
           : 'Tarlanız için kritik hava uyarısı: ${alert.description}';
 
-      final alertId = 2000 + (alert.id.hashCode.abs() % 10000);
+      final alertId = notificationIdForCriticalAlert(alert.id);
 
       await _dispatcher.showNotification(
         id: alertId,
@@ -211,4 +215,113 @@ class DailyTaskNotificationService {
 
     return notifiedCount;
   }
+
+  /// Generates a deterministic notification ID for a critical weather alert.
+  static int notificationIdForCriticalAlert(String alertId) {
+    return 2000 + (alertId.hashCode.abs() % 10000);
+  }
+
+  /// Counts active tasks for today excluding completed, cancelled, notApplied or pending actions.
+  static int countActiveTasks(DailyTaskList taskList) {
+    return taskList.items.where((t) {
+      if (t.status == TaskStatus.completed ||
+          t.status == TaskStatus.cancelled ||
+          t.status == TaskStatus.notApplied) {
+        return false;
+      }
+      if (t.hasPendingAction) {
+        return false;
+      }
+      return true;
+    }).length;
+  }
+
+  /// Cancels any scheduled or active local alert notification for a specific alert or task ID.
+  Future<void> cancelAlertForTask(String alertId) async {
+    final notificationId = notificationIdForCriticalAlert(alertId);
+    await _dispatcher.cancel(notificationId);
+  }
+
+  /// Reconciles local notifications against the authoritative [currentTaskList] relative to [previousTaskList].
+  ///
+  /// - Cancels critical alert notifications ONLY for alert IDs that were present in
+  ///   [previousTaskList.criticalWeatherAlerts] but are NO LONGER present in
+  ///   [currentTaskList.criticalWeatherAlerts].
+  /// - Leaves notifications for alerts that remain active completely untouched (no blind cancellation).
+  /// - Refreshes or cancels the daily summary notification (#1001) if active task count changed
+  ///   or if [forceUpdateDailySummary] is true.
+  /// - Dispatches notifications for any newly introduced critical alerts in [currentTaskList].
+  Future<void> reconcileTaskNotifications({
+    required String farmId,
+    DailyTaskList? previousTaskList,
+    required DailyTaskList currentTaskList,
+    String? farmName,
+    bool forceUpdateDailySummary = false,
+  }) async {
+    // 1. Reconcile critical alerts: cancel only removed alert IDs
+    if (previousTaskList != null) {
+      final previousAlertIds =
+          previousTaskList.criticalWeatherAlerts.map((a) => a.id).toSet();
+      final currentAlertIds =
+          currentTaskList.criticalWeatherAlerts.map((a) => a.id).toSet();
+      final removedAlertIds = previousAlertIds.difference(currentAlertIds);
+
+      for (final removedId in removedAlertIds) {
+        await cancelAlertForTask(removedId);
+      }
+    }
+
+    // 2. Daily summary update: refresh if active tasks count changed or forced
+    final hadActiveTasksChange = previousTaskList != null &&
+        countActiveTasks(previousTaskList) != countActiveTasks(currentTaskList);
+
+    if (hadActiveTasksChange || forceUpdateDailySummary) {
+      await evaluateAndNotifyDailyTasks(
+        farmId: farmId,
+        taskList: currentTaskList,
+        forceUpdate: true,
+      );
+    }
+
+    // 3. Evaluate any remaining or newly added critical alerts
+    await evaluateAndNotifyCriticalAlerts(
+      taskList: currentTaskList,
+      farmId: farmId,
+      farmName: farmName,
+    );
+  }
+
+  /// Synchronizes local task notifications after task updates or postpone actions.
+  ///
+  /// If [postponedTaskId] is provided:
+  /// 1. Cancels the specific weather alert associated with this task.
+  /// 2. Refreshes the daily task summary notification (#1001) with the authoritative
+  ///    active task list (or cancels it if no tasks remain for today).
+  /// 3. Re-evaluates critical alerts for the remaining tasks in [taskList].
+  Future<void> syncTaskNotifications({
+    required String farmId,
+    required DailyTaskList taskList,
+    String? postponedTaskId,
+    String? farmName,
+    bool forceUpdateDailySummary = false,
+  }) async {
+    if (postponedTaskId != null && postponedTaskId.isNotEmpty) {
+      await cancelAlertForTask(postponedTaskId);
+    }
+
+    if (postponedTaskId != null || forceUpdateDailySummary) {
+      await evaluateAndNotifyDailyTasks(
+        farmId: farmId,
+        taskList: taskList,
+        forceUpdate: true,
+      );
+    }
+
+    await evaluateAndNotifyCriticalAlerts(
+      taskList: taskList,
+      farmId: farmId,
+      farmName: farmName,
+    );
+  }
 }
+

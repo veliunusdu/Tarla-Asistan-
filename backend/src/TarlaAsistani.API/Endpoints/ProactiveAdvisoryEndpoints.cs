@@ -4,6 +4,7 @@ using TarlaAsistani.API.Common;
 using TarlaAsistani.Application.Features.AI.Commands;
 using TarlaAsistani.Application.Features.AI.DTOs;
 using TarlaAsistani.Application.Features.AI.Queries;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.API.Endpoints;
 
@@ -48,18 +49,30 @@ public static class ProactiveAdvisoryEndpoints
             }
 
             var command = new ApplyProactiveAdvisoryCommand(id, userId);
-            var success = await mediator.Send(command);
-            if (!success)
+            try
             {
-                return Results.NotFound(new { detail = "Tavsiye bulunamadı veya yetkiniz yok." });
-            }
+                var success = await mediator.Send(command);
+                if (!success)
+                {
+                    return Results.NotFound(new { detail = "Tavsiye bulunamadı veya yetkiniz yok." });
+                }
 
-            return Results.Ok(new { message = "Tavsiye uygulandı ve görev takvimi güncellendi." });
+                return Results.Ok(new { message = "Tavsiye uygulandı ve görev takvimi güncellendi." });
+            }
+            catch (ConflictException ex)
+            {
+                return Results.Conflict(new { detail = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { detail = ex.Message });
+            }
         })
         .WithName("ApplyProactiveAdvisory")
         .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         // 3. POST /api/v1/ai/advisories/{id}/dismiss — Dismiss advisory
         group.MapPost("/{id:guid}/dismiss", async (

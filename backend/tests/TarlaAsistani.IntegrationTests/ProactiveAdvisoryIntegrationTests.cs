@@ -128,7 +128,7 @@ public class ProactiveAdvisoryIntegrationTests : IClassFixture<CustomWebApplicat
         advisories.Should().NotBeNull();
         advisories!.Should().Contain(a => a.AdvisoryType == ProactiveAdvisoryType.FertilizerDelay);
 
-        var delayAdv = advisories.First(a => a.AdvisoryType == ProactiveAdvisoryType.FertilizerDelay);
+        var delayAdv = advisories!.First(a => a.AdvisoryType == ProactiveAdvisoryType.FertilizerDelay);
         delayAdv.Severity.Should().Be(AdvisorySeverity.Critical);
         delayAdv.ActionType.Should().Be(ProactiveActionType.PostponeTask);
         delayAdv.RecommendedDate.Should().Be(tomorrow.AddDays(1));
@@ -174,5 +174,281 @@ public class ProactiveAdvisoryIntegrationTests : IClassFixture<CustomWebApplicat
         var getAfterDismissResponse = await _client.SendAsync(getAfterDismiss);
         var listAfterDismiss = await getAfterDismissResponse.Content.ReadFromJsonAsync<List<ProactiveAdvisoryDto>>(CustomWebApplicationFactory.JsonOptions);
         listAfterDismiss!.Should().NotContain(a => a.Id == delayAdv.Id);
+    }
+
+    [Fact]
+    public async Task ApplyAdvisory_WhenNotFound_Returns404()
+    {
+        var (ownerId, _) = await CreateFarmWithUserAsync();
+        var nonExistentId = Guid.NewGuid();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{nonExistentId}/apply");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ApplyAdvisory_ConsecutiveCalls_FirstReturns200_SecondReturns409WithoutMutatingTask()
+    {
+        var (ownerId, farmId) = await CreateFarmWithUserAsync();
+        var advisoryId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var originalDueDate = new DateOnly(2026, 6, 10);
+        var recommendedDate = new DateOnly(2026, 6, 15);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = new FarmTask
+            {
+                Id = taskId,
+                FarmId = farmId,
+                Title = "İlaçlama Görevi",
+                Description = "İlaçlama açıklaması",
+                Reason = "Hastalık önleme",
+                DueDate = originalDueDate,
+                Status = TaskStatus.New,
+                DedupeKey = $"task-{taskId:N}"
+            };
+            var advisory = new ProactiveAdvisory
+            {
+                Id = advisoryId,
+                FarmId = farmId,
+                UserId = ownerId,
+                RelatedTaskId = taskId,
+                Title = "Rüzgar Riski - İlaçlama Ertele",
+                Summary = "Yüksek rüzgar nedeniyle erteleme tavsiye ediliyor",
+                AgronomicExplanation = "Yüksek rüzgar ilacın sürüklenmesine yol açar.",
+                ActionRecommendation = "İlaçlamayı ertesi güne erteleyin.",
+                RecommendedDate = recommendedDate,
+                IsApplied = false,
+                IsDismissed = false,
+                DedupeKey = $"adv-{advisoryId:N}"
+            };
+            db.FarmTasks.Add(task);
+            db.ProactiveAdvisories.Add(advisory);
+            await db.SaveChangesAsync();
+        }
+
+        // Call 1: First call -> 200 OK
+        var firstRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{advisoryId}/apply");
+        firstRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        var firstResponse = await _client.SendAsync(firstRequest);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        DateTime firstTaskUpdatedAt;
+        DateTime? firstAdvisoryAppliedAt;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = await db.FarmTasks.FirstAsync(t => t.Id == taskId);
+            task.DueDate.Should().Be(recommendedDate);
+            task.Status.Should().Be(TaskStatus.Planned);
+            firstTaskUpdatedAt = task.UpdatedAtUtc;
+
+            var adv = await db.ProactiveAdvisories.FirstAsync(a => a.Id == advisoryId);
+            adv.IsApplied.Should().BeTrue();
+            firstAdvisoryAppliedAt = adv.AppliedAtUtc;
+            firstAdvisoryAppliedAt.Should().NotBeNull();
+        }
+
+        // Call 2: Consecutive duplicate call -> 409 Conflict
+        var secondRequest = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{advisoryId}/apply");
+        secondRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        var secondResponse = await _client.SendAsync(secondRequest);
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Verify no second mutation: DueDate, UpdatedAtUtc, AppliedAtUtc unchanged
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = await db.FarmTasks.FirstAsync(t => t.Id == taskId);
+            task.DueDate.Should().Be(recommendedDate);
+            task.UpdatedAtUtc.Should().Be(firstTaskUpdatedAt);
+
+            var adv = await db.ProactiveAdvisories.FirstAsync(a => a.Id == advisoryId);
+            adv.AppliedAtUtc.Should().Be(firstAdvisoryAppliedAt);
+        }
+    }
+
+    [Fact]
+    public async Task ApplyWeatherAdvisory_WhenExpired_Returns409()
+    {
+        var (ownerId, farmId) = await CreateFarmWithUserAsync();
+        var advisoryId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var originalDueDate = new DateOnly(2026, 6, 10);
+        var recommendedDate = new DateOnly(2026, 6, 15);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = new FarmTask
+            {
+                Id = taskId,
+                FarmId = farmId,
+                Title = "İlaçlama Görevi",
+                Description = "İlaçlama açıklaması",
+                Reason = "Zararlı kontrolü",
+                DueDate = originalDueDate,
+                Status = TaskStatus.New,
+                DedupeKey = $"task-exp-{taskId:N}"
+            };
+            var advisory = new ProactiveAdvisory
+            {
+                Id = advisoryId,
+                FarmId = farmId,
+                UserId = ownerId,
+                RelatedTaskId = taskId,
+                Title = "Rüzgar Riski - İlaçlama Ertele",
+                Summary = "Erteleme tavsiyesi",
+                AgronomicExplanation = "Yüksek rüzgar.",
+                ActionRecommendation = "Erteleyin.",
+                RecommendedDate = recommendedDate,
+                ValidUntilUtc = DateTime.UtcNow.AddMinutes(-15), // Expired 15 mins ago
+                IsApplied = false,
+                IsDismissed = false,
+                DedupeKey = $"adv-exp-{advisoryId:N}"
+            };
+            db.FarmTasks.Add(task);
+            db.ProactiveAdvisories.Add(advisory);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{advisoryId}/apply");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Verify task not mutated and advisory not applied
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = await db.FarmTasks.FirstAsync(t => t.Id == taskId);
+            task.DueDate.Should().Be(originalDueDate);
+
+            var adv = await db.ProactiveAdvisories.FirstAsync(a => a.Id == advisoryId);
+            adv.IsApplied.Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task ApplyAdvisory_WhenDismissed_Returns409()
+    {
+        var (ownerId, farmId) = await CreateFarmWithUserAsync();
+        var advisoryId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var originalDueDate = new DateOnly(2026, 6, 10);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = new FarmTask
+            {
+                Id = taskId,
+                FarmId = farmId,
+                Title = "Sulama Görevi",
+                Description = "Sulama açıklaması",
+                Reason = "Nem ihtiyacı",
+                DueDate = originalDueDate,
+                Status = TaskStatus.Planned,
+                DedupeKey = $"task-{taskId:N}"
+            };
+            var advisory = new ProactiveAdvisory
+            {
+                Id = advisoryId,
+                FarmId = farmId,
+                UserId = ownerId,
+                RelatedTaskId = taskId,
+                Title = "Sulama Tavsiyesi",
+                Summary = "Yağış bekleniyor",
+                AgronomicExplanation = "Yağış yeterli su sağlayacaktır.",
+                ActionRecommendation = "Sulamayı erteleyin.",
+                RecommendedDate = new DateOnly(2026, 6, 13),
+                IsApplied = false,
+                IsDismissed = true,
+                DismissedAtUtc = DateTime.UtcNow,
+                DedupeKey = $"adv-{advisoryId:N}"
+            };
+            db.FarmTasks.Add(task);
+            db.ProactiveAdvisories.Add(advisory);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{advisoryId}/apply");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Verify task DueDate was not modified
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = await db.FarmTasks.FirstAsync(t => t.Id == taskId);
+            task.DueDate.Should().Be(originalDueDate);
+        }
+    }
+
+    [Theory]
+    [InlineData(TaskStatus.Completed)]
+    [InlineData(TaskStatus.NotApplied)]
+    [InlineData(TaskStatus.Cancelled)]
+    public async Task ApplyAdvisory_WhenRelatedTaskInTerminalState_Returns409(TaskStatus terminalStatus)
+    {
+        var (ownerId, farmId) = await CreateFarmWithUserAsync();
+        var advisoryId = Guid.NewGuid();
+        var taskId = Guid.NewGuid();
+        var originalDueDate = new DateOnly(2026, 6, 10);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = new FarmTask
+            {
+                Id = taskId,
+                FarmId = farmId,
+                Title = "Terminal Görev",
+                Description = "Terminal açıklama",
+                Reason = "Terminal sebep",
+                DueDate = originalDueDate,
+                Status = terminalStatus,
+                DedupeKey = $"task-{taskId:N}"
+            };
+            var advisory = new ProactiveAdvisory
+            {
+                Id = advisoryId,
+                FarmId = farmId,
+                UserId = ownerId,
+                RelatedTaskId = taskId,
+                Title = "Tavsiye",
+                Summary = "Açıklama",
+                AgronomicExplanation = "Agronomik açıklama",
+                ActionRecommendation = "Eylem tavsiyesi",
+                RecommendedDate = new DateOnly(2026, 6, 14),
+                IsApplied = false,
+                IsDismissed = false,
+                DedupeKey = $"adv-{advisoryId:N}"
+            };
+            db.FarmTasks.Add(task);
+            db.ProactiveAdvisories.Add(advisory);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/ai/advisories/{advisoryId}/apply");
+        request.Headers.Add("X-User-Id", ownerId.ToString());
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // Verify task status and DueDate were not changed
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var task = await db.FarmTasks.FirstAsync(t => t.Id == taskId);
+            task.Status.Should().Be(terminalStatus);
+            task.DueDate.Should().Be(originalDueDate);
+        }
     }
 }

@@ -12,6 +12,7 @@ import '../../data/daily_task_repository.dart';
 import '../../domain/farm_task.dart';
 import '../../domain/pending_task_action.dart';
 import '../../domain/task_enums.dart';
+import '../../domain/task_weather_suggestion.dart';
 import '../../services/daily_task_notification_service.dart';
 
 /// Ana sayfada günün en önemli işlerini (maksimum 3 adet) ve kritik hava
@@ -66,6 +67,7 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
   DailyTaskList? _taskList;
   final Set<String> _expandedReasonTaskIds = <String>{};
   final Set<String> _processingTaskIds = <String>{};
+  final Set<String> _applyingWeatherAdvisoryIds = <String>{};
 
   @override
   void initState() {
@@ -86,6 +88,7 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
         oldWidget.dailyTaskRepository != widget.dailyTaskRepository) {
       _expandedReasonTaskIds.clear();
       _processingTaskIds.clear();
+      _applyingWeatherAdvisoryIds.clear();
       setState(() {
         _taskList = null;
         _error = null;
@@ -105,7 +108,7 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
     _fetchTasks();
   }
 
-  Future<void> _fetchTasks() async {
+  Future<void> _fetchTasks({bool forceUpdateDailySummary = false}) async {
     final farmId = widget.farmId;
     if (farmId == null || farmId.isEmpty) {
       if (mounted) {
@@ -117,6 +120,8 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
       }
       return;
     }
+
+    final previousList = _taskList;
 
     setState(() {
       _isLoading = true;
@@ -145,11 +150,15 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
         _isLoading = false;
       });
 
-      widget.dailyTaskNotificationService?.evaluateAndNotifyCriticalAlerts(
-        taskList: list,
-        farmId: farmId,
-        farmName: widget.tarlaAdi,
-      );
+      if (widget.dailyTaskNotificationService != null) {
+        await widget.dailyTaskNotificationService!.reconcileTaskNotifications(
+          farmId: farmId,
+          previousTaskList: previousList,
+          currentTaskList: list,
+          farmName: widget.tarlaAdi,
+          forceUpdateDailySummary: forceUpdateDailySummary,
+        );
+      }
     } catch (e) {
       if (!mounted || widget.farmId != farmId) return;
       setState(() {
@@ -514,6 +523,12 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
     return '${local.day} ${_trAylar[local.month - 1]}';
   }
 
+  static String _formatDateOnly(DateTime dt) {
+    final monthName =
+        (dt.month >= 1 && dt.month <= 12) ? _trAylar[dt.month - 1] : '';
+    return '${dt.day} $monthName';
+  }
+
   static String _formatSaat(DateTime dt) {
     final local = dt.toLocal();
     final h = local.hour.toString().padLeft(2, '0');
@@ -848,6 +863,16 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
               ],
             ],
 
+            // ── Hava Durumu Erteleme Önerisi (varsa) ────────────────────
+            if (task.weatherPostponeSuggestion != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              _buildWeatherSuggestionSection(
+                theme,
+                task,
+                task.weatherPostponeSuggestion!,
+              ),
+            ],
+
             // ── Aksiyon Butonları (Yaptım / Uygulamadım) ─────────────────
             const SizedBox(height: AppSpacing.sm),
             _buildActionButtons(theme, task),
@@ -855,6 +880,247 @@ class _BugununGorevleriWidgetState extends State<BugununGorevleriWidget> {
         ),
       ),
     );
+  }
+
+  Widget _buildWeatherSuggestionSection(
+    ThemeData theme,
+    FarmTask task,
+    TaskWeatherSuggestion suggestion,
+  ) {
+    final hasActiveButton = suggestion.canApply &&
+        suggestion.advisoryId != null &&
+        suggestion.recommendedDate != null &&
+        !task.hasPendingAction;
+
+    final isStale = suggestion.isWeatherStale || suggestion.staleReason != null;
+
+    final effectiveReason = suggestion.reason.trim().isNotEmpty
+        ? suggestion.reason.trim()
+        : (suggestion.staleReason?.trim().isNotEmpty == true
+            ? suggestion.staleReason!.trim()
+            : (suggestion.suggestedAction.trim().isNotEmpty
+                ? suggestion.suggestedAction.trim()
+                : 'Hava koşulları bu görev için risk oluşturuyor.'));
+
+    final isApplying = suggestion.advisoryId != null &&
+        _applyingWeatherAdvisoryIds.contains(suggestion.advisoryId);
+
+    final (accentColor, riskIcon) = _styleForRiskLevel(suggestion.riskLevel);
+
+    return Container(
+      key: Key('weather_suggestion_section_${task.id}'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                riskIcon,
+                size: 16,
+                color: accentColor,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Text(
+                'Hava Riski',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: accentColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            effectiveReason,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (isStale) ...[
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 14,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    suggestion.staleReason ??
+                        'Hava verisi güncel değil. Kesin erteleme önerisi verilemiyor.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.warning,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (suggestion.suggestedAction.trim().isNotEmpty &&
+              suggestion.suggestedAction.trim() != effectiveReason) ...[
+            const SizedBox(height: 4),
+            Text(
+              suggestion.suggestedAction.trim(),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          if (suggestion.recommendedDate != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.event_outlined,
+                  size: 14,
+                  color: accentColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Önerilen tarih: ${_formatDateOnly(suggestion.recommendedDate!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: accentColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (hasActiveButton) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                key: Key('task_postpone_${task.id}'),
+                onPressed: isApplying || _processingTaskIds.contains(task.id)
+                    ? null
+                    : () => _confirmAndApplyPostpone(task, suggestion),
+                icon: isApplying
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.schedule, size: 16),
+                label: const Text('Ertele'),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  (Color, IconData) _styleForRiskLevel(String riskLevel) {
+    return switch (riskLevel.toLowerCase()) {
+      'critical' => (AppColors.error, Icons.warning_amber_rounded),
+      'warning' || 'high' => (AppColors.warning, Icons.air),
+      'info' || 'low' || 'medium' => (AppColors.primary, Icons.cloud_outlined),
+      _ => (AppColors.secondary, Icons.wb_sunny_outlined),
+    };
+  }
+
+  Future<void> _confirmAndApplyPostpone(
+    FarmTask task,
+    TaskWeatherSuggestion suggestion,
+  ) async {
+    final advisoryId = suggestion.advisoryId;
+    if (advisoryId == null || advisoryId.isEmpty) return;
+    if (_applyingWeatherAdvisoryIds.contains(advisoryId)) return;
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _PostponeConfirmationSheet(
+        task: task,
+        suggestion: suggestion,
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await _handlePostponeTask(task, suggestion);
+  }
+
+  Future<void> _handlePostponeTask(
+    FarmTask task,
+    TaskWeatherSuggestion suggestion,
+  ) async {
+    final advisoryId = suggestion.advisoryId;
+    final currentFarmId = widget.farmId;
+    if (advisoryId == null || advisoryId.isEmpty) return;
+    if (currentFarmId == null || currentFarmId.isEmpty) return;
+    if (_applyingWeatherAdvisoryIds.contains(advisoryId)) return;
+
+    setState(() {
+      _applyingWeatherAdvisoryIds.add(advisoryId);
+    });
+
+    try {
+      await widget.dailyTaskRepository.applyWeatherPostponeSuggestion(
+        advisoryId: advisoryId,
+      );
+
+      if (!mounted || widget.farmId != currentFarmId) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Görev önerilen tarihe ertelendi.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      await _fetchTasks();
+    } catch (e) {
+      if (!mounted || widget.farmId != currentFarmId) return;
+
+      if (e is ApiException && e.statusCode == 409) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        await _fetchTasks();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('İşlem gerçekleştirilemedi. Lütfen tekrar deneyin.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _applyingWeatherAdvisoryIds.remove(advisoryId);
+        });
+      }
+    }
   }
 
   Widget _buildActionButtons(ThemeData theme, FarmTask task) {
@@ -1155,6 +1421,217 @@ class _NotAppliedReasonSheetState extends State<_NotAppliedReasonSheet> {
                         backgroundColor: AppColors.primary,
                       ),
                       child: const Text('Kaydet'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hava koşulları kaynaklı erteleme işlemini kullanıcıya onaylatan bottom sheet.
+class _PostponeConfirmationSheet extends StatelessWidget {
+  const _PostponeConfirmationSheet({
+    required this.task,
+    required this.suggestion,
+  });
+
+  final FarmTask task;
+  final TaskWeatherSuggestion suggestion;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final currentDateText = task.dueDate != null
+        ? _BugununGorevleriWidgetState._formatDateOnly(task.dueDate!)
+        : 'Bugün';
+
+    final recommendedDateText = suggestion.recommendedDate != null
+        ? _BugununGorevleriWidgetState._formatDateOnly(
+            suggestion.recommendedDate!,
+          )
+        : '';
+
+    final reasonText = suggestion.reason.trim().isNotEmpty
+        ? suggestion.reason.trim()
+        : (suggestion.suggestedAction.trim().isNotEmpty
+            ? suggestion.suggestedAction.trim()
+            : 'Hava koşulları');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        left: AppSpacing.md,
+        right: AppSpacing.md,
+        top: AppSpacing.sm,
+        bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.md,
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.schedule,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    'Görevi Ertele',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                task.title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+
+              // Açıklama ve karşılaştırma kartı
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: AppColors.warning,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Risk Nedeni:',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 20, top: 2),
+                      child: Text(
+                        reasonText,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Mevcut Tarih',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            Text(
+                              currentDateText,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Icon(
+                          Icons.arrow_forward,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Önerilen Yeni Tarih',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              recommendedDateText,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Bu görev hava koşulları nedeniyle $recommendedDateText tarihine ertelenecek.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      key: const Key('cancel_postpone_btn'),
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Vazgeç'),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('confirm_postpone_btn'),
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                      ),
+                      child: const Text('Ertele'),
                     ),
                   ),
                 ],

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/features/tasks/domain/farm_task.dart';
 import 'package:mobile/features/tasks/domain/pending_task_action.dart';
 import 'package:mobile/features/tasks/domain/task_enums.dart';
+import 'package:mobile/features/tasks/domain/task_weather_suggestion.dart';
 
 void main() {
   group('DailyTask & FarmTask Serialization Roundtrip', () {
@@ -56,6 +57,49 @@ void main() {
       expect(parsed.completedAtUtc?.toUtc(), equals(original.completedAtUtc));
       expect(parsed.createdAtUtc?.toUtc(), equals(original.createdAtUtc));
       expect(parsed.updatedAtUtc?.toUtc(), equals(original.updatedAtUtc));
+      expect(parsed.weatherPostponeSuggestion, isNull);
+    });
+
+    test('FarmTask serialization preserves weatherPostponeSuggestion accurately', () {
+      final suggestion = TaskWeatherSuggestion(
+        advisoryId: 'adv-roundtrip-1',
+        riskLevel: 'Warning',
+        reason: 'Şiddetli Rüzgar',
+        reasons: const ['25 km/s rüzgar', 'Sürüklenme riski'],
+        suggestedAction: 'Ertele',
+        recommendedDate: DateTime(2026, 9, 9),
+        evaluatedAtUtc: DateTime.utc(2026, 9, 6, 11, 0),
+        weatherFetchedAtUtc: DateTime.utc(2026, 9, 6, 10, 30),
+        isWeatherStale: false,
+        staleReason: null,
+        canApply: true,
+      );
+
+      final original = FarmTask(
+        id: 'task-with-weather',
+        farmId: 'farm-1',
+        title: 'İlaçlama',
+        description: 'İlaçlama yapılacak',
+        reason: 'Rutin',
+        priority: TaskPriority.high,
+        status: TaskStatus.newTask,
+        source: TaskSource.cropCalendar,
+        confidence: TaskConfidence.high,
+        dueDate: DateTime(2026, 9, 8),
+        expertReviewRecommended: false,
+        weatherPostponeSuggestion: suggestion,
+      );
+
+      final jsonMap = original.toJson();
+      final decodedMap = jsonDecode(jsonEncode(jsonMap)) as Map<String, dynamic>;
+      final parsed = FarmTask.fromJson(decodedMap);
+
+      expect(parsed.weatherPostponeSuggestion, isNotNull);
+      expect(parsed.weatherPostponeSuggestion!.advisoryId, 'adv-roundtrip-1');
+      expect(parsed.weatherPostponeSuggestion!.riskLevel, 'Warning');
+      expect(parsed.weatherPostponeSuggestion!.recommendedDate, DateTime(2026, 9, 9));
+      expect(parsed.weatherPostponeSuggestion!.reasons, equals(['25 km/s rüzgar', 'Sürüklenme riski']));
+      expect(parsed.weatherPostponeSuggestion!.canApply, isTrue);
     });
 
     test('DailyTaskList serialization preserves items, alerts, overdue, visibleLimit, isFromCache and cachedAt', () {

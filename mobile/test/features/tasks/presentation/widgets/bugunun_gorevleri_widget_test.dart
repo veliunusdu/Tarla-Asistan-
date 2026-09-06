@@ -7,12 +7,55 @@ import 'package:mobile/features/tasks/data/daily_task_repository.dart';
 import 'package:mobile/features/tasks/domain/farm_task.dart';
 import 'package:mobile/features/tasks/domain/pending_task_action.dart';
 import 'package:mobile/features/tasks/domain/task_enums.dart';
+import 'package:mobile/features/tasks/domain/task_weather_suggestion.dart';
 import 'package:mobile/features/tasks/presentation/widgets/bugunun_gorevleri_widget.dart';
+import 'package:mobile/features/tasks/data/daily_task_notification_preferences.dart';
+import 'package:mobile/features/tasks/services/daily_task_notification_dispatcher.dart';
+import 'package:mobile/features/tasks/services/daily_task_notification_service.dart';
+import 'package:mobile/models/notification_target.dart';
 import 'package:mobile/services/api_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes & Helpers
 // ---------------------------------------------------------------------------
+
+class FakeWidgetNotificationDispatcher implements DailyTaskNotificationDispatcher {
+  final List<({int id, String title, String body, NotificationTarget? target})> shown = [];
+  final List<({int id, TimeOfDay time, String title, String body, NotificationTarget? target})> scheduled = [];
+  final List<int> cancelled = [];
+  void Function(int id)? onCancel;
+  void Function(int id, String title)? onShow;
+
+  @override
+  Future<void> showNotification({
+    required int id,
+    required String title,
+    required String body,
+    NotificationTarget? target,
+  }) async {
+    shown.add((id: id, title: title, body: body, target: target));
+    onShow?.call(id, title);
+  }
+
+  @override
+  Future<void> scheduleDaily({
+    required int id,
+    required TimeOfDay time,
+    required String title,
+    required String body,
+    NotificationTarget? target,
+  }) async {
+    scheduled.add((id: id, time: time, title: title, body: body, target: target));
+  }
+
+  @override
+  Future<void> cancel(int id) async {
+    cancelled.add(id);
+    scheduled.removeWhere((s) => s.id == id);
+    onCancel?.call(id);
+  }
+}
 
 class FakeDailyTaskRepository implements DailyTaskRepository {
   FakeDailyTaskRepository({
@@ -21,8 +64,11 @@ class FakeDailyTaskRepository implements DailyTaskRepository {
     this.error,
     this.completeError,
     this.notAppliedError,
+    this.applySuggestionError,
     this.completeCompleter,
     this.notAppliedCompleter,
+    this.applySuggestionCompleter,
+    this.onApplyWeatherSuggestion,
   });
 
   DailyTaskList? dailyTaskList;
@@ -30,13 +76,17 @@ class FakeDailyTaskRepository implements DailyTaskRepository {
   Object? error;
   Object? completeError;
   Object? notAppliedError;
+  Object? applySuggestionError;
   Completer<void>? completeCompleter;
   Completer<void>? notAppliedCompleter;
+  Completer<void>? applySuggestionCompleter;
+  void Function()? onApplyWeatherSuggestion;
   int callCount = 0;
   String? lastRequestedFarmId;
 
   final List<({String farmId, String taskId, String? note})> completedTaskCalls = [];
   final List<({String farmId, String taskId, String reason})> notAppliedTaskCalls = [];
+  final List<String> applySuggestionCalls = [];
 
   @override
   Future<DailyTaskList> getDailyTasks(String farmId) async {
@@ -87,6 +137,20 @@ class FakeDailyTaskRepository implements DailyTaskRepository {
     notAppliedTaskCalls.add((farmId: farmId, taskId: taskId, reason: reason));
   }
 
+  @override
+  Future<void> applyWeatherPostponeSuggestion({
+    required String advisoryId,
+  }) async {
+    applySuggestionCalls.add(advisoryId);
+    onApplyWeatherSuggestion?.call();
+    if (applySuggestionCompleter != null) {
+      await applySuggestionCompleter!.future;
+    }
+    if (applySuggestionError != null) {
+      throw applySuggestionError!;
+    }
+  }
+
   final List<PendingTaskAction> queuedActions = [];
   final List<String?> syncPendingActionsCalls = [];
   SyncResult syncResultToReturn = const SyncResult();
@@ -127,6 +191,7 @@ FarmTask _createTask({
   TaskConfidence confidence = TaskConfidence.medium,
   DateTime? dueDate,
   bool expertReviewRecommended = false,
+  TaskWeatherSuggestion? weatherPostponeSuggestion,
 }) {
   return FarmTask(
     id: id,
@@ -140,6 +205,35 @@ FarmTask _createTask({
     confidence: confidence,
     dueDate: dueDate ?? DateTime(2026, 9, 5),
     expertReviewRecommended: expertReviewRecommended,
+    weatherPostponeSuggestion: weatherPostponeSuggestion,
+  );
+}
+
+TaskWeatherSuggestion _createSuggestion({
+  String? advisoryId = 'adv-default',
+  String riskLevel = 'high',
+  String reason = 'Yüksek rüzgâr riski',
+  List<String> reasons = const ['Rüzgâr hızı 45 km/s'],
+  String suggestedAction = 'İlaçlamayı erteleyin.',
+  DateTime? recommendedDate,
+  DateTime? evaluatedAtUtc,
+  DateTime? weatherFetchedAtUtc,
+  bool isWeatherStale = false,
+  String? staleReason,
+  bool canApply = true,
+}) {
+  return TaskWeatherSuggestion(
+    advisoryId: advisoryId,
+    riskLevel: riskLevel,
+    reason: reason,
+    reasons: reasons,
+    suggestedAction: suggestedAction,
+    recommendedDate: recommendedDate,
+    evaluatedAtUtc: evaluatedAtUtc ?? DateTime.utc(2026, 9, 6, 8, 0),
+    weatherFetchedAtUtc: weatherFetchedAtUtc ?? DateTime.utc(2026, 9, 6, 7, 30),
+    isWeatherStale: isWeatherStale,
+    staleReason: staleReason,
+    canApply: canApply,
   );
 }
 
@@ -1528,6 +1622,1176 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Bekleyen bir veya daha fazla işlem sunucudaki güncel durum ile çakıştı ve kaldırıldı.'), findsOneWidget);
+      });
+    });
+
+    // =========================================================================
+    // Hava Riski ve Erteleme Önerisi (Weather Postpone Suggestion) Testleri
+    // =========================================================================
+    group('Weather Postpone Suggestion UI', () {
+      // 1. TaskCard_WithoutWeatherSuggestion_DoesNotShowWeatherSection
+      testWidgets('1. TaskCard_WithoutWeatherSuggestion_DoesNotShowWeatherSection', (tester) async {
+        final task = _createTask(
+          id: 't-no-weather',
+          title: 'Normal Görev',
+          weatherPostponeSuggestion: null,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 5),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsNothing);
+        expect(find.text('Hava Riski'), findsNothing);
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsNothing);
+        expect(find.byKey(Key('task_complete_${task.id}')), findsOneWidget);
+        expect(find.byKey(Key('task_not_applied_${task.id}')), findsOneWidget);
+      });
+
+      // 2. TaskCard_WithApplicableWeatherSuggestion_ShowsRiskReasonAndDate
+      testWidgets('2. TaskCard_WithApplicableWeatherSuggestion_ShowsRiskReasonAndDate', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-101',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Yarın ilaçlama için rüzgâr yüksek.',
+          suggestedAction: 'İlaçlamayı rüzgarın dindiği güne erteleyin.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-with-weather',
+          title: 'İlaçlama Yap',
+          dueDate: DateTime(2026, 9, 6),
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsOneWidget);
+        expect(find.text('Hava Riski'), findsOneWidget);
+        expect(find.text('Yarın ilaçlama için rüzgâr yüksek.'), findsOneWidget);
+        expect(find.textContaining('8 Eylül'), findsOneWidget);
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsOneWidget);
+        expect(find.text('Ertele'), findsOneWidget);
+      });
+
+      // 3. TaskCard_WithStaleSuggestion_ShowsWarningAndNoApplyButton
+      testWidgets('3. TaskCard_WithStaleSuggestion_ShowsWarningAndNoApplyButton', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-stale',
+          canApply: false,
+          isWeatherStale: true,
+          staleReason: 'Hava verisi 5 saat önce güncellendi. Kesin erteleme önerisi verilemiyor.',
+          riskLevel: 'warning',
+          reason: 'Yüksek rüzgâr riski',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-stale',
+          title: 'Gübreleme Yap',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsOneWidget);
+        expect(find.text('Hava verisi 5 saat önce güncellendi. Kesin erteleme önerisi verilemiyor.'), findsOneWidget);
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsNothing);
+      });
+
+      // 4. TaskCard_WhenCanApplyFalse_DoesNotCallRepository
+      testWidgets('4. TaskCard_WhenCanApplyFalse_DoesNotCallRepository', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-no-apply',
+          canApply: false,
+          riskLevel: 'medium',
+          reason: 'Orta seviye yağmur riski',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-no-apply',
+          title: 'Hasat Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsNothing);
+        expect(repo.applySuggestionCalls, isEmpty);
+      });
+
+      // 5. PostponeButton_ShowsConfirmationBeforeCallingRepository
+      testWidgets('5. PostponeButton_ShowsConfirmationBeforeCallingRepository', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-conf',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Kuvvetli fırtına bekleniyor.',
+          recommendedDate: DateTime.utc(2026, 9, 9),
+        );
+        final task = _createTask(
+          id: 't-conf',
+          title: 'Ağaç Budama',
+          dueDate: DateTime(2026, 9, 6),
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        // Ertele butonuna tıkla
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        // Confirmation bottom sheet açık olmalı
+        expect(find.text('Görevi Ertele'), findsOneWidget);
+        expect(find.text('Ağaç Budama'), findsWidgets);
+        expect(find.text('Kuvvetli fırtına bekleniyor.'), findsWidgets);
+        expect(find.textContaining('6 Eylül'), findsOneWidget);
+        expect(find.textContaining('9 Eylül'), findsWidgets);
+        expect(find.text('Bu görev hava koşulları nedeniyle 9 Eylül tarihine ertelenecek.'), findsOneWidget);
+        expect(find.byKey(const Key('cancel_postpone_btn')), findsOneWidget);
+        expect(find.byKey(const Key('confirm_postpone_btn')), findsOneWidget);
+
+        // Henüz onay verilmediği için repository çağrılmamış olmalı
+        expect(repo.applySuggestionCalls, isEmpty);
+      });
+
+      // 6. PostponeConfirmation_Cancel_DoesNotCallRepository
+      testWidgets('6. PostponeConfirmation_Cancel_DoesNotCallRepository', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-cancel',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Şiddetli yağmur.',
+          recommendedDate: DateTime.utc(2026, 9, 9),
+        );
+        final task = _createTask(
+          id: 't-cancel',
+          title: 'Çapa Yap',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        // Vazgeç butonuna tıkla
+        await tester.tap(find.byKey(const Key('cancel_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        // Bottom sheet kapandı, repo çağrılmadı
+        expect(find.text('Görevi Ertele'), findsNothing);
+        expect(repo.applySuggestionCalls, isEmpty);
+      });
+
+      // 7. PostponeConfirmation_Approve_CallsApplyWithCorrectAdvisoryId
+      testWidgets('7. PostponeConfirmation_Approve_CallsApplyWithCorrectAdvisoryId', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-approve-77',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Aşırı sıcaklık riski.',
+          recommendedDate: DateTime.utc(2026, 9, 10),
+        );
+        final task = _createTask(
+          id: 't-approve',
+          title: 'Fide Dikimi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        // Onayla (Ertele)
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(repo.applySuggestionCalls, ['adv-approve-77']);
+      });
+
+      // 8. PostponeApply_When200_ReloadsTasks
+      testWidgets('8. PostponeApply_When200_ReloadsTasks', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-200-ok',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr 40 km/s üzerinde.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-200',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+        expect(repo.callCount, 1);
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(repo.applySuggestionCalls.length, 1);
+        expect(repo.applySuggestionCalls.first, 'adv-200-ok');
+        expect(repo.callCount, 2); // Initial fetch + reload
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsOneWidget);
+      });
+
+      // 9. PostponeApply_When409_ShowsBackendDetailAndReloadsTasks
+      testWidgets('9. PostponeApply_When409_ShowsBackendDetailAndReloadsTasks', (tester) async {
+        const backendMessage = 'Bu hava önerisinin geçerlilik süresi doldu. Güncel hava durumunu kontrol edin.';
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-expired-409',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Fırtına riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-409',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+          applySuggestionError: const ApiException(
+            backendMessage,
+            statusCode: 409,
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+        expect(repo.callCount, 1);
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text(backendMessage), findsOneWidget);
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsNothing);
+        expect(repo.callCount, 2); // Tasks reloaded on 409
+      });
+
+      // 10. PostponeApply_WhenAlreadyApplied409_ReloadsTasks
+      testWidgets('10. PostponeApply_WhenAlreadyApplied409_ReloadsTasks', (tester) async {
+        const backendMessage = 'Bu tavsiye daha önce uygulanmıştır.';
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-already-applied',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-already-applied',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+          applySuggestionError: const ApiException(
+            backendMessage,
+            statusCode: 409,
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text(backendMessage), findsOneWidget);
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsNothing);
+        expect(repo.callCount, 2);
+      });
+
+      // 11. PostponeApply_WhenNetworkError_DoesNotMutateLocalTask
+      testWidgets('11. PostponeApply_WhenNetworkError_DoesNotMutateLocalTask', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-net-err',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Don riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-net-err',
+          title: 'Don Koruması',
+          dueDate: DateTime(2026, 9, 6),
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+          applySuggestionError: const ApiException(
+            'Ağ bağlantısı koptu',
+            statusCode: 500,
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+        expect(repo.callCount, 1);
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('İşlem gerçekleştirilemedi. Lütfen tekrar deneyin.'), findsOneWidget);
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsNothing);
+        expect(repo.callCount, 1); // No reload on general network error
+        expect(find.text('Don Koruması'), findsOneWidget);
+      });
+
+      // 12. PostponeButton_DoubleTap_DoesNotSendTwoRequests
+      testWidgets('12. PostponeButton_DoubleTap_DoesNotSendTwoRequests', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-double-tap',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Aşırı rüzgar.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-dt',
+          title: 'İlaçlama Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final completer = Completer<void>();
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+          applySuggestionCompleter: completer,
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        // 1. Ertele butonuna tıkla ve sheet'i aç
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        // Confirm'e tıkla
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        // Bottom sheet kapansın ve applyWeatherPostponeSuggestion çağrılsın
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        expect(repo.applySuggestionCalls.length, 1);
+        expect(repo.applySuggestionCalls.first, 'adv-double-tap');
+
+        // İstek devam ederken karttaki buton devre dışı / loading olmalı
+        // Tekrar tıklama girişimi yeni istek göndermemeli
+        final postponeBtnFinder = find.byKey(Key('task_postpone_${task.id}'));
+        if (postponeBtnFinder.evaluate().isNotEmpty) {
+          await tester.tap(postponeBtnFinder, warnIfMissed: false);
+          await tester.pump();
+        }
+
+        expect(repo.applySuggestionCalls.length, 1);
+
+        // İsteği tamamla
+        completer.complete();
+        await tester.pumpAndSettle();
+
+        expect(repo.applySuggestionCalls.length, 1);
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsOneWidget);
+      });
+
+      // 13. ApplicableSuggestion_WithNullAdvisoryId_DoesNotShowActiveButton
+      testWidgets('13. ApplicableSuggestion_WithNullAdvisoryId_DoesNotShowActiveButton', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: null,
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Fırtına riski var ama tavsiye kimliği yok.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-null-adv',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsOneWidget);
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsNothing);
+      });
+
+      // 14. ApplicableSuggestion_WithNullRecommendedDate_DoesNotShowActiveButton
+      testWidgets('14. ApplicableSuggestion_WithNullRecommendedDate_DoesNotShowActiveButton', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-null-date',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Uygun alternatif tarih bulunamadı.',
+          recommendedDate: null,
+        );
+        final task = _createTask(
+          id: 't-null-date',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsOneWidget);
+        expect(find.byKey(Key('task_postpone_${task.id}')), findsNothing);
+      });
+
+      // 15. UnknownRiskLevel_DoesNotCrashWidget
+      testWidgets('15. UnknownRiskLevel_DoesNotCrashWidget', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-unknown',
+          canApply: false,
+          riskLevel: 'unprecedented_cosmic_ray_storm',
+          reason: 'Bilinmeyen hava riski tespit edildi.',
+        );
+        final task = _createTask(
+          id: 't-unknown',
+          title: 'Özel Görev',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(Key('weather_suggestion_section_${task.id}')), findsOneWidget);
+        expect(find.text('Bilinmeyen hava riski tespit edildi.'), findsOneWidget);
+      });
+
+      // 16. ExistingCompleteAction_StillWorks
+      testWidgets('16. ExistingCompleteAction_StillWorks', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-comp',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr yüksek.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-comp',
+          title: 'Mevcut İlaçlama Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_complete_${task.id}')));
+        await tester.pumpAndSettle();
+
+        expect(repo.completedTaskCalls.length, 1);
+        expect(repo.completedTaskCalls.first.taskId, 't-comp');
+        expect(find.text('Görev tamamlandı.'), findsOneWidget);
+      });
+
+      // 17. ExistingNotAppliedAction_StillWorks
+      testWidgets('17. ExistingNotAppliedAction_StillWorks', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-na',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr yüksek.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-na',
+          title: 'Mevcut İlaçlama Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_not_applied_${task.id}')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Görevi Uygulamama Nedeni'), findsOneWidget);
+        await tester.tap(find.text('Hava şartları uygun değildi'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Kaydet'));
+        await tester.pumpAndSettle();
+
+        expect(repo.notAppliedTaskCalls.length, 1);
+        expect(repo.notAppliedTaskCalls.first.taskId, 't-na');
+        expect(repo.notAppliedTaskCalls.first.reason, 'Hava şartları uygun değildi');
+        expect(find.text('Görev uygulanmadı olarak kaydedildi.'), findsOneWidget);
+      });
+
+      // 18. FailSafe_EmptyReason_FallsBackToSuggestedAction
+      testWidgets('18. FailSafe_EmptyReason_FallsBackToSuggestedAction', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-empty-reason',
+          canApply: true,
+          riskLevel: 'high',
+          reason: '',
+          suggestedAction: 'Rüzgar dinene kadar erteleyin.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-empty-reason',
+          title: 'İlaçlama',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Rüzgar dinene kadar erteleyin.'), findsOneWidget);
+      });
+
+      // 19. PostponeCompletesAfterFarmSwitch_DoesNotMutateNewFarmState
+      testWidgets('19. PostponeCompletesAfterFarmSwitch_DoesNotMutateNewFarmState: İstek sürerken tarla değişirse yeni tarla statei etkilenmez', (tester) async {
+        final completer = Completer<void>();
+
+        final suggestionFarm1 = _createSuggestion(
+          advisoryId: 'adv-farm1-postpone',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Farm 1 Rüzgar Riski',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final taskFarm1 = _createTask(
+          id: 't-farm1',
+          title: 'Tarla 1 İlaçlama Görevi',
+          weatherPostponeSuggestion: suggestionFarm1,
+        );
+        final taskFarm2 = _createTask(
+          id: 't-farm2',
+          title: 'Tarla 2 Sulama Görevi',
+        );
+
+        final repo = FakeDailyTaskRepository(
+          tasksByFarmId: {
+            'farm-1': DailyTaskList(
+              date: DateTime(2026, 9, 6),
+              items: [taskFarm1],
+              criticalWeatherAlerts: const [],
+              overdue: const [],
+            ),
+            'farm-2': DailyTaskList(
+              date: DateTime(2026, 9, 6),
+              items: [taskFarm2],
+              criticalWeatherAlerts: const [],
+              overdue: const [],
+            ),
+          },
+          applySuggestionCompleter: completer,
+        );
+
+        // 1. Farm 1 ile başla
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-1'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Tarla 1 İlaçlama Görevi'), findsOneWidget);
+
+        // 2. Ertele sheetini aç ve onayla
+        await tester.tap(find.byKey(Key('task_postpone_${taskFarm1.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        expect(repo.applySuggestionCalls.length, 1);
+        expect(repo.applySuggestionCalls.first, 'adv-farm1-postpone');
+
+        // 3. İstek sürerken kullanıcı Farm 2'ye geçiyor
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(dailyTaskRepository: repo, farmId: 'farm-2'),
+        ));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Tarla 2 Sulama Görevi'), findsOneWidget);
+        expect(find.text('Tarla 1 İlaçlama Görevi'), findsNothing);
+
+        // 4. Farm 1 erteleme isteği tamamlanıyor
+        completer.complete();
+        await tester.pumpAndSettle();
+
+        // 5. Doğrulama:
+        // - Farm 1 başarı SnackBar'ı Farm 2 üzerinde gösterilmemeli
+        expect(find.text('Görev önerilen tarihe ertelendi.'), findsNothing);
+        // - Farm 2 state'i bozulmamalı
+        expect(find.text('Tarla 2 Sulama Görevi'), findsOneWidget);
+        expect(find.text('Tarla 1 İlaçlama Görevi'), findsNothing);
+        // - Son fetch edilen tarla farm-2 olarak kalmalı
+        expect(repo.lastRequestedFarmId, 'farm-2');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // BÖLÜM 4: Notification Synchronization after Weather Postpone
+    // -----------------------------------------------------------------------
+    group('Notification Synchronization after Weather Postpone', () {
+      setUp(() {
+        SharedPreferences.setMockInitialValues({});
+      });
+
+      // 1. PostponeSuccess_AfterReload_SynchronizesNotifications
+      testWidgets('1. PostponeSuccess_AfterReload_SynchronizesNotifications: 200 OK sonrasi authoritative reload ve notification sync calisir', (tester) async {
+        final executionLog = <String>[];
+
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-sync-ok',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Yüksek rüzgâr riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final taskToPostpone = _createTask(
+          id: 't-postpone-ok',
+          title: 'İlaçlama Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+        final frostAlert = _createTask(
+          id: 'frost-unrelated',
+          title: 'Don Uyarısı',
+        );
+        final remainingTask = _createTask(
+          id: 't-remain',
+          title: 'Kalan Sulama Görevi',
+        );
+
+        final initialList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [taskToPostpone, remainingTask],
+          criticalWeatherAlerts: [taskToPostpone, frostAlert],
+          overdue: const [],
+        );
+
+        final updatedList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [remainingTask],
+          criticalWeatherAlerts: [frostAlert],
+          overdue: const [],
+        );
+
+        late FakeDailyTaskRepository repo;
+        repo = FakeDailyTaskRepository(
+          dailyTaskList: initialList,
+          onApplyWeatherSuggestion: () {
+            executionLog.add('apply');
+            repo.dailyTaskList = updatedList;
+          },
+        );
+
+        final dispatcher = FakeWidgetNotificationDispatcher();
+        dispatcher.onCancel = (id) {
+          executionLog.add('notification_cancel_$id');
+        };
+        dispatcher.onShow = (id, title) {
+          executionLog.add('notification_show_$id');
+        };
+
+        final notificationService = DailyTaskNotificationService(
+          preferences: DailyTaskNotificationPreferences(),
+          dispatcher: dispatcher,
+          nowProvider: () => DateTime(2026, 9, 6, 10, 0),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(
+            dailyTaskRepository: repo,
+            dailyTaskNotificationService: notificationService,
+            farmId: 'farm-1',
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        // Ertele butonuna bas ve modalda onayla
+        await tester.tap(find.byKey(Key('task_postpone_${taskToPostpone.id}')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Görevi Ertele'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        // 1. apply çağrıldı
+        expect(repo.applySuggestionCalls, contains('adv-sync-ok'));
+
+        // 2. Otoriter liste yüklendi
+        expect(find.text('Kalan Sulama Görevi'), findsOneWidget);
+        expect(find.text('İlaçlama Görevi'), findsNothing);
+
+        // 3. Bildirim senkronizasyonu: ertelenen taskın alert id'si iptal edildi, don uyarısı korundu
+        final expectedAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('t-postpone-ok');
+        final frostAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('frost-unrelated');
+        expect(dispatcher.cancelled, contains(expectedAlertId));
+        expect(dispatcher.cancelled, isNot(contains(frostAlertId)));
+
+        // 4. Günlük özet bildirim güncellendi (aynı ID 1001)
+        final dailyNotifs = dispatcher.shown.where((s) => s.id == DailyTaskNotificationService.dailyNotificationId).toList();
+        expect(dailyNotifs.isNotEmpty, isTrue);
+        expect(dailyNotifs.last.title, contains('1 önemli işin var'));
+        expect(dailyNotifs.last.body, contains('Kalan Sulama Görevi'));
+
+        // 5. Sıralama garantisi: apply -> notification_sync
+        expect(executionLog.indexOf('apply'), lessThan(executionLog.indexOf('notification_cancel_$expectedAlertId')));
+      });
+
+      // 2A. Postpone409Expired_StillActiveAlertIsNotCancelled
+      testWidgets('2A. Postpone409Expired_StillActiveAlertIsNotCancelled: 409 Expired durumunda alert authoritative reload sonrasi hala varsa iptal edilmez', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-expired',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-expired',
+          title: 'Süresi Dolan Öneri Görevi',
+          weatherPostponeSuggestion: suggestion,
+        );
+
+        final initialList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [task],
+          criticalWeatherAlerts: [task],
+          overdue: const [],
+        );
+
+        // 409 Expired: Görev ertelenmedi, bugünün listesinde ve alertlerinde hala aktif
+        final authoritativeList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [task],
+          criticalWeatherAlerts: [task],
+          overdue: const [],
+        );
+
+        late FakeDailyTaskRepository repo;
+        repo = FakeDailyTaskRepository(
+          dailyTaskList: initialList,
+          applySuggestionError: const ApiException('Önerinin geçerlilik süresi dolmuş.', statusCode: 409),
+          onApplyWeatherSuggestion: () {
+            repo.dailyTaskList = authoritativeList;
+          },
+        );
+
+        final dispatcher = FakeWidgetNotificationDispatcher();
+        final notificationService = DailyTaskNotificationService(
+          preferences: DailyTaskNotificationPreferences(),
+          dispatcher: dispatcher,
+          nowProvider: () => DateTime(2026, 9, 6, 10, 0),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(
+            dailyTaskRepository: repo,
+            dailyTaskNotificationService: notificationService,
+            farmId: 'farm-1',
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Önerinin geçerlilik süresi dolmuş.'), findsOneWidget);
+
+        // Alert authoritative olarak hala aktif olduğu için KESİNLİKLE iptal edilmemeli!
+        final alertId = DailyTaskNotificationService.notificationIdForCriticalAlert('t-expired');
+        expect(dispatcher.cancelled, isNot(contains(alertId)));
+      });
+
+      // 2B. Postpone409AlreadyApplied_RemovedAlertIsCancelled
+      testWidgets('2B. Postpone409AlreadyApplied_RemovedAlertIsCancelled: 409 Already Applied durumunda backendde ertelenmis alert reload sonrasi dogru iptal edilir', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-already',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Fırtına riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-already',
+          title: 'Daha Önce Ertelenmiş Görev',
+          weatherPostponeSuggestion: suggestion,
+        );
+
+        final initialList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [task],
+          criticalWeatherAlerts: [task],
+          overdue: const [],
+        );
+        final authoratitiveList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: const [],
+          criticalWeatherAlerts: const [],
+          overdue: const [],
+        );
+
+        late FakeDailyTaskRepository repo;
+        repo = FakeDailyTaskRepository(
+          dailyTaskList: initialList,
+          applySuggestionError: const ApiException('Bu erteleme önerisi daha önce uygulanmış.', statusCode: 409),
+          onApplyWeatherSuggestion: () {
+            repo.dailyTaskList = authoratitiveList;
+          },
+        );
+
+        final dispatcher = FakeWidgetNotificationDispatcher();
+        final notificationService = DailyTaskNotificationService(
+          preferences: DailyTaskNotificationPreferences(),
+          dispatcher: dispatcher,
+          nowProvider: () => DateTime(2026, 9, 6, 10, 0),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(
+            dailyTaskRepository: repo,
+            dailyTaskNotificationService: notificationService,
+            farmId: 'farm-1',
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        // 409 mesajı gösterilmeli
+        expect(find.text('Bu erteleme önerisi daha önce uygulanmış.'), findsOneWidget);
+        expect(find.text('Bugün için önemli bir iş görünmüyor.'), findsOneWidget);
+
+        // Otoriter listede alert kalmadığı için alert iptal edilmeli
+        final expectedAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('t-already');
+        expect(dispatcher.cancelled, contains(expectedAlertId));
+
+        // Görev kalmadığı için daily summary #1001 de iptal edilmiş olmalı
+        expect(dispatcher.cancelled, contains(DailyTaskNotificationService.dailyNotificationId));
+      });
+
+      // 2C. Postpone409Terminal_TaskStateReloadedWithoutBlindCancellation
+      testWidgets('2C. Postpone409Terminal_TaskStateReloadedWithoutBlindCancellation: 409 Terminal durumunda otoriter reload ile task ve alert state senkronize edilir', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-term',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Hava riski.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-term',
+          title: 'Terminal Görev',
+          weatherPostponeSuggestion: suggestion,
+        );
+
+        final initialList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [task],
+          criticalWeatherAlerts: [task],
+          overdue: const [],
+        );
+        final completedTask = _createTask(
+          id: 't-term',
+          title: 'Terminal Görev',
+          status: TaskStatus.completed,
+        );
+        final authoratitiveList = DailyTaskList(
+          date: DateTime(2026, 9, 6),
+          items: [completedTask],
+          criticalWeatherAlerts: const [],
+          overdue: const [],
+        );
+
+        late FakeDailyTaskRepository repo;
+        repo = FakeDailyTaskRepository(
+          dailyTaskList: initialList,
+          applySuggestionError: const ApiException('Görev terminal durumdadır.', statusCode: 409),
+          onApplyWeatherSuggestion: () {
+            repo.dailyTaskList = authoratitiveList;
+          },
+        );
+
+        final dispatcher = FakeWidgetNotificationDispatcher();
+        final notificationService = DailyTaskNotificationService(
+          preferences: DailyTaskNotificationPreferences(),
+          dispatcher: dispatcher,
+          nowProvider: () => DateTime(2026, 9, 6, 10, 0),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(
+            dailyTaskRepository: repo,
+            dailyTaskNotificationService: notificationService,
+            farmId: 'farm-1',
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Görev terminal durumdadır.'), findsOneWidget);
+
+        // Otoriter listede alert kalmadığı için alert iptal edildi
+        final expectedAlertId = DailyTaskNotificationService.notificationIdForCriticalAlert('t-term');
+        expect(dispatcher.cancelled, contains(expectedAlertId));
+
+        // Tamamlanan görev aktif sayılmadığı için daily summary #1001 iptal edildi
+        expect(dispatcher.cancelled, contains(DailyTaskNotificationService.dailyNotificationId));
+      });
+
+      // 3. PostponeNetworkFailure_DoesNotRescheduleNotifications
+      testWidgets('3. PostponeNetworkFailure_DoesNotRescheduleNotifications: Ag hatasinda notification degisikligi veya yeniden fetch yapilmaz', (tester) async {
+        final suggestion = _createSuggestion(
+          advisoryId: 'adv-net-fail',
+          canApply: true,
+          riskLevel: 'high',
+          reason: 'Rüzgâr.',
+          recommendedDate: DateTime.utc(2026, 9, 8),
+        );
+        final task = _createTask(
+          id: 't-net-fail',
+          title: 'Hata Alacak Görev',
+          weatherPostponeSuggestion: suggestion,
+        );
+
+        final repo = FakeDailyTaskRepository(
+          dailyTaskList: DailyTaskList(
+            date: DateTime(2026, 9, 6),
+            items: [task],
+            criticalWeatherAlerts: const [],
+            overdue: const [],
+          ),
+          applySuggestionError: Exception('Connection timeout'),
+        );
+
+        final dispatcher = FakeWidgetNotificationDispatcher();
+        final notificationService = DailyTaskNotificationService(
+          preferences: DailyTaskNotificationPreferences(),
+          dispatcher: dispatcher,
+          nowProvider: () => DateTime(2026, 9, 6, 10, 0),
+        );
+
+        await tester.pumpWidget(_wrapWidget(
+          BugununGorevleriWidget(
+            dailyTaskRepository: repo,
+            dailyTaskNotificationService: notificationService,
+            farmId: 'farm-1',
+          ),
+        ));
+        await tester.pumpAndSettle();
+
+        final initialCallCount = repo.callCount;
+
+        await tester.tap(find.byKey(Key('task_postpone_${task.id}')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('confirm_postpone_btn')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('İşlem gerçekleştirilemedi. Lütfen tekrar deneyin.'), findsOneWidget);
+
+        // Tekrar getDailyTasks çağrılmadı
+        expect(repo.callCount, equals(initialCallCount));
+
+        // Notification durumunda hiçbir iptal veya reschedule yapılmadı
+        expect(dispatcher.cancelled, isEmpty);
       });
     });
   });

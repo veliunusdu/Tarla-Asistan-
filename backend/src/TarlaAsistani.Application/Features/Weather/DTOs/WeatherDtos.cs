@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using TarlaAsistani.Application.Common.Interfaces;
 
 namespace TarlaAsistani.Application.Features.Weather.DTOs;
@@ -88,3 +89,37 @@ public static class FarmWeatherExtensions
         );
     }
 }
+
+public static class WeatherDefaults
+{
+    public const string StaleAfterHoursConfigKey = "Weather:StaleAfterHours";
+    public const int DefaultStaleAfterHours = 4;
+
+    public static int GetStaleAfterHours(Microsoft.Extensions.Configuration.IConfiguration? config) =>
+        config?.GetValue(StaleAfterHoursConfigKey, DefaultStaleAfterHours) ?? DefaultStaleAfterHours;
+
+    public static DateTime? CalculateWeatherAdvisoryValidUntil(
+        DateTime? weatherFetchedAtUtc,
+        DateTime? defaultValidUntilUtc,
+        int staleAfterHours,
+        DateTime nowUtc)
+    {
+        if (!weatherFetchedAtUtc.HasValue)
+        {
+            // Fail-safe: without a trusted fetch timestamp, weather cannot be assumed fresh.
+            // Expire immediately at nowUtc so it cannot be applied as fresh.
+            return nowUtc;
+        }
+
+        var freshnessDeadline = weatherFetchedAtUtc.Value.AddHours(staleAfterHours);
+        if (!defaultValidUntilUtc.HasValue)
+        {
+            return freshnessDeadline;
+        }
+
+        return defaultValidUntilUtc.Value < freshnessDeadline
+            ? defaultValidUntilUtc.Value
+            : freshnessDeadline;
+    }
+}
+

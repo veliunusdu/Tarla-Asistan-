@@ -83,6 +83,15 @@ class E2ETestDailyTaskRepository implements DailyTaskRepository {
   }
 
   @override
+  Future<void> applyWeatherPostponeSuggestion({
+    required String advisoryId,
+  }) async {
+    if (isOffline) {
+      throw const ApiException('No Internet');
+    }
+  }
+
+  @override
   Future<void> enqueueTaskAction(PendingTaskAction action) async {
     queue.add(action);
   }
