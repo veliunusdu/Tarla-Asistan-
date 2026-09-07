@@ -90,6 +90,7 @@ class BackendTarlaRepository
       size: tarla.size == null ? null : tarla.size! * 10,
       cropType: tarla.cropType,
       plantingDate: tarla.plantingDate,
+      currentCropPeriodId: tarla.currentCropPeriodId,
     );
   }
 

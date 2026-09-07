@@ -80,6 +80,56 @@ public class WttrInWeatherProviderTests
     }
 
     [Fact]
+    public void ParseResponse_SumsPrecipitationForEachDayWithoutUsingSnow()
+    {
+        var data = WttrInWeatherProvider.ParseResponse("""
+            {
+              "weather": [
+                {
+                  "date": "2026-09-06",
+                  "totalSnow_cm": "0.0",
+                  "hourly": [{"time":"0","precipMM":"4.25"},{"time":"300","precipMM":5.75}]
+                },
+                {
+                  "date": "2026-09-07",
+                  "totalSnow_cm": "9.0",
+                  "hourly": [{"time":"0","precipMM":"0.0"},{"time":"300","precipMM":"0.0"}]
+                }
+              ]
+            }
+            """);
+
+        data.Daily.Should().HaveCount(2);
+        data.Daily![0].PrecipitationMm.Should().Be(10);
+        data.Daily[1].PrecipitationMm.Should().Be(0);
+        data.Points.Select(p => p.PrecipitationMm).Should().Equal(4.25, 5.75, 0, 0);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("[{}]")]
+    [InlineData("[{\"precipMM\":null}]")]
+    [InlineData("[{\"precipMM\":\"invalid\"}]")]
+    [InlineData("[{\"precipMM\":\"4.0\"},{}]")]
+    public void ParseResponse_WhenPrecipitationIsMissing_DoesNotInventDailyTotal(string hourlyJson)
+    {
+        var data = WttrInWeatherProvider.ParseResponse($$"""
+            {
+              "weather": [
+                {
+                  "date": "2026-09-06",
+                  "totalSnow_cm": "0.0",
+                  "hourly": {{hourlyJson}}
+                }
+              ]
+            }
+            """);
+
+        data.Daily!.Single().PrecipitationMm.Should().BeNull();
+    }
+
+    [Fact]
     public async Task GetWeatherAsync_WhenServerReturnsOk_ReturnsParsedData()
     {
         var handler = new MockHttpMessageHandler(SampleWttrResponse, HttpStatusCode.OK);

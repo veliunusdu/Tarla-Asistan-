@@ -14,7 +14,7 @@ public class WeatherSnapshot
     public string Provider { get; set; } = null!;
 
     /// <summary>
-    /// Raw provider response stored as a JSON string.
+    /// Versioned JSON containing forecast points and the coordinates they were fetched for.
     /// EF mapping to a JSON column is configured via Fluent API in DbContext.
     /// </summary>
     public string Payload { get; set; } = "{}";

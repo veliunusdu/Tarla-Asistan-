@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TarlaAsistani.Application.Features.Weather.Services;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -404,7 +405,7 @@ public class ProactiveAdvisoryServiceTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = fetchedAt
         };
 
@@ -523,7 +524,7 @@ public class ProactiveAdvisoryServiceTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = fetchedAt
         };
 

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.AI.DTOs;
 using TarlaAsistani.Application.Features.Weather.DTOs;
+using TarlaAsistani.Application.Features.Weather.Services;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 using TarlaAsistani.Domain.Exceptions;
@@ -14,11 +15,6 @@ namespace TarlaAsistani.Application.Features.AI.Services;
 
 public class ProactiveAdvisoryService : IProactiveAdvisoryService
 {
-    private static readonly JsonSerializerOptions WeatherJsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
-
     private readonly IApplicationDbContext _db;
     private readonly IWeatherProvider _weatherProvider;
     private readonly IProactiveAdvisoryEngine _engine;
@@ -124,7 +120,7 @@ public class ProactiveAdvisoryService : IProactiveAdvisoryService
             {
                 try
                 {
-                    var points = JsonSerializer.Deserialize<List<WeatherPoint>>(latestSnapshot.Payload, WeatherJsonOptions);
+                    var points = WeatherSnapshotPayload.ReadPoints(latestSnapshot.Payload, farm.Latitude, farm.Longitude);
                     if (points != null && points.Count > 0)
                     {
                         weather = new WeatherForecastData(points);

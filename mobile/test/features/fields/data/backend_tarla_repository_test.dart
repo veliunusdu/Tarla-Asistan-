@@ -51,15 +51,39 @@ void main() {
     expect(request.toJson().containsKey('planted_at'), isFalse);
   });
 
-  test('maps backend hectares to dönüm for field screens', () async {
-    final remote = _FakeFarmRemoteRepository();
-    final repository = BackendTarlaRepository(remote: remote);
+  test(
+    'maps backend area and preserves the active season for field screens',
+    () async {
+      final remote = _FakeFarmRemoteRepository();
+      final repository = BackendTarlaRepository(remote: remote);
 
-    final fields = await repository.getTarlalar();
+      final fields = await repository.getTarlalar();
 
-    expect(fields, hasLength(1));
-    expect(fields.single.size, 25);
-    expect(fields.single.latitude, 38.4237);
+      expect(fields, hasLength(1));
+      expect(fields.single.size, 25);
+      expect(fields.single.latitude, 38.4237);
+      expect(fields.single.currentCropPeriodId, 'crop-1');
+      expect(fields.single.cropType, 'WHEAT');
+      expect(fields.single.plantingDate, DateTime(2026, 3, 15));
+    },
+  );
+
+  test('does not invent a season when the backend has no active crop', () {
+    final dto = FarmResponseDto.fromJson({
+      'id': 'farm-without-season',
+      'owner_id': 'owner-1',
+      'name': 'Sezonsuz Tarla',
+      'created_at_utc': '2026-01-01T00:00:00Z',
+      'size_in_hectares': 2.5,
+      'current_crop_period': null,
+    });
+
+    final tarla = BackendTarlaRepository.fromDto(dto);
+
+    expect(tarla.currentCropPeriodId, isNull);
+    expect(tarla.cropType, isNull);
+    expect(tarla.plantingDate, isNull);
+    expect(tarla.size, 25);
   });
 
   test('updates farm location with latitude and longitude', () async {

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -97,7 +96,7 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
                 var fallbackPoints = await _weatherProvider.ForecastAsync(farm.Latitude.Value, farm.Longitude.Value, cancellationToken);
                 if (fallbackPoints != null && fallbackPoints.Count > 0)
                 {
-                    var firstPoint = fallbackPoints.FirstOrDefault();
+                    var firstPoint = WeatherPointSelection.ClosestTo(fallbackPoints, now);
                     var fallbackCurrent = firstPoint != null
                         ? new CurrentWeatherDto(
                             ObservedAt: firstPoint.ObservedAt,
@@ -126,7 +125,7 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
             {
                 FarmId = farm.Id,
                 Provider = providerName,
-                Payload = JsonSerializer.Serialize(points),
+                Payload = WeatherSnapshotPayload.Serialize(farm.Latitude.Value, farm.Longitude.Value, points),
                 FetchedAtUtc = now
             };
 
@@ -150,7 +149,7 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
 
             try
             {
-                points = JsonSerializer.Deserialize<List<WeatherPoint>>(latestSnapshot.Payload)
+                points = WeatherSnapshotPayload.ReadPoints(latestSnapshot.Payload, farm.Latitude, farm.Longitude)
                     ?? throw new InvalidOperationException("Kayıtlı hava durumu verisi okunamadı.");
             }
             catch

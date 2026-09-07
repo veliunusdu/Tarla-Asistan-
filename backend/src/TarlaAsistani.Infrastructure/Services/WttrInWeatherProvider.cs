@@ -114,7 +114,7 @@ public class WttrInWeatherProvider : IWeatherProvider
 
                 var maxTemp = ParseDouble(dayElem, "maxtempC");
                 var minTemp = ParseDouble(dayElem, "mintempC");
-                var totalPrecipMm = ParseDouble(dayElem, "totalSnow_cm");
+                var totalPrecipMm = SumDailyPrecipitationMm(dayElem);
 
                 if (date.HasValue)
                 {
@@ -162,6 +162,26 @@ public class WttrInWeatherProvider : IWeatherProvider
         }
 
         return new WeatherForecastData(points, current, dailyList.Count > 0 ? dailyList : null);
+    }
+
+    private static double? SumDailyPrecipitationMm(JsonElement day)
+    {
+        if (!day.TryGetProperty("hourly", out var hourly) ||
+            hourly.ValueKind != JsonValueKind.Array || hourly.GetArrayLength() == 0)
+        {
+            return null;
+        }
+
+        double total = 0;
+        foreach (var period in hourly.EnumerateArray())
+        {
+            var precipitation = ParseDouble(period, "precipMM");
+            // Missing periods must not turn an unknown daily total into zero or a partial total.
+            if (!precipitation.HasValue) return null;
+            total += precipitation.Value;
+        }
+
+        return total;
     }
 
     private static double? ParseDouble(JsonElement element, string propName)

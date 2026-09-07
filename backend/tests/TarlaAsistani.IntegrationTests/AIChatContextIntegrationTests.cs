@@ -258,6 +258,38 @@ public class AIChatContextIntegrationTests : IClassFixture<CustomWebApplicationF
     // ─── Test 5: Weather-relevant question includes weather ───────────────
 
     [Fact]
+    public async Task WeatherContext_AfterFarmLocationChanges_DoesNotReuseOldMemoryOrSnapshot()
+    {
+        using var isolatedFactory = new CustomWebApplicationFactory();
+        var scenario = new AIChatContextIntegrationTests(isolatedFactory);
+        using var client = scenario._client;
+        var userId = Guid.NewGuid();
+        var farmId = await scenario.CreateUserAndFarmAsync(userId, "Hava Tarlasi", 38, 33);
+        scenario.SetupCapturingAIProvider(out var captured);
+        scenario.SetupWeatherProvider();
+
+        using var weatherRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmId}/weather");
+        weatherRequest.Headers.Add("X-User-Id", userId.ToString());
+        (await client.SendAsync(weatherRequest)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.SendAsync(AIChatRequest(userId, "Yarın hava nasıl olacak?"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        captured.Single().AccountContext!.Farms.Single().Weather.Should().NotBeNull();
+
+        using var update = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/farms/{farmId}");
+        update.Headers.Add("X-User-Id", userId.ToString());
+        update.Content = JsonContent.Create(new { latitude = 37, longitude = 30 });
+        (await client.SendAsync(update)).StatusCode.Should().Be(HttpStatusCode.OK);
+        isolatedFactory.MockWeatherProvider
+            .Setup(w => w.GetWeatherBatchAsync(It.IsAny<IReadOnlyList<(double Latitude, double Longitude)>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Test provider outage"));
+
+        var response = await client.SendAsync(AIChatRequest(userId, "Yarın hava nasıl olacak?"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        captured.Should().HaveCount(2);
+        captured[1].AccountContext!.Farms.Single().Weather.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Test05_WeatherRelevantQuestionIncludesWeather()
     {
         var userId = Guid.NewGuid();

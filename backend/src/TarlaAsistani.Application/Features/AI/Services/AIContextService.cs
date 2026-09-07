@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -204,7 +203,6 @@ public class AIContextService : IAIContextService
         CancellationToken cancellationToken)
     {
         var cacheMinutes = _config.GetValue("Weather:CacheMinutes", 10);
-        var staleAfterHours = _config.GetValue("Weather:StaleAfterHours", 4);
         var now = DateTime.UtcNow;
 
         var cacheMisses = new List<TarlaAsistani.Domain.Entities.Farm>();
@@ -216,7 +214,7 @@ public class AIContextService : IAIContextService
                 continue;
             }
 
-            var cacheKey = $"weather:{farm.Id}";
+            var cacheKey = $"weather:{farm.Id}:{farm.Latitude.Value:F6}:{farm.Longitude.Value:F6}";
 
             // Cache hit — use cached FarmWeatherResponseDto
             if (_cache.TryGetValue(cacheKey, out FarmWeatherResponseDto? cached) && cached != null)
@@ -246,7 +244,7 @@ public class AIContextService : IAIContextService
                 if (forecast?.Points == null || forecast.Points.Count == 0)
                 {
                     resultMap[farm.Id] = await TryLoadStaleWeatherAsync(
-                        farm.Id, farm.Name, staleAfterHours, now, cancellationToken);
+                        farm.Id, farm.Name, farm.Latitude, farm.Longitude, now, cancellationToken);
                     continue;
                 }
 
@@ -262,7 +260,7 @@ public class AIContextService : IAIContextService
                     Daily: forecast.Daily
                 );
 
-                _cache.Set($"weather:{farm.Id}", dto, TimeSpan.FromMinutes(cacheMinutes));
+                _cache.Set($"weather:{farm.Id}:{farm.Latitude!.Value:F6}:{farm.Longitude!.Value:F6}", dto, TimeSpan.FromMinutes(cacheMinutes));
                 resultMap[farm.Id] = BuildWeatherContextBundle(farm.Name, dto);
             }
         }
@@ -273,7 +271,7 @@ public class AIContextService : IAIContextService
             foreach (var farm in cacheMisses)
             {
                 resultMap[farm.Id] = await TryLoadStaleWeatherAsync(
-                    farm.Id, farm.Name, staleAfterHours, now, cancellationToken);
+                    farm.Id, farm.Name, farm.Latitude, farm.Longitude, now, cancellationToken);
             }
         }
     }
@@ -281,7 +279,8 @@ public class AIContextService : IAIContextService
     private async Task<WeatherContextBundle?> TryLoadStaleWeatherAsync(
         Guid farmId,
         string farmName,
-        int staleAfterHours,
+        double? latitude,
+        double? longitude,
         DateTime now,
         CancellationToken cancellationToken)
     {
@@ -295,12 +294,11 @@ public class AIContextService : IAIContextService
 
             if (latestSnapshot == null) return null;
 
-            var points = JsonSerializer.Deserialize<List<TarlaAsistani.Application.Common.Interfaces.WeatherPoint>>(
-                latestSnapshot.Payload);
+            var points = WeatherSnapshotPayload.ReadPoints(latestSnapshot.Payload, latitude, longitude);
             if (points == null || points.Count == 0) return null;
 
             var risks = WeatherRiskEvaluator.Evaluate(points, now);
-            var firstPoint = points.FirstOrDefault();
+            var firstPoint = WeatherPointSelection.ClosestTo(points, now);
             var dto = new FarmWeatherResponseDto(
                 FarmId: farmId,
                 Provider: latestSnapshot.Provider,

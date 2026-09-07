@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Weather.Services;
@@ -94,7 +93,7 @@ public static class TaskEngine
         {
             try
             {
-                var points = JsonSerializer.Deserialize<List<WeatherPoint>>(latestSnapshot.Payload);
+                var points = WeatherSnapshotPayload.ReadPoints(latestSnapshot.Payload, farm.Latitude, farm.Longitude);
                 if (points != null && points.Count > 0)
                 {
                     var risks = WeatherRiskEvaluator.Evaluate(points, DateTime.UtcNow);

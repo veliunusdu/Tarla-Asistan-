@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using TarlaAsistani.Application.Common.Interfaces;
+using TarlaAsistani.Application.Features.Weather.Services;
 
 namespace TarlaAsistani.Application.Features.Weather.DTOs;
 
@@ -66,7 +67,7 @@ public static class FarmWeatherExtensions
 {
     public static FarmWeatherContext ToAiContext(this FarmWeatherResponseDto dto)
     {
-        var firstPoint = dto.Points.FirstOrDefault();
+        var firstPoint = WeatherPointSelection.ClosestTo(dto.Points, DateTime.UtcNow);
         var next24 = dto.Points.Take(24).ToList();
         var maxRainProb = next24.Count > 0 ? next24.Max(p => p.PrecipitationProbability) : null;
         var totalPrecip = next24.Count > 0 ? next24.Sum(p => p.PrecipitationMm ?? 0) : (double?)null;

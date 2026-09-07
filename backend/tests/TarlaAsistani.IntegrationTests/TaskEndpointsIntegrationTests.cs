@@ -144,6 +144,64 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         tasks.Should().ContainSingle(item => item.Id == task.Id);
     }
 
+    [Theory]
+    [InlineData("2030-07-20")]
+    [InlineData("2028-02-29")]
+    [InlineData("2030-01-01")]
+    public async Task CreateExpertTask_WithWebJson_PreservesSelectedDateInStorageAndReadResponse(string selectedDate)
+    {
+        var ownerId = Guid.NewGuid();
+        var expertId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.AddRange(
+                new User { Id = ownerId, PhoneNumber = $"+90555{Random.Shared.Next(1000000, 9999999)}", Role = UserRole.Farmer, AccountStatus = AccountStatus.Active },
+                new User { Id = expertId, PhoneNumber = $"+90556{Random.Shared.Next(1000000, 9999999)}", Role = UserRole.Agronomist, AccountStatus = AccountStatus.Active });
+            db.Farms.Add(new Farm { Id = farmId, OwnerId = ownerId, Name = "Web date regression farm" });
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/farms/{farmId}/tasks");
+        request.Headers.Add("X-User-Id", expertId.ToString());
+        request.Headers.Add("X-User-Role", "AGRONOMIST");
+        // Use the web wire contract, not a server DTO that could hide a naming mismatch.
+        request.Content = new StringContent($$"""
+            {
+              "title": "Sulama",
+              "description": "Aksam sulama yap",
+              "reason": "Toprak kuru",
+              "priority": "HIGH",
+              "confidence": "MEDIUM",
+              "due_date": "{{selectedDate}}"
+            }
+            """, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        var created = await response.Content.ReadFromJsonAsync<TaskDto>(CustomWebApplicationFactory.JsonOptions);
+        var expectedDate = DateOnly.ParseExact(selectedDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        created!.DueDate.Should().Be(expectedDate);
+        created.Source.Should().Be(TaskSource.Expert);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var stored = await db.FarmTasks.AsNoTracking().SingleAsync(task => task.Id == created.Id);
+            stored.DueDate.Should().Be(expectedDate);
+        }
+
+        using var readRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/tasks/{created.Id}");
+        readRequest.Headers.Add("X-User-Id", ownerId.ToString());
+        readRequest.Headers.Add("X-User-Role", "FARMER");
+        var readResponse = await _client.SendAsync(readRequest);
+
+        readResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await readResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        body.GetProperty("due_date").GetString().Should().Be(selectedDate);
+    }
+
     [Fact]
     public async Task ListDailyTasks_WithMultipleCandidatesAndCriticalAlert_ShouldRankAndLimitCorrectly()
     {

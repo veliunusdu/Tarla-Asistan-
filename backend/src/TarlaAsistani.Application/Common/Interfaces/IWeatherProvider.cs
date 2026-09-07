@@ -1,6 +1,7 @@
 namespace TarlaAsistani.Application.Common.Interfaces;
 
 using TarlaAsistani.Application.Features.Weather.DTOs;
+using TarlaAsistani.Application.Features.Weather.Services;
 
 public record WeatherPoint(
     DateTime ObservedAt,
@@ -25,7 +26,7 @@ public interface IWeatherProvider
     async Task<WeatherForecastData> GetWeatherAsync(double latitude, double longitude, CancellationToken cancellationToken = default)
     {
         var points = await ForecastAsync(latitude, longitude, cancellationToken);
-        var first = points?.FirstOrDefault();
+        var first = points == null ? null : WeatherPointSelection.ClosestTo(points, DateTime.UtcNow);
         var current = first != null
             ? new CurrentWeatherDto(
                 ObservedAt: first.ObservedAt,

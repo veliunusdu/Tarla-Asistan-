@@ -278,7 +278,7 @@ export function createFarmTask(farmId: string, input: CreateFarmTaskInput) {
       reason: input.reason,
       priority: input.priority,
       confidence: input.confidence,
-      dueDate: input.dueDate,
+      due_date: input.dueDate,
     }),
   });
 }

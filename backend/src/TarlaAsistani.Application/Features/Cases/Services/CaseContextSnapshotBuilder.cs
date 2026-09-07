@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Cases.DTOs;
 using TarlaAsistani.Application.Features.Weather.DTOs;
+using TarlaAsistani.Application.Features.Weather.Services;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 
@@ -53,7 +54,8 @@ public sealed class CaseContextSnapshotBuilder
                 .FirstOrDefaultAsync(cancellationToken)
             : null;
 
-        var points = cachedWeather?.Points ?? DeserializePoints(weather?.Payload);
+        var points = cachedWeather?.Points ?? WeatherSnapshotPayload.ReadPoints(weather?.Payload, farm.Latitude, farm.Longitude) ?? [];
+        if (cachedWeather == null && points.Count == 0) weather = null;
         var weatherFetchedAt = cachedWeather?.FetchedAt ?? weather?.FetchedAtUtc;
         var weatherProvider = cachedWeather?.Provider ?? weather?.Provider;
         var staleAfterHours = int.TryParse(_configuration?["Weather:StaleAfterHours"], out var configuredHours)
@@ -61,6 +63,7 @@ public sealed class CaseContextSnapshotBuilder
             : 4;
         var isStale = weatherFetchedAt.HasValue && weatherFetchedAt.Value < capturedAtUtc.AddHours(-staleAfterHours);
         var next24 = points.Take(24).ToList();
+        var currentPoint = WeatherPointSelection.ClosestTo(points, capturedAtUtc);
 
         return new CaseContextSnapshot
         {
@@ -79,17 +82,10 @@ public sealed class CaseContextSnapshotBuilder
             WeatherProvider = weatherProvider,
             WeatherFetchedAtUtc = weatherFetchedAt,
             IsBasedOnStaleWeather = isStale,
-            CurrentTemperatureC = points.FirstOrDefault()?.TemperatureC,
-            CurrentHumidityPercent = points.FirstOrDefault()?.HumidityPercent,
+            CurrentTemperatureC = cachedWeather?.Current?.TemperatureC ?? currentPoint?.TemperatureC,
+            CurrentHumidityPercent = cachedWeather?.Current?.HumidityPercent ?? currentPoint?.HumidityPercent,
             Next24HoursPrecipitationMm = points.Count == 0 ? null : next24.Sum(p => p.PrecipitationMm ?? 0),
             RecentActivitiesJson = JsonSerializer.Serialize(activities)
         };
-    }
-
-    private static List<WeatherPoint> DeserializePoints(string? payload)
-    {
-        if (string.IsNullOrWhiteSpace(payload)) return [];
-        try { return JsonSerializer.Deserialize<List<WeatherPoint>>(payload) ?? []; }
-        catch (JsonException) { return []; }
     }
 }

@@ -21,8 +21,10 @@ public class WeatherApiWeatherProvider : IWeatherProvider
             ?? Environment.GetEnvironmentVariable("WEATHER_API_BASE_URL")
             ?? "https://api.weatherapi.com/v1";
 
-        _apiKey = config["Weather:WeatherApiKey"]
-            ?? Environment.GetEnvironmentVariable("WEATHER_API_KEY");
+        var configuredApiKey = config["Weather:WeatherApiKey"];
+        _apiKey = string.IsNullOrWhiteSpace(configuredApiKey)
+            ? Environment.GetEnvironmentVariable("WEATHER_API_KEY")
+            : configuredApiKey;
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
@@ -71,6 +73,11 @@ public class WeatherApiWeatherProvider : IWeatherProvider
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
+        var timeZoneId = root.TryGetProperty("location", out var location) &&
+            location.ValueKind == JsonValueKind.Object &&
+            location.TryGetProperty("tz_id", out var zone) && zone.ValueKind == JsonValueKind.String
+                ? zone.GetString()
+                : null;
 
         CurrentWeatherDto? currentDto = null;
         if (root.TryGetProperty("current", out var currentEl))
@@ -89,7 +96,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
             }
 
             currentDto = new CurrentWeatherDto(
-                ObservedAt: DateTime.UtcNow,
+                ObservedAt: ReadObservedAtUtc(currentEl, "last_updated_epoch", "last_updated", timeZoneId),
                 TemperatureC: temp,
                 FeelsLikeC: feelsLike,
                 HumidityPercent: humidity,
@@ -149,12 +156,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
                 {
                     foreach (var h in hourArray.EnumerateArray())
                     {
-                        DateTime observed = DateTime.UtcNow;
-                        if (h.TryGetProperty("time", out var hTime) &&
-                            DateTime.TryParse(hTime.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedObserved))
-                        {
-                            observed = parsedObserved.ToUniversalTime();
-                        }
+                        var observed = ReadObservedAtUtc(h, "time_epoch", "time", timeZoneId);
 
                         var hTemp = h.TryGetProperty("temp_c", out var ht) ? ht.GetDouble() : (double?)null;
                         var hChance = h.TryGetProperty("chance_of_rain", out var hc) ? hc.GetDouble() : (double?)null;
@@ -182,5 +184,39 @@ public class WeatherApiWeatherProvider : IWeatherProvider
         }
 
         return new WeatherForecastData(points, currentDto, dailyList);
+    }
+
+    private static DateTime ReadObservedAtUtc(JsonElement element, string epochField, string localTimeField, string? timeZoneId)
+    {
+        // Epoch fields represent instants; the text fields use the requested location's clock.
+        if (element.TryGetProperty(epochField, out var epoch) && epoch.ValueKind == JsonValueKind.Number &&
+            epoch.TryGetInt64(out var seconds) &&
+            seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds())
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+        }
+
+        const string error = "WeatherAPI zaman bilgisi UTC olarak çözümlenemedi.";
+        if (!string.IsNullOrWhiteSpace(timeZoneId) &&
+            element.TryGetProperty(localTimeField, out var localTime) && localTime.ValueKind == JsonValueKind.String &&
+            DateTime.TryParseExact(localTime.GetString(), ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss"],
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedTime))
+        {
+            try
+            {
+                var timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                if (!timeZone.IsInvalidTime(parsedTime) && !timeZone.IsAmbiguousTime(parsedTime))
+                {
+                    return TimeZoneInfo.ConvertTimeToUtc(parsedTime, timeZone);
+                }
+            }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+            {
+                throw new InvalidOperationException(error, ex);
+            }
+        }
+
+        // Let the existing provider fallback handle unusable data rather than inventing a timestamp.
+        throw new InvalidOperationException(error);
     }
 }

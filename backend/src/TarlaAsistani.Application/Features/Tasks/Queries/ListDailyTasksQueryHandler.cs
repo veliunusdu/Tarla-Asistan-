@@ -242,7 +242,7 @@ public class ListDailyTasksQueryHandler : IRequestHandler<ListDailyTasksQuery, D
             {
                 try
                 {
-                    points = JsonSerializer.Deserialize<List<WeatherPoint>>(latestSnapshot.Payload);
+                    points = WeatherSnapshotPayload.ReadPoints(latestSnapshot.Payload, farm.Latitude, farm.Longitude);
                     if (points != null && points.Count > 0)
                     {
                         fetchedAt = latestSnapshot.FetchedAtUtc;

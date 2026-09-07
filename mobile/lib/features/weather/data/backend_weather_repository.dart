@@ -27,9 +27,9 @@ class BackendWeatherRepository implements WeatherRepository {
     required ApiClient apiClient,
     String? farmId,
     LocalWeatherRepository localRepo = const LocalWeatherRepository(),
-  })  : _client = apiClient,
-        _farmId = farmId,
-        _localRepo = localRepo;
+  }) : _client = apiClient,
+       _farmId = farmId,
+       _localRepo = localRepo;
 
   final ApiClient _client;
   final String? _farmId;
@@ -67,63 +67,80 @@ class BackendWeatherRepository implements WeatherRepository {
     final points = raw['points'] is List ? raw['points'] as List : null;
     final daily = raw['daily'] is List ? raw['daily'] as List : null;
 
-    final Map? firstPoint =
-        (points != null && points.isNotEmpty && points.first is Map)
-            ? points.first as Map
-            : null;
+    final Map? nearestPoint = _nearestForecastPoint(
+      points,
+      DateTime.now().toUtc(),
+    );
 
     final Map? firstDaily =
         (daily != null && daily.isNotEmpty && daily.first is Map)
-            ? daily.first as Map
-            : null;
+        ? daily.first as Map
+        : null;
 
     // 1. Current mapping
-    final num? tempFromCurrent =
-        current != null ? _toNum(current['temperature_c']) : null;
-    final double? feelsLike =
-        current != null ? _toDouble(current['feels_like_c']) : null;
-    final double? humidityFromCurrent =
-        current != null ? _toDouble(current['humidity_percent']) : null;
-    final double? windSpeedFromCurrent =
-        current != null ? _toDouble(current['wind_speed_kmh']) : null;
-    final double? windGust =
-        current != null ? _toDouble(current['wind_gusts_kmh']) : null;
+    final num? tempFromCurrent = current != null
+        ? _toNum(current['temperature_c'])
+        : null;
+    final double? feelsLike = current != null
+        ? _toDouble(current['feels_like_c'])
+        : null;
+    final double? humidityFromCurrent = current != null
+        ? _toDouble(current['humidity_percent'])
+        : null;
+    final double? windSpeedFromCurrent = current != null
+        ? _toDouble(current['wind_speed_kmh'])
+        : null;
+    final double? windGust = current != null
+        ? _toDouble(current['wind_gusts_kmh'])
+        : null;
     final String? condFromCurrent = current?['condition']?.toString();
-    final int? codeFromCurrent =
-        current != null ? _toInt(current['weather_code']) : null;
-    final DateTime? observedFromCurrent =
-        current != null ? _toDateTime(current['observed_at']) : null;
+    final int? codeFromCurrent = current != null
+        ? _toInt(current['weather_code'])
+        : null;
+    final DateTime? observedFromCurrent = current != null
+        ? _toDateTime(current['observed_at'])
+        : null;
 
     // 2. Daily mapping (daily is an array; safe index 0)
-    final double? minTemperature =
-        firstDaily != null ? _toDouble(firstDaily['min_temperature_c']) : null;
-    final double? maxTemperature =
-        firstDaily != null ? _toDouble(firstDaily['max_temperature_c']) : null;
+    final double? minTemperature = firstDaily != null
+        ? _toDouble(firstDaily['min_temperature_c'])
+        : null;
+    final double? maxTemperature = firstDaily != null
+        ? _toDouble(firstDaily['max_temperature_c'])
+        : null;
     final double? precipProbFromDaily = firstDaily != null
         ? _toDouble(firstDaily['precipitation_probability'])
         : null;
-    final double? precipAmountFromDaily =
-        firstDaily != null ? _toDouble(firstDaily['precipitation_mm']) : null;
+    final double? precipAmountFromDaily = firstDaily != null
+        ? _toDouble(firstDaily['precipitation_mm'])
+        : null;
     final String? condFromDaily = firstDaily?['condition']?.toString();
-    final int? codeFromDaily =
-        firstDaily != null ? _toInt(firstDaily['weather_code']) : null;
+    final int? codeFromDaily = firstDaily != null
+        ? _toInt(firstDaily['weather_code'])
+        : null;
 
     // 3. Points fallback (only when current/daily data is absent)
-    final num? tempFromPoint =
-        firstPoint != null ? _toNum(firstPoint['temperature_c']) : null;
-    final double? humidityFromPoint =
-        firstPoint != null ? _toDouble(firstPoint['humidity_percent']) : null;
-    final double? windSpeedFromPoint =
-        firstPoint != null ? _toDouble(firstPoint['wind_speed_kmh']) : null;
-    final double? precipProbFromPoint = firstPoint != null
-        ? _toDouble(firstPoint['precipitation_probability'])
+    final num? tempFromPoint = nearestPoint != null
+        ? _toNum(nearestPoint['temperature_c'])
         : null;
-    final double? precipAmountFromPoint =
-        firstPoint != null ? _toDouble(firstPoint['precipitation_mm']) : null;
-    final int? codeFromPoint =
-        firstPoint != null ? _toInt(firstPoint['weather_code']) : null;
-    final DateTime? observedFromPoint =
-        firstPoint != null ? _toDateTime(firstPoint['observed_at']) : null;
+    final double? humidityFromPoint = nearestPoint != null
+        ? _toDouble(nearestPoint['humidity_percent'])
+        : null;
+    final double? windSpeedFromPoint = nearestPoint != null
+        ? _toDouble(nearestPoint['wind_speed_kmh'])
+        : null;
+    final double? precipProbFromPoint = nearestPoint != null
+        ? _toDouble(nearestPoint['precipitation_probability'])
+        : null;
+    final double? precipAmountFromPoint = nearestPoint != null
+        ? _toDouble(nearestPoint['precipitation_mm'])
+        : null;
+    final int? codeFromPoint = nearestPoint != null
+        ? _toInt(nearestPoint['weather_code'])
+        : null;
+    final DateTime? observedFromPoint = nearestPoint != null
+        ? _toDateTime(nearestPoint['observed_at'])
+        : null;
 
     // Resolved values
     final num? temperature = tempFromCurrent ?? tempFromPoint;
@@ -138,12 +155,12 @@ class BackendWeatherRepository implements WeatherRepository {
     final DateTime? fetchedAt = _toDateTime(raw['fetched_at']);
 
     // Condition resolution
-    final String? condition = (condFromCurrent != null &&
-            condFromCurrent.isNotEmpty)
+    final String? condition =
+        (condFromCurrent != null && condFromCurrent.isNotEmpty)
         ? condFromCurrent
         : ((condFromDaily != null && condFromDaily.isNotEmpty)
-            ? condFromDaily
-            : null);
+              ? condFromDaily
+              : null);
 
     // Description resolution (independent from is_stale)
     final String description;
@@ -211,6 +228,27 @@ class BackendWeatherRepository implements WeatherRepository {
     throw const WeatherLocationRequiredException();
   }
 
+  static Map? _nearestForecastPoint(List? points, DateTime now) {
+    Map? selected;
+    DateTime? selectedTime;
+    int? closestDistance;
+    for (final point in points ?? const []) {
+      if (point is! Map) continue;
+      final observedAt = _toDateTime(point['observed_at'])?.toUtc();
+      if (observedAt == null) continue;
+      final distance = observedAt.difference(now).inMicroseconds.abs();
+      // Compare instants, not list order; on a tie prefer the earlier forecast.
+      if (closestDistance == null ||
+          distance < closestDistance ||
+          (distance == closestDistance && observedAt.isBefore(selectedTime!))) {
+        selected = point;
+        selectedTime = observedAt;
+        closestDistance = distance;
+      }
+    }
+    return selected;
+  }
+
   static num? _toNum(dynamic value) {
     if (value is num) return value;
     if (value is String) return num.tryParse(value);
@@ -242,15 +280,17 @@ class BackendWeatherRepository implements WeatherRepository {
       if (item is! Map) continue;
       try {
         final map = Map<String, dynamic>.from(item);
-        risks.add(WeatherRisk(
-          riskType: (map['risk_type'] ?? map['riskType'] ?? '').toString(),
-          severity: (map['severity'] ?? 'LOW').toString(),
-          startsAt: _toDateTime(map['starts_at'] ?? map['startsAt']),
-          endsAt: _toDateTime(map['ends_at'] ?? map['endsAt']),
-          message: (map['message'] ?? map['description'] ?? '').toString(),
-          suggestedAction:
-              (map['suggested_action'] ?? map['suggestedAction'])?.toString(),
-        ));
+        risks.add(
+          WeatherRisk(
+            riskType: (map['risk_type'] ?? map['riskType'] ?? '').toString(),
+            severity: (map['severity'] ?? 'LOW').toString(),
+            startsAt: _toDateTime(map['starts_at'] ?? map['startsAt']),
+            endsAt: _toDateTime(map['ends_at'] ?? map['endsAt']),
+            message: (map['message'] ?? map['description'] ?? '').toString(),
+            suggestedAction: (map['suggested_action'] ?? map['suggestedAction'])
+                ?.toString(),
+          ),
+        );
       } catch (_) {
         // Malformed single risk does not crash entire weather response
       }
@@ -354,4 +394,3 @@ class BackendWeatherRepository implements WeatherRepository {
     );
   }
 }
-

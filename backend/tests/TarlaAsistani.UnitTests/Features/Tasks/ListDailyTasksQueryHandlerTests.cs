@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TarlaAsistani.Application.Features.Weather.Services;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -353,7 +354,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now
         };
 
@@ -455,7 +456,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now.AddHours(-6)
         };
 
@@ -573,7 +574,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now
         };
 
@@ -646,7 +647,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now
         };
 
@@ -772,7 +773,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now.AddHours(-8)
         };
 
@@ -830,7 +831,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = fetchedTime
         };
 
@@ -1019,7 +1020,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now.AddHours(-3)
         };
 
@@ -1074,7 +1075,7 @@ public class ListDailyTasksQueryHandlerTests
         {
             FarmId = _farmId,
             Provider = "open_meteo",
-            Payload = JsonSerializer.Serialize(points),
+            Payload = WeatherSnapshotPayload.Serialize(farm.Latitude!.Value, farm.Longitude!.Value, points),
             FetchedAtUtc = now.AddHours(-1)
         };
 
@@ -1113,4 +1114,3 @@ public class ListDailyTasksQueryHandlerTests
         suggestion.StaleReason.Should().Be("Sağlayıcıya ulaşılamadı; son başarılı hava durumu verisi gösteriliyor.");
     }
 }
-
