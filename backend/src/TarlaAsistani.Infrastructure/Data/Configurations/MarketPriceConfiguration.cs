@@ -52,6 +52,11 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                .HasMaxLength(50)
                .IsRequired();
 
+        builder.Property(x => x.PriceType)
+               .HasMaxLength(20)
+               .HasDefaultValue("reference")
+               .IsRequired();
+
         builder.Property(x => x.UpdatedAtUtc)
                .IsRequired();
 
@@ -83,6 +88,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = 1.47m,
                 Unit = "TL/Lt",
                 Source = "EPDK",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -96,6 +102,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = 0.00m,
                 Unit = "TL/Lt",
                 Source = "EPDK",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -109,6 +116,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = -1.72m,
                 Unit = "TL/Ton",
                 Source = "GUBRETAS",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -122,6 +130,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = 0.00m,
                 Unit = "TL/Ton",
                 Source = "GUBRETAS",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -135,6 +144,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = 1.55m,
                 Unit = "TL/Ton",
                 Source = "TURIB",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -148,6 +158,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = -0.61m,
                 Unit = "TL/Ton",
                 Source = "TURIB",
+                PriceType = "reference",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -161,6 +172,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = 0.12m,
                 Unit = "TL",
                 Source = "TCMB",
+                PriceType = "live",
                 UpdatedAtUtc = seedTime
             },
             new MarketPrice
@@ -174,6 +186,7 @@ public class MarketPriceConfiguration : IEntityTypeConfiguration<MarketPrice>
                 ChangePercent = -0.18m,
                 Unit = "TL",
                 Source = "TCMB",
+                PriceType = "live",
                 UpdatedAtUtc = seedTime
             }
         ];

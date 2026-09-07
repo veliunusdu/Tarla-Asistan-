@@ -138,7 +138,11 @@ public static class DependencyInjection
         // 6. Market Data Services & Providers
         services.Configure<StaticMarketDataOptions>(configuration.GetSection("Market:Static"));
         services.AddHttpClient<TcmbMarketDataProvider>();
+        services.AddHttpClient<EpdkFuelMarketDataProvider>();
+        services.AddHttpClient<TuribCropMarketDataProvider>();
         services.AddScoped<IMarketDataProvider, TcmbMarketDataProvider>();
+        services.AddScoped<IMarketDataProvider, EpdkFuelMarketDataProvider>();
+        services.AddScoped<IMarketDataProvider, TuribCropMarketDataProvider>();
         services.AddScoped<IMarketDataProvider, StaticMarketDataProvider>();
         services.AddScoped<MarketPriceSyncService>();
 

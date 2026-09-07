@@ -99,6 +99,27 @@ void main() {
       expect(find.text('●'), findsOneWidget);
     });
 
+    testWidgets('labels reference prices so they are not presented as live', (tester) async {
+      final item = MarketItem(
+        code: 'WHEAT',
+        name: 'Ekmeklik Buğday',
+        category: MarketCategory.crop,
+        price: 9900,
+        previousPrice: 9700,
+        changePercent: 2.06,
+        changeDirection: 'up',
+        unit: 'TL/Ton',
+        iconKey: 'crop_wheat',
+        updatedAtUtc: DateTime.utc(2026, 9, 7),
+        priceType: 'reference',
+      );
+
+      await tester.pumpWidget(MaterialApp(home: MarketItemCard(item: item)));
+
+      expect(find.text('Referans fiyat'), findsOneWidget);
+      expect(find.text('Canlı veri'), findsNothing);
+    });
+
     test('iconForItem returns expected emojis for known keys', () {
       expect(MarketItemCard.iconForItem('fuel_diesel'), equals('⛽'));
       expect(MarketItemCard.iconForItem('fuel_gasoline'), equals('🛢️'));

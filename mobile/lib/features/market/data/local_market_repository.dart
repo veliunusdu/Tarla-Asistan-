@@ -26,6 +26,7 @@ class LocalMarketRepository implements MarketRepository {
       change_direction TEXT NOT NULL,
       unit TEXT NOT NULL,
       icon_key TEXT NOT NULL,
+      price_type TEXT NOT NULL DEFAULT 'reference',
       updated_at_utc TEXT NOT NULL,
       cached_at_utc TEXT NOT NULL
     )

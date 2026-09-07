@@ -53,6 +53,11 @@ public class MarketPrice
     public string Source { get; set; } = null!;
 
     /// <summary>
+    /// Fiyatın niteliği: live, reference veya manual.
+    /// </summary>
+    public string PriceType { get; set; } = "reference";
+
+    /// <summary>
     /// Fiyat verisinin son güncellenme zamanı (UTC).
     /// </summary>
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;

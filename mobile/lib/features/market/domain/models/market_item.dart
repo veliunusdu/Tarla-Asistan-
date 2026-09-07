@@ -15,6 +15,7 @@ class MarketItem {
     required this.unit,
     required this.iconKey,
     required this.updatedAtUtc,
+    this.priceType = 'reference',
   });
 
   /// Kalemin tekil sistem kodu (örn: "DIESEL", "USD_TRY").
@@ -46,6 +47,13 @@ class MarketItem {
 
   /// Verinin son güncellenme zamanı (UTC).
   final DateTime updatedAtUtc;
+
+  /// Fiyatın niteliği: live, reference veya manual.
+  final String priceType;
+
+  bool get isLive => priceType == 'live';
+
+  String get priceTypeLabel => isLive ? 'Canlı veri' : 'Referans fiyat';
 
   /// Fiyatın yükselip yükselmediğini belirtir.
   bool get isUp => changeDirection == 'up';
@@ -84,6 +92,7 @@ class MarketItem {
       iconKey: json['icon_key']?.toString() ?? '',
       updatedAtUtc: DateTime.tryParse(json['updated_at_utc']?.toString() ?? '')?.toUtc() ??
           DateTime.now().toUtc(),
+      priceType: json['price_type']?.toString().toLowerCase() ?? 'reference',
     );
   }
 
@@ -101,6 +110,7 @@ class MarketItem {
       iconKey: map['icon_key']?.toString() ?? '',
       updatedAtUtc: DateTime.tryParse(map['updated_at_utc']?.toString() ?? '')?.toUtc() ??
           DateTime.now().toUtc(),
+      priceType: map['price_type']?.toString().toLowerCase() ?? 'reference',
     );
   }
 
@@ -117,6 +127,7 @@ class MarketItem {
       'unit': unit,
       'icon_key': iconKey,
       'updated_at_utc': updatedAtUtc.toIso8601String(),
+      'price_type': priceType,
       'cached_at_utc': cachedAtUtc ?? DateTime.now().toUtc().toIso8601String(),
     };
   }
@@ -148,7 +159,8 @@ class MarketItem {
           changeDirection == other.changeDirection &&
           unit == other.unit &&
           iconKey == other.iconKey &&
-          updatedAtUtc == other.updatedAtUtc;
+          updatedAtUtc == other.updatedAtUtc &&
+          priceType == other.priceType;
 
   @override
   int get hashCode => Object.hash(
@@ -162,5 +174,6 @@ class MarketItem {
         unit,
         iconKey,
         updatedAtUtc,
+        priceType,
       );
 }

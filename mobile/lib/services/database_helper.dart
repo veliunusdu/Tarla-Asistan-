@@ -198,6 +198,13 @@ class DatabaseHelper implements SyncOperationStore {
         cached_at_utc TEXT NOT NULL
       )
     ''');
+    try {
+      await db.execute(
+        "ALTER TABLE market_cache ADD COLUMN price_type TEXT NOT NULL DEFAULT 'reference'",
+      );
+    } catch (_) {
+      // Column already exists.
+    }
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_market_cache_category ON market_cache(category)',
     );

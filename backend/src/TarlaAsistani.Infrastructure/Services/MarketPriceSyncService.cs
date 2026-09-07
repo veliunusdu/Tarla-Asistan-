@@ -87,6 +87,7 @@ public class MarketPriceSyncService
                     existing.Name = fresh.Name;
                     existing.Unit = fresh.Unit;
                     existing.Source = fresh.Source;
+                    existing.PriceType = fresh.PriceType;
                     existing.UpdatedAtUtc = now;
 
                     if (existing.PreviousPrice > 0)

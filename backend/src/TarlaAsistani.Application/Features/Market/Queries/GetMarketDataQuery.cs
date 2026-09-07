@@ -78,6 +78,7 @@ public class GetMarketDataQueryHandler(
         ChangeDirection = entity.ChangeDirection,
         Unit = entity.Unit,
         IconKey = GenerateIconKey(entity.Category, entity.Code),
+        PriceType = entity.PriceType,
         UpdatedAtUtc = entity.UpdatedAtUtc
     };
 

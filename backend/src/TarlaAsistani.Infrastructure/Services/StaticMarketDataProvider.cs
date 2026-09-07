@@ -89,6 +89,7 @@ public class StaticMarketDataProvider : IMarketDataProvider
             CurrentPrice = price,
             Unit = unit,
             Source = source,
+            PriceType = "reference",
             UpdatedAtUtc = now
         };
     }

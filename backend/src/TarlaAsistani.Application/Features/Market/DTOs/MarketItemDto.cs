@@ -62,6 +62,12 @@ public class MarketItemDto
     public string IconKey { get; init; } = null!;
 
     /// <summary>
+    /// Fiyatın niteliği: live, reference veya manual.
+    /// </summary>
+    [JsonPropertyName("price_type")]
+    public string PriceType { get; init; } = "reference";
+
+    /// <summary>
     /// Fiyat verisinin son güncellenme zamanı (UTC).
     /// </summary>
     [JsonPropertyName("updated_at_utc")]

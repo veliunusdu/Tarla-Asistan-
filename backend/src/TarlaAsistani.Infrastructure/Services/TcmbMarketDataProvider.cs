@@ -76,6 +76,7 @@ public class TcmbMarketDataProvider : IMarketDataProvider
                     CurrentPrice = usdRate,
                     Unit = "TL",
                     Source = "TCMB",
+                    PriceType = "live",
                     UpdatedAtUtc = now
                 });
             }
@@ -96,6 +97,7 @@ public class TcmbMarketDataProvider : IMarketDataProvider
                     CurrentPrice = eurRate,
                     Unit = "TL",
                     Source = "TCMB",
+                    PriceType = "live",
                     UpdatedAtUtc = now
                 });
             }
