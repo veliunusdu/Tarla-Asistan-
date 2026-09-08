@@ -424,7 +424,7 @@ class ApiClient {
       return await http.Response.fromStream(streamed);
     } on TimeoutException {
       throw const ApiException(
-        'Bağlantı zaman aşımına uğradı. İşlem çevrimdışı kuyruğa alındı.',
+        'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.',
         retryable: true,
       );
     } on http.ClientException {

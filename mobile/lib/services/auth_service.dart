@@ -45,9 +45,23 @@ class AuthService {
     await prefs.setString('phone_number', phoneNumber);
   }
 
-  Future<String> authenticateWithFirebase(String idToken) async {
+  Future<String> authenticateWithFirebase(
+    String idToken, {
+    String? firebaseUid,
+  }) async {
     final response = await _post('/auth/firebase', {'id_token': idToken});
-    return _saveSession(response);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('backend_session_uid');
+    final token = await _saveSession(response);
+    if (firebaseUid != null)
+      await prefs.setString('backend_session_uid', firebaseUid);
+    return token;
+  }
+
+  Future<bool> canResumeOffline(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('backend_session_uid') == uid &&
+        (prefs.getString('access_token') ?? '').isNotEmpty;
   }
 
   Future<String?> currentAccessToken() async {
@@ -69,6 +83,7 @@ class AuthService {
 
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('backend_session_uid');
     final refreshToken = prefs.getString('refresh_token');
     if (refreshToken != null && refreshToken.isNotEmpty) {
       try {

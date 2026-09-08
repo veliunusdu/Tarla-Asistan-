@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'firebase_options.dart';
 import 'models/notification_target.dart';
@@ -32,6 +33,7 @@ import 'services/firestore_user_profile_service.dart';
 import 'services/notification_service.dart';
 import 'services/post_login_initializer.dart';
 import 'services/sync_service.dart';
+import 'services/user_error_message.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -115,7 +117,10 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
       forceRefreshTokenProvider: _refreshBackendSession,
     );
     _pendingCaseRepository = const LocalPendingCaseRepository();
-    _pendingCaseSyncService = PendingCaseSyncService(_apiClient, _pendingCaseRepository);
+    _pendingCaseSyncService = PendingCaseSyncService(
+      _apiClient,
+      _pendingCaseRepository,
+    );
     _syncService = SyncService(
       _apiClient,
       onConnectivityRestored: _pendingCaseSyncService.syncPending,
@@ -148,13 +153,29 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
   }
 
   Future<void> _initializeAuthenticatedUser(User user) async {
-    final idToken = await user.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw StateError(
-        'Firebase oturumu doğrulanamadı. Lütfen tekrar giriş yapın.',
+    final canResume = await _backendAuthService.canResumeOffline(user.uid);
+    final connections = await Connectivity().checkConnectivity();
+    final offline = connections.contains(ConnectivityResult.none);
+    try {
+      if (offline && canResume) {
+        await _syncService.initialize();
+        return;
+      }
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        throw StateError(
+          'Firebase oturumu doğrulanamadı. Lütfen tekrar giriş yapın.',
+        );
+      }
+      await _backendAuthService.authenticateWithFirebase(
+        idToken,
+        firebaseUid: user.uid,
       );
+    } catch (error) {
+      if (!canResume || !isTemporaryConnectionFailure(error)) rethrow;
+      await _syncService.initialize();
+      return;
     }
-    await _backendAuthService.authenticateWithFirebase(idToken);
     await _postLoginInitializer.initialize(
       uid: user.uid,
       phoneNumber: user.phoneNumber,
@@ -167,7 +188,10 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
     if (user == null) return null;
     final idToken = await user.getIdToken(true);
     if (idToken == null || idToken.isEmpty) return null;
-    return _backendAuthService.authenticateWithFirebase(idToken);
+    return _backendAuthService.authenticateWithFirebase(
+      idToken,
+      firebaseUid: user.uid,
+    );
   }
 
   Future<void> _finishOnboarding() async {
@@ -285,7 +309,9 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                         );
                       }
                       if (initialization.hasError) {
-                        debugPrint('Authentication initialization error: ${initialization.error}');
+                        debugPrint(
+                          'Authentication initialization error: ${initialization.error}',
+                        );
                         return Scaffold(
                           body: Center(
                             child: Padding(
@@ -293,17 +319,20 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Text(
-                                    'Hesabınız hazırlanamadı. Bağlantınızı kontrol edip tekrar deneyin.',
+                                  Text(
+                                    userErrorMessage(initialization.error),
                                     textAlign: TextAlign.center,
                                   ),
-                                  if (kDebugMode && initialization.error != null) ...[
+                                  if (kDebugMode &&
+                                      initialization.error != null) ...[
                                     const SizedBox(height: 8),
                                     Text(
                                       '${initialization.error}',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Theme.of(context).colorScheme.error,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
                                       ),
                                       textAlign: TextAlign.center,
                                     ),
@@ -348,7 +377,9 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                           apiClient: _apiClient,
                           localRepo: const LocalMarketRepository(),
                         ),
-                        financialRepository: BackendFinancialRepository(apiClient: _apiClient),
+                        financialRepository: BackendFinancialRepository(
+                          apiClient: _apiClient,
+                        ),
                         dailyTaskRepository: BackendDailyTaskRepository(
                           apiClient: _apiClient,
                         ),

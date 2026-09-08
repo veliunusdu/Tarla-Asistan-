@@ -1161,7 +1161,7 @@ void main() {
         },
       );
 
-      testWidgets('refreshNotifier değişince hava durumu yeniden çağrılmaz', (
+      testWidgets('tarla verisi değişince refreshNotifier hava durumunu yeniler', (
         tester,
       ) async {
         int weatherCallCount = 0;
@@ -1190,7 +1190,35 @@ void main() {
         notifier.value++;
         await tester.pumpAndSettle();
 
-        // Hava durumu yeniden çağrılmamış olmalı
+        // Yeni tarla listesi hava seçimini etkileyebileceğinden hava yeniden çağrılır.
+        expect(weatherCallCount, 2);
+      });
+
+      testWidgets('tarla verisi aynıysa refreshNotifier hava durumunu yenilemez', (
+        tester,
+      ) async {
+        int weatherCallCount = 0;
+        final weatherRepo = _CountingWeatherRepo(() {
+          weatherCallCount++;
+          return Future.value(_hava);
+        });
+        final repo = _MutableFakeTarlaRepo([_tarla('t1')]);
+        final notifier = ValueNotifier<int>(0);
+        addTearDown(notifier.dispose);
+
+        await tester.pumpWidget(
+          _wrap(
+            tarlaRepo: repo,
+            weatherRepo: weatherRepo,
+            refreshNotifier: notifier,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(weatherCallCount, 1);
+
+        notifier.value++;
+        await tester.pumpAndSettle();
+
         expect(weatherCallCount, 1);
       });
     });

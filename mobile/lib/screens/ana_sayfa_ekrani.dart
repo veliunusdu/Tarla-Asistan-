@@ -22,6 +22,7 @@ import '../features/weather/domain/weather_summary.dart';
 import '../features/weather/presentation/widgets/weather_card.dart';
 import '../models/faaliyet.dart';
 import '../models/tarla.dart';
+import '../services/user_error_message.dart';
 import '../shared/utils/date_formatter.dart';
 import '../shared/widgets/app_empty_view.dart';
 import '../shared/widgets/app_error_view.dart';
@@ -32,6 +33,11 @@ import 'tarla_detay_ekrani.dart';
 import 'tarla_ekleme_ekrani.dart';
 import 'tarla_konum_duzenleme_ekrani.dart';
 import 'tarla_listesi_ekrani.dart';
+
+String _weatherErrorMessage(Object? error) =>
+    error is WeatherUnavailableException
+    ? error.message
+    : userErrorMessage(error);
 
 // ---------------------------------------------------------------------------
 // Ekran widget'ı
@@ -325,6 +331,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   /// Tarla/görev verisi değiştiğinde çağrılır.
   /// Hava durumu gereksiz yere yeniden istenmez.
   void _yenileTarlaVeFaaliyetler() {
+    final previousWeatherFarms = _weatherFarmSignature();
     setState(() {
       _taskRefreshCounter++;
       final summaryRepo = widget._tarlaRepo is FarmSummaryRepository
@@ -360,8 +367,23 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         _tarlalar,
         _faaliyetler,
       ]).then((r) => (r[0] as List<Tarla>, r[1] as List<Faaliyet>));
+      _tarlalar.then((_) {
+        if (mounted && previousWeatherFarms != _weatherFarmSignature()) {
+          _yenileHava();
+        }
+      }, onError: (Object _) {});
     });
   }
+
+  String _weatherFarmSignature() =>
+      (_tarlalarCache
+              .map(
+                (farm) =>
+                    '${farm.id}|${farm.name}|${farm.latitude}|${farm.longitude}',
+              )
+              .toList()
+            ..sort())
+          .join(';');
 
   void _yenile() {
     _marketRepository?.refreshMarketData();
@@ -591,7 +613,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                     dailyTaskRepository: widget._dailyTaskRepo!,
                     farmId:
                         _selectedTaskFarmId ?? _tarlalarCache.firstOrNull?.id,
-                    tarlaAdi: _selectedTaskFarm?.name ??
+                    tarlaAdi:
+                        _selectedTaskFarm?.name ??
                         _tarlalarCache.firstOrNull?.name,
                     canSelectFarm: _tarlalarCache.length > 1,
                     onFarmTap: _secTaskFarm,
@@ -690,7 +713,9 @@ class _HavaDurumuSection extends StatelessWidget {
                         const SizedBox(height: AppSpacing.sm),
                         const Divider(height: 1),
                         const SizedBox(height: AppSpacing.md),
-                        const AppLoadingView(message: 'Hava durumu yükleniyor…'),
+                        const AppLoadingView(
+                          message: 'Hava durumu yükleniyor…',
+                        ),
                       ],
                     ),
                   ),
@@ -769,8 +794,7 @@ class _HavaDurumuSection extends StatelessWidget {
                         const SizedBox(height: AppSpacing.sm),
                         AppErrorView(
                           title: 'Hava durumu alınamadı',
-                          description:
-                              'İnternet bağlantınızı kontrol edip tekrar deneyin.',
+                          description: _weatherErrorMessage(snapshot.error),
                           onRetry: onRetry,
                         ),
                       ],
@@ -781,8 +805,7 @@ class _HavaDurumuSection extends StatelessWidget {
 
               return AppErrorView(
                 title: 'Hava durumu alınamadı',
-                description:
-                    'İnternet bağlantınızı kontrol edip tekrar deneyin.',
+                description: _weatherErrorMessage(snapshot.error),
                 onRetry: onRetry,
               );
             }
@@ -827,11 +850,7 @@ class _HavaDurumuSection extends StatelessWidget {
           ),
         ),
         if (isSelectable)
-          const Icon(
-            Icons.arrow_drop_down,
-            size: 18,
-            color: AppColors.primary,
-          ),
+          const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.primary),
       ],
     );
 
