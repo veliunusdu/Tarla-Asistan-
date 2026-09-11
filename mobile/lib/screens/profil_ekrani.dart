@@ -18,6 +18,7 @@ class ProfilEkrani extends StatefulWidget {
     this.tarlaRepository,
     this.apiClient,
     this.dailyTaskNotificationService,
+    this.pendingCaseCountProvider,
     this.onLogout,
   });
 
@@ -26,6 +27,7 @@ class ProfilEkrani extends StatefulWidget {
   final TarlaRepository? tarlaRepository;
   final ApiClient? apiClient;
   final DailyTaskNotificationService? dailyTaskNotificationService;
+  final Future<int> Function()? pendingCaseCountProvider;
   final Future<void> Function()? onLogout;
 
   @override
@@ -53,8 +55,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
   Future<void> _loadNotificationPreferences() async {
     final enabled = await _dailyNotificationService.preferences
         .isDailyTasksNotificationEnabled();
-    final time =
-        await _dailyNotificationService.preferences.getReminderTime();
+    final time = await _dailyNotificationService.preferences.getReminderTime();
     if (mounted) {
       setState(() {
         _dailyTasksNotificationEnabled = enabled;
@@ -99,11 +100,35 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
   }
 
   Future<void> _confirmLogout() async {
+    var unsentCaseCount = 0;
+    var countUnavailable = false;
+    if (widget.pendingCaseCountProvider != null) {
+      try {
+        unsentCaseCount = await widget.pendingCaseCountProvider!.call();
+      } catch (_) {
+        countUnavailable = true;
+      }
+    }
+    if (!mounted) return;
+
+    final hasUnsentCases = unsentCaseCount > 0;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Çıkış yapmak istiyor musunuz?'),
-        content: const Text('Bu cihazdaki oturumunuz kapatılacak.'),
+        title: Text(
+          hasUnsentCases || countUnavailable
+              ? 'Gönderilmemiş kayıtlar var'
+              : 'Çıkış yapmak istiyor musunuz?',
+        ),
+        content: Text(
+          hasUnsentCases
+              ? '$unsentCaseCount sorun bildirimi henüz sunucuya gönderilmedi. '
+                    'Çıkış yaparsanız bu kayıtlar ve ekleri cihazdan kalıcı olarak silinecek.'
+              : countUnavailable
+              ? 'Gönderilmemiş kayıtların durumu kontrol edilemedi. Çıkış yaparsanız '
+                    'cihazdaki gönderilmemiş kayıtlar kalıcı olarak silinebilir.'
+              : 'Bu cihazdaki oturumunuz kapatılacak.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -111,7 +136,11 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Çıkış yap'),
+            child: Text(
+              hasUnsentCases || countUnavailable
+                  ? 'Yine de çıkış yap'
+                  : 'Çıkış yap',
+            ),
           ),
         ],
       ),
@@ -121,9 +150,9 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         await widget.onLogout?.call();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Çıkış yapılırken hata: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Çıkış yapılırken hata: $e')));
         }
       }
     }
@@ -177,9 +206,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Bildirim tercihi kaydedilemedi: $e'),
-          ),
+          SnackBar(content: Text('Bildirim tercihi kaydedilemedi: $e')),
         );
       }
     }
@@ -267,7 +294,8 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                     .setDailyTasksNotificationEnabled(val);
                 setState(() => _dailyTasksNotificationEnabled = val);
                 if (val) {
-                  await _dailyNotificationService.scheduleDailySummaryIfNeeded();
+                  await _dailyNotificationService
+                      .scheduleDailySummaryIfNeeded();
                 } else {
                   await _dailyNotificationService.cancelDailyReminder();
                 }
@@ -286,8 +314,9 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
                   initialTime: _dailyReminderTime,
                 );
                 if (picked != null) {
-                  await _dailyNotificationService.preferences
-                      .setReminderTime(picked);
+                  await _dailyNotificationService.preferences.setReminderTime(
+                    picked,
+                  );
                   setState(() => _dailyReminderTime = picked);
                   await _dailyNotificationService.rescheduleDailyReminder();
                 }
@@ -312,8 +341,9 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
           ListTile(
             leading: const Icon(Icons.forum_outlined),
             title: const Text('Sorun Bildirimlerim'),
-            subtitle:
-                const Text('Ziraat mühendisi ile mesajlaşmalar ve vakalar'),
+            subtitle: const Text(
+              'Ziraat mühendisi ile mesajlaşmalar ve vakalar',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.push(

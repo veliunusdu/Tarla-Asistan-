@@ -23,7 +23,9 @@ void main() {
       uploaded_media_id TEXT, created_at_utc TEXT NOT NULL,
       attempt_count INTEGER NOT NULL DEFAULT 0, last_attempt_at_utc TEXT,
       last_error_code INTEGER, state TEXT NOT NULL DEFAULT 'pending')''');
-    await db.execute('CREATE UNIQUE INDEX ux_pending ON pending_case_submissions(user_id, client_operation_id)');
+    await db.execute(
+      'CREATE UNIQUE INDEX ux_pending ON pending_case_submissions(user_id, client_operation_id)',
+    );
   });
 
   tearDown(() => db.close());
@@ -35,8 +37,11 @@ void main() {
     );
 
     final id = await repo.enqueue(
-      farmId: 'farm-a', category: 'DISEASE', title: 'Domates',
-      description: 'Lekeler var', clientOperationId: 'op-a',
+      farmId: 'farm-a',
+      category: 'DISEASE',
+      title: 'Domates',
+      description: 'Lekeler var',
+      clientOperationId: 'op-a',
       imageBytes: Uint8List.fromList([1, 2, 3]),
     );
     final rows = await repo.getPending();
@@ -54,28 +59,86 @@ void main() {
     expect(await File(item.localImagePath!).exists(), isFalse);
   });
 
-  test('does not expose another user queue and rejects duplicate operation', () async {
-    final repo = LocalPendingCaseRepository(
-      databaseProvider: () async => db,
-      userIdProvider: () => 'user-a',
-    );
-    final args = {
-      'farmId': 'farm-a', 'category': 'DISEASE', 'title': 'T',
-      'description': 'D', 'clientOperationId': 'same-op',
-    };
-    await repo.enqueue(
-      farmId: args['farmId']!, category: args['category']!, title: args['title']!,
-      description: args['description']!, clientOperationId: args['clientOperationId']!,
-    );
-    expect(repo.enqueue(
-      farmId: args['farmId']!, category: args['category']!, title: args['title']!,
-      description: args['description']!, clientOperationId: args['clientOperationId']!,
-    ), throwsA(isA<DatabaseException>()));
+  test(
+    'does not expose another user queue and rejects duplicate operation',
+    () async {
+      final repo = LocalPendingCaseRepository(
+        databaseProvider: () async => db,
+        userIdProvider: () => 'user-a',
+      );
+      final args = {
+        'farmId': 'farm-a',
+        'category': 'DISEASE',
+        'title': 'T',
+        'description': 'D',
+        'clientOperationId': 'same-op',
+      };
+      await repo.enqueue(
+        farmId: args['farmId']!,
+        category: args['category']!,
+        title: args['title']!,
+        description: args['description']!,
+        clientOperationId: args['clientOperationId']!,
+      );
+      expect(
+        repo.enqueue(
+          farmId: args['farmId']!,
+          category: args['category']!,
+          title: args['title']!,
+          description: args['description']!,
+          clientOperationId: args['clientOperationId']!,
+        ),
+        throwsA(isA<DatabaseException>()),
+      );
 
-    final otherUserRepo = LocalPendingCaseRepository(
-      databaseProvider: () async => db,
-      userIdProvider: () => 'user-b',
-    );
-    expect(await otherUserRepo.getPending(), isEmpty);
-  });
+      final otherUserRepo = LocalPendingCaseRepository(
+        databaseProvider: () async => db,
+        userIdProvider: () => 'user-b',
+      );
+      expect(await otherUserRepo.getPending(), isEmpty);
+    },
+  );
+
+  test(
+    'counts pending and failed submissions only for the active user',
+    () async {
+      final repo = LocalPendingCaseRepository(
+        databaseProvider: () async => db,
+        userIdProvider: () => 'user-a',
+      );
+      await repo.enqueue(
+        farmId: 'farm-a',
+        category: 'DISEASE',
+        title: 'Pending',
+        description: 'Pending description',
+        clientOperationId: 'pending-op',
+      );
+      await repo.enqueue(
+        farmId: 'farm-a',
+        category: 'DISEASE',
+        title: 'Failed',
+        description: 'Failed description',
+        clientOperationId: 'failed-op',
+      );
+      await db.update(
+        'pending_case_submissions',
+        {'state': PendingCaseState.failed.name},
+        where: 'user_id = ? AND client_operation_id = ?',
+        whereArgs: ['user-a', 'failed-op'],
+      );
+      await db.insert('pending_case_submissions', {
+        'id': 'other-user-case',
+        'user_id': 'user-b',
+        'farm_id': 'farm-b',
+        'category': 'DISEASE',
+        'title': 'Other',
+        'description': 'Other user',
+        'client_operation_id': 'other-op',
+        'created_at_utc': DateTime.utc(2026, 9, 9).toIso8601String(),
+        'state': PendingCaseState.pending.name,
+      });
+
+      expect(await repo.countUnsent(), 2);
+    },
+  );
 }

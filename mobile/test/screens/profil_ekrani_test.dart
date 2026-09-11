@@ -52,6 +52,54 @@ void main() {
     expect(calls, 0);
   });
 
+  testWidgets('warns before logout would delete unsent case submissions', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilEkrani(
+          pendingCaseCountProvider: () async => 2,
+          onLogout: () async => calls++,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Çıkış yap'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gönderilmemiş kayıtlar var'), findsOneWidget);
+    expect(find.textContaining('2 sorun bildirimi'), findsOneWidget);
+    expect(find.text('Yine de çıkış yap'), findsOneWidget);
+
+    await tester.tap(find.text('Vazgeç'));
+    await tester.pumpAndSettle();
+    expect(calls, 0);
+  });
+
+  testWidgets('logs out only after explicit confirmation of unsent data loss', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilEkrani(
+          pendingCaseCountProvider: () async => 1,
+          onLogout: () async => calls++,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Çıkış yap'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Yine de çıkış yap'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+  });
+
   testWidgets('loads account information from the backend repository', (
     tester,
   ) async {

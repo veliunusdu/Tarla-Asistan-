@@ -655,6 +655,14 @@ class DatabaseHelper implements SyncOperationStore {
                   // Queue rows are already removed; cleanup can be retried later.
                 }
               }
+              final audioPath = row['local_audio_path'] as String?;
+              if (audioPath != null) {
+                try {
+                  await File(audioPath).delete();
+                } on FileSystemException {
+                  // Queue rows are already removed; cleanup can be retried later.
+                }
+              }
             }
           } catch (_) {}
         } else {
@@ -686,6 +694,14 @@ class DatabaseHelper implements SyncOperationStore {
             if (path != null) {
               try {
                 await File(path).delete();
+              } on FileSystemException {
+                // Queue rows are already removed; cleanup can be retried later.
+              }
+            }
+            final audioPath = row['local_audio_path'] as String?;
+            if (audioPath != null) {
+              try {
+                await File(audioPath).delete();
               } on FileSystemException {
                 // Queue rows are already removed; cleanup can be retried later.
               }

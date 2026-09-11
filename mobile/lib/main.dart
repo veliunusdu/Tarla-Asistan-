@@ -356,6 +356,8 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                       );
                       return AnaEkran(
                         onLogout: _logout,
+                        pendingCaseCountProvider: () =>
+                            _pendingCaseRepository.countUnsent(),
                         tarlaRepository: tarlaRepo,
                         faaliyetRepository: BackendFaaliyetRepository(
                           apiClient: _apiClient,

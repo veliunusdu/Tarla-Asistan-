@@ -41,6 +41,7 @@ class AnaEkran extends StatefulWidget {
     BackendMarketRepository? marketRepository,
     DailyTaskRepository? dailyTaskRepository,
     FinancialRepository? financialRepository,
+    Future<int> Function()? pendingCaseCountProvider,
     Future<void> Function()? onLogout,
   }) : _tarlaRepo = tarlaRepository,
        _faaliyetRepo = faaliyetRepository,
@@ -54,6 +55,8 @@ class AnaEkran extends StatefulWidget {
        _dailyTaskRepo = dailyTaskRepository,
        _financialRepo = financialRepository,
        // ignore: prefer_initializing_formals
+       _pendingCaseCountProvider = pendingCaseCountProvider,
+       // ignore: prefer_initializing_formals
        _onLogout = onLogout;
 
   final TarlaRepository? _tarlaRepo;
@@ -66,6 +69,7 @@ class AnaEkran extends StatefulWidget {
   final BackendMarketRepository? _marketRepo;
   final DailyTaskRepository? _dailyTaskRepo;
   final FinancialRepository? _financialRepo;
+  final Future<int> Function()? _pendingCaseCountProvider;
   final Future<void> Function()? _onLogout;
 
   DailyTaskRepository? get dailyTaskRepository => _dailyTaskRepo;
@@ -97,7 +101,8 @@ class _AnaEkranState extends State<AnaEkran> {
         dailyTaskRepository: widget._dailyTaskRepo,
         weatherRepository: widget._weatherRepo,
         caseRepository: widget._caseRepo,
-        marketRepository: widget._marketRepo ??
+        marketRepository:
+            widget._marketRepo ??
             (widget._apiClient != null
                 ? BackendMarketRepository(
                     apiClient: widget._apiClient!,
@@ -133,6 +138,7 @@ class _AnaEkranState extends State<AnaEkran> {
         caseRepository: widget._caseRepo,
         tarlaRepository: widget._tarlaRepo,
         apiClient: widget._apiClient,
+        pendingCaseCountProvider: widget._pendingCaseCountProvider,
         onLogout: widget._onLogout,
       ),
     ];
@@ -148,7 +154,8 @@ class _AnaEkranState extends State<AnaEkran> {
 
       final parts = <String>[];
       if (summary.farmCount > 0) parts.add('${summary.farmCount} tarla');
-      if (summary.activityCount > 0) parts.add('${summary.activityCount} iş kaydı');
+      if (summary.activityCount > 0)
+        parts.add('${summary.activityCount} iş kaydı');
       final details = parts.join(' ve ');
 
       final shouldClean = await showDialog<bool>(
@@ -178,7 +185,9 @@ class _AnaEkranState extends State<AnaEkran> {
         await DatabaseHelper.instance.clearOrphanedRecords();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sahipsiz yerel veriler cihazdan temizlendi.')),
+            const SnackBar(
+              content: Text('Sahipsiz yerel veriler cihazdan temizlendi.'),
+            ),
           );
         }
       }

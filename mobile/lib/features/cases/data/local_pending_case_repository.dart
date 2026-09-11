@@ -88,6 +88,18 @@ class LocalPendingCaseRepository {
     return rows.map(PendingCaseSubmission.fromMap).toList();
   }
 
+  Future<int> countUnsent({String? userId}) async {
+    final active = userId ?? _userId;
+    if (active == null || active.isEmpty) return 0;
+    final rows = await (await _database).rawQuery(
+      '''SELECT COUNT(*) AS count
+         FROM pending_case_submissions
+         WHERE user_id = ? AND state IN (?, ?)''',
+      [active, PendingCaseState.pending.name, PendingCaseState.failed.name],
+    );
+    return (rows.firstOrNull?['count'] as num?)?.toInt() ?? 0;
+  }
+
   Future<void> update(PendingCaseSubmission submission) async {
     final db = await _database;
     await db.update(
