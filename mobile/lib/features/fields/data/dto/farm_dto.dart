@@ -205,33 +205,50 @@ class FarmCreateRequestDto {
 
 /// OpenAPI: FarmUpdate request body (PATCH — sparse update)
 ///
-/// Only non-null fields are serialised.  Null means "do not change this
-/// field", not "set this field to null on the server".
+/// Omitted fields are not serialised. Coordinates additionally distinguish an
+/// omitted value from an explicit null so an existing farm location can be
+/// removed.
 class FarmUpdateRequestDto {
+  static const Object _omitted = Object();
+
   const FarmUpdateRequestDto({
     this.name,
-    this.latitude,
-    this.longitude,
+    Object? latitude = _omitted,
+    Object? longitude = _omitted,
     this.sizeInHectares,
     this.irrigationMethod,
     this.soilType,
     this.note,
-  });
+  }) : _latitude = latitude,
+       _longitude = longitude;
 
   final String? name;
-  final double? latitude;
-  final double? longitude;
+  final Object? _latitude;
+  final Object? _longitude;
   final double? sizeInHectares;
   final String? irrigationMethod;
   final String? soilType;
   final String? note;
 
-  /// Returns a map containing only the fields explicitly provided (non-null).
+  double? get latitude =>
+      identical(_latitude, _omitted) ? null : _latitude as double?;
+
+  double? get longitude =>
+      identical(_longitude, _omitted) ? null : _longitude as double?;
+
+  bool get _clearsLocation =>
+      !identical(_latitude, _omitted) &&
+      !identical(_longitude, _omitted) &&
+      latitude == null &&
+      longitude == null;
+
+  /// Returns a map containing only fields explicitly provided by the caller.
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       if (name != null) 'name': name,
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
+      if (!identical(_latitude, _omitted)) 'latitude': latitude,
+      if (!identical(_longitude, _omitted)) 'longitude': longitude,
+      if (_clearsLocation) 'clear_location': true,
       if (sizeInHectares != null) 'size_in_hectares': sizeInHectares,
       if (irrigationMethod != null) 'irrigation_method': irrigationMethod,
       if (soilType != null) 'soil_type': soilType,

@@ -13,5 +13,6 @@ public record UpdateFarmCommand(
     double? SizeInHectares = null,
     IrrigationMethod? IrrigationMethod = null,
     string? SoilType = null,
-    string? Note = null
+    string? Note = null,
+    bool ClearLocation = false
 ) : IRequest<FarmMutationResultDto?>;

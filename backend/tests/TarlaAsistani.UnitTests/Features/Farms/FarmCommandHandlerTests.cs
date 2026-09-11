@@ -107,6 +107,32 @@ public class UpdateFarmCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenClearLocationRequested_ShouldRemoveCoordinates()
+    {
+        var ownerId = Guid.NewGuid();
+        var farm = new Farm
+        {
+            Id = Guid.NewGuid(),
+            OwnerId = ownerId,
+            Name = "Konumlu Tarla",
+            Latitude = 38.42,
+            Longitude = 27.14
+        };
+        var db = new MockDbContextBuilder().WithFarms(farm).Build();
+        var handler = new UpdateFarmCommandHandler(db);
+
+        var result = await handler.Handle(
+            new UpdateFarmCommand(farm.Id, ownerId, ClearLocation: true),
+            CancellationToken.None);
+
+        result.Should().NotBeNull();
+        farm.Latitude.Should().BeNull();
+        farm.Longitude.Should().BeNull();
+        result!.Farm.Latitude.Should().BeNull();
+        result.Farm.Longitude.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Handle_WhenFarmDoesNotBelongToUser_ShouldReturnNull()
     {
         // Arrange

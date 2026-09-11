@@ -113,6 +113,48 @@ public class FarmEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     }
 
     [Fact]
+    public async Task UpdateFarm_WithClearLocation_ShouldPersistNullCoordinates()
+    {
+        var ownerId = Guid.NewGuid();
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/v1/farms",
+            new CreateFarmRequest(
+                OwnerId: ownerId,
+                Name: "Konumu Kaldırılacak Tarla",
+                Latitude: 38.42,
+                Longitude: 27.14,
+                SizeInHectares: 2.5,
+                IrrigationMethod: null,
+                InitialCropType: CropType.Wheat,
+                InitialPlantedAt: new DateOnly(2026, 3, 15)),
+            CustomWebApplicationFactory.JsonOptions);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResponse.Content.ReadFromJsonAsync<Dictionary<string, Guid>>(
+            CustomWebApplicationFactory.JsonOptions);
+
+        var updateResponse = await _client.PatchAsJsonAsync(
+            $"/api/v1/farms/{created!["id"]}",
+            new UpdateFarmRequest(
+                UserId: ownerId,
+                Name: null,
+                Latitude: null,
+                Longitude: null,
+                SizeInHectares: null,
+                IrrigationMethod: null,
+                SoilType: null,
+                Note: null,
+                ClearLocation: true),
+            CustomWebApplicationFactory.JsonOptions);
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await updateResponse.Content.ReadFromJsonAsync<FarmMutationResultDto>(
+            CustomWebApplicationFactory.JsonOptions);
+        result.Should().NotBeNull();
+        result!.Farm.Latitude.Should().BeNull();
+        result.Farm.Longitude.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ListFarms_WhenFarmerQueries_ShouldOnlyReturnFarmsOwnedByFarmer()
     {
         // 1. Create two farms for farmer A, one for farmer B

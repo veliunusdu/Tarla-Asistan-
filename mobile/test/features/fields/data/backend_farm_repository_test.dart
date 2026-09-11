@@ -249,6 +249,27 @@ void main() {
       expect(result.farm.name, 'Test Tarla');
       client.close();
     });
+
+    test('sends explicit null coordinates to remove farm location', () async {
+      late Map<String, dynamic> capturedBody;
+      final client = _clientWith((request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return _json(_mutationJson, 200);
+      });
+      final repo = BackendFarmRepository(apiClient: client);
+
+      await repo.updateFarm(
+        'farm-uuid-1',
+        const FarmUpdateRequestDto(latitude: null, longitude: null),
+      );
+
+      expect(capturedBody, {
+        'latitude': null,
+        'longitude': null,
+        'clear_location': true,
+      });
+      client.close();
+    });
   });
 
   // -------------------------------------------------------------------------

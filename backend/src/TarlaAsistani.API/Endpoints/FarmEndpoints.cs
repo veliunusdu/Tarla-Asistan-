@@ -147,7 +147,8 @@ public static class FarmEndpoints
                 req.SizeInHectares,
                 req.IrrigationMethod,
                 req.SoilType,
-                req.Note
+                req.Note,
+                req.ClearLocation
             );
 
             var validationResult = await validator.ValidateAsync(command);
@@ -231,5 +232,6 @@ public record UpdateFarmRequest(
     double? SizeInHectares,
     IrrigationMethod? IrrigationMethod,
     string? SoilType,
-    string? Note
+    string? Note,
+    bool ClearLocation = false
 );

@@ -47,14 +47,22 @@ public class UpdateFarmCommandHandler : IRequestHandler<UpdateFarmCommand, FarmM
             farm.Name = trimmedName;
         }
 
-        if (request.Latitude.HasValue)
+        if (request.ClearLocation)
         {
-            farm.Latitude = request.Latitude.Value;
+            farm.Latitude = null;
+            farm.Longitude = null;
         }
-
-        if (request.Longitude.HasValue)
+        else
         {
-            farm.Longitude = request.Longitude.Value;
+            if (request.Latitude.HasValue)
+            {
+                farm.Latitude = request.Latitude.Value;
+            }
+
+            if (request.Longitude.HasValue)
+            {
+                farm.Longitude = request.Longitude.Value;
+            }
         }
 
         if (request.SizeInHectares.HasValue)

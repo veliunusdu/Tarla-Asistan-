@@ -29,6 +29,10 @@ public class UpdateFarmCommandValidator : AbstractValidator<UpdateFarmCommand>
                 .InclusiveBetween(-180.0, 180.0).WithMessage("Longitude must be between -180 and 180.");
         });
 
+        RuleFor(v => v)
+            .Must(v => !v.ClearLocation || (!v.Latitude.HasValue && !v.Longitude.HasValue))
+            .WithMessage("Coordinates cannot be supplied when clearing the farm location.");
+
         When(v => v.SizeInHectares.HasValue, () =>
         {
             RuleFor(v => v.SizeInHectares!.Value)

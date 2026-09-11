@@ -297,5 +297,15 @@ void main() {
       const dto = FarmUpdateRequestDto();
       expect(dto.toJson(), isEmpty);
     });
+
+    test('serialises explicit null coordinates to remove farm location', () {
+      const dto = FarmUpdateRequestDto(latitude: null, longitude: null);
+
+      expect(dto.toJson(), {
+        'latitude': null,
+        'longitude': null,
+        'clear_location': true,
+      });
+    });
   });
 }
