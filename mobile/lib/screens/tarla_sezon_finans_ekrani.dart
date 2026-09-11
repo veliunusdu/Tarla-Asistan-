@@ -57,8 +57,7 @@ class _TarlaSezonFinansEkraniState extends State<TarlaSezonFinansEkrani> {
     ExpenseCategory.labor => 'İşçilik',
     _ => 'Diğer',
   };
-  Future<void> refresh() =>
-      controller.refresh(widget.farmId, selectedPeriodId);
+  Future<void> refresh() => controller.refresh(widget.farmId, selectedPeriodId);
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -188,10 +187,16 @@ class _TarlaSezonFinansEkraniState extends State<TarlaSezonFinansEkrani> {
                 '${x.harvestQuantity} ${x.unit} • ${money(x.totalAmount)}',
               ),
               subtitle: Text('${money(x.unitPrice)} / ${x.unit}'),
-            trailing: PopupMenuButton<String>(
-              onSelected: (v) { if (v == 'edit') _editSale(x); if (v == 'delete') _deleteSale(x); },
-              itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Düzenle')), PopupMenuItem(value: 'delete', child: Text('Sil'))],
-            ),
+              trailing: PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'edit') _editSale(x);
+                  if (v == 'delete') _deleteSale(x);
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Düzenle')),
+                  PopupMenuItem(value: 'delete', child: Text('Sil')),
+                ],
+              ),
             ),
           ),
         ),
@@ -271,7 +276,7 @@ class _TarlaSezonFinansEkraniState extends State<TarlaSezonFinansEkrani> {
       builder: (_) => _SaleForm(
         repository: widget.repository,
         farmId: widget.farmId,
-        periodId: widget.cropPeriodId,
+        periodId: selectedPeriodId,
       ),
     );
     if (ok == true) refresh();

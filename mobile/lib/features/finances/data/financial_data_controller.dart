@@ -10,8 +10,10 @@ class FinancialDataController extends ChangeNotifier {
   FinancialSummaryDto? summary;
   List<ExpenseDto> expenses = const [];
   List<CropSaleDto> sales = const [];
+  int _loadRequestId = 0;
 
   Future<void> load(String farmId, String periodId) async {
+    final requestId = ++_loadRequestId;
     isLoading = true;
     error = null;
     notifyListeners();
@@ -21,14 +23,19 @@ class FinancialDataController extends ChangeNotifier {
         repository.listExpenses(farmId, periodId),
         repository.listSales(farmId, periodId),
       ]);
+      if (requestId != _loadRequestId) return;
       summary = result[0] as FinancialSummaryDto;
       expenses = result[1] as List<ExpenseDto>;
       sales = result[2] as List<CropSaleDto>;
     } catch (e) {
+      if (requestId != _loadRequestId) return;
       error = e.toString();
+    } finally {
+      if (requestId == _loadRequestId) {
+        isLoading = false;
+        notifyListeners();
+      }
     }
-    isLoading = false;
-    notifyListeners();
   }
 
   Future<void> refresh(String farmId, String periodId) =>
