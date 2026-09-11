@@ -38,7 +38,11 @@ class FakeFaaliyetRepo implements FaaliyetRepository {
 
 class FakeWeatherRepo implements WeatherRepository {
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) async => const WeatherSummary(
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async => const WeatherSummary(
         temperature: 24,
         description: 'Güneşli',
       );

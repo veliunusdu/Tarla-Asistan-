@@ -28,7 +28,11 @@ class _FakeTarlaRepo implements TarlaRepository {
 class _FakeWeatherRepo implements WeatherRepository {
   const _FakeWeatherRepo();
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) async =>
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async =>
       const WeatherSummary(temperature: 24, description: 'Güneşli');
 }
 

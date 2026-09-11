@@ -11,7 +11,11 @@ class UnavailableWeatherRepository implements WeatherRepository {
   const UnavailableWeatherRepository();
 
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) async {
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async {
     throw Exception('Hava durumu şu anda alınamıyor.');
   }
 }

@@ -263,6 +263,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     final requestId = ++_weatherRequestId;
     final summary = await widget._weatherRepo.getWeather(
       farmId: selectedFarm.id,
+      latitude: selectedFarm.latitude,
+      longitude: selectedFarm.longitude,
     );
 
     if (_weatherRequestId != requestId ||
@@ -278,7 +280,11 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     int requestId,
   ) async {
     _weatherTarlaName = tarla.name;
-    final summary = await widget._weatherRepo.getWeather(farmId: tarla.id);
+    final summary = await widget._weatherRepo.getWeather(
+      farmId: tarla.id,
+      latitude: tarla.latitude,
+      longitude: tarla.longitude,
+    );
     if (!mounted ||
         _weatherRequestId != requestId ||
         _selectedWeatherFarmId != tarla.id) {

@@ -36,18 +36,33 @@ class BackendWeatherRepository implements WeatherRepository {
   final LocalWeatherRepository _localRepo;
 
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) async {
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async {
     String? targetFarmId = farmId ?? _farmId;
+    var targetLatitude = latitude;
+    var targetLongitude = longitude;
     final Map<String, dynamic> raw;
     try {
-      targetFarmId ??= await _findFirstFarmId();
+      if (targetFarmId == null) {
+        final target = await _findFirstFarm();
+        targetFarmId = target.id;
+        targetLatitude = target.latitude;
+        targetLongitude = target.longitude;
+      }
       raw = await _client.getJson('farms/$targetFarmId/weather');
     } on ApiException catch (error) {
       if (error.statusCode == 422) {
         throw const WeatherLocationRequiredException();
       }
       if (error.statusCode == 503 || error.retryable) {
-        final fallback = await _getCachedFallback(targetFarmId);
+        final fallback = await _getCachedFallback(
+          targetFarmId,
+          latitude: targetLatitude,
+          longitude: targetLongitude,
+        );
         if (fallback != null) return fallback;
       }
       if (error.statusCode == 503) {
@@ -58,7 +73,11 @@ class BackendWeatherRepository implements WeatherRepository {
       if (e is WeatherLocationRequiredException) {
         rethrow;
       }
-      final fallback = await _getCachedFallback(targetFarmId);
+      final fallback = await _getCachedFallback(
+        targetFarmId,
+        latitude: targetLatitude,
+        longitude: targetLongitude,
+      );
       if (fallback != null) return fallback;
       rethrow;
     }
@@ -206,11 +225,17 @@ class BackendWeatherRepository implements WeatherRepository {
       fetchedAt: fetchedAt,
     );
 
-    await _localRepo.cacheWeather(farmId: targetFarmId, weather: result);
+    await _localRepo.cacheWeather(
+      farmId: targetFarmId,
+      latitude: targetLatitude,
+      longitude: targetLongitude,
+      weather: result,
+    );
     return result;
   }
 
-  Future<String> _findFirstFarmId() async {
+  Future<({String id, double latitude, double longitude})>
+  _findFirstFarm() async {
     final items = await _client.getJsonList('farms?limit=50&offset=0');
     if (items.isEmpty) {
       throw const WeatherLocationRequiredException();
@@ -218,11 +243,13 @@ class BackendWeatherRepository implements WeatherRepository {
     for (final item in items) {
       if (item is! Map) continue;
       final id = item['id'];
+      final latitude = _toDouble(item['latitude']);
+      final longitude = _toDouble(item['longitude']);
       if (id is String &&
           id.isNotEmpty &&
-          item['latitude'] != null &&
-          item['longitude'] != null) {
-        return id;
+          latitude != null &&
+          longitude != null) {
+        return (id: id, latitude: latitude, longitude: longitude);
       }
     }
     throw const WeatherLocationRequiredException();
@@ -370,8 +397,16 @@ class BackendWeatherRepository implements WeatherRepository {
     return '';
   }
 
-  Future<WeatherSummary?> _getCachedFallback(String? farmId) async {
-    final cached = await _localRepo.getCachedWeather(farmId: farmId);
+  Future<WeatherSummary?> _getCachedFallback(
+    String? farmId, {
+    double? latitude,
+    double? longitude,
+  }) async {
+    final cached = await _localRepo.getCachedWeather(
+      farmId: farmId,
+      latitude: latitude,
+      longitude: longitude,
+    );
     if (cached == null) return null;
     return WeatherSummary(
       temperature: cached.temperature,

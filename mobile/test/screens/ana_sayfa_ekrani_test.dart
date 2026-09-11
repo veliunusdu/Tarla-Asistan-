@@ -53,7 +53,11 @@ class FakeWeatherRepository implements WeatherRepository {
   final Future<WeatherSummary> _future;
 
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) => _future;
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) => _future;
 }
 
 class FakeFarmSummaryTarlaRepository
@@ -1318,6 +1322,32 @@ void main() {
       );
 
       testWidgets(
+        'hava isteğine seçilen tarlanın güncel koordinatlarını iletir',
+        (tester) async {
+          final tarla = Tarla(
+            id: 'a',
+            name: 'Tarla A',
+            latitude: 38.4,
+            longitude: 27.1,
+            size: 10,
+          );
+          final repo = FakeTarlaRepository(Future.value([tarla]));
+          final weatherRepo = _LocationValidatingWeatherRepo(
+            expectedLatitude: 38.4,
+            expectedLongitude: 27.1,
+          );
+
+          await tester.pumpWidget(
+            _wrap(tarlaRepo: repo, weatherRepo: weatherRepo),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.textContaining('22°C'), findsOneWidget);
+          expect(find.text('Hava durumu alınamadı'), findsNothing);
+        },
+      );
+
+      testWidgets(
         'Senaryo 3: Refresh seçimi korur - Tarla B seçildikten sonra refresh Tarla B olarak kalır',
         (tester) async {
           tester.view.physicalSize = const Size(800, 1600);
@@ -1682,7 +1712,11 @@ class _CountingWeatherRepo implements WeatherRepository {
   final Future<WeatherSummary> Function() _fn;
 
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) => _fn();
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) => _fn();
 }
 
 class _RecordingWeatherRepo implements WeatherRepository {
@@ -1691,9 +1725,35 @@ class _RecordingWeatherRepo implements WeatherRepository {
   final List<String?> requestedFarmIds = [];
 
   @override
-  Future<WeatherSummary> getWeather({String? farmId}) {
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) {
     requestedFarmIds.add(farmId);
     return _fn(farmId);
+  }
+}
+
+class _LocationValidatingWeatherRepo implements WeatherRepository {
+  const _LocationValidatingWeatherRepo({
+    required this.expectedLatitude,
+    required this.expectedLongitude,
+  });
+
+  final double expectedLatitude;
+  final double expectedLongitude;
+
+  @override
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async {
+    if (latitude != expectedLatitude || longitude != expectedLongitude) {
+      throw Exception('Yanlış tarla konumu');
+    }
+    return const WeatherSummary(temperature: 22, description: 'Açık');
   }
 }
 

@@ -17,13 +17,19 @@ class FakeLocalWeatherRepository extends LocalWeatherRepository {
   String? savedFarmId;
 
   @override
-  Future<WeatherSummary?> getCachedWeather({String? farmId}) async {
+  Future<WeatherSummary?> getCachedWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async {
     return cachedWeather;
   }
 
   @override
   Future<void> cacheWeather({
     String? farmId,
+    double? latitude,
+    double? longitude,
     required WeatherSummary weather,
   }) async {
     savedFarmId = farmId;
@@ -398,6 +404,45 @@ void main() {
         expect(summary.isStale, isTrue);
         expect(summary.staleReason, isNotNull);
         client.close();
+      },
+    );
+
+    test(
+      'does not use cached weather from the previous location after a farm moves',
+      () async {
+        final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+        addTearDown(db.close);
+        final local = LocalWeatherRepository(databaseProvider: () async => db);
+        await local.cacheWeather(
+          farmId: 'farm-moved',
+          latitude: 38.4237,
+          longitude: 27.1428,
+          weather: const WeatherSummary(
+            temperature: 31,
+            description: 'Eski konum',
+          ),
+        );
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            '{"detail":"Hava durumu şu anda alınamıyor."}',
+            503,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        addTearDown(client.close);
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          localRepo: local,
+        );
+
+        await expectLater(
+          repo.getWeather(
+            farmId: 'farm-moved',
+            latitude: 39.9208,
+            longitude: 32.8541,
+          ),
+          throwsA(isA<WeatherUnavailableException>()),
+        );
       },
     );
 

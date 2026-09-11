@@ -6,7 +6,7 @@ import '../domain/weather_summary.dart';
 
 class LocalWeatherRepository {
   const LocalWeatherRepository({Future<Database> Function()? databaseProvider})
-      : _dbProvider = databaseProvider;
+    : _dbProvider = databaseProvider;
 
   final Future<Database> Function()? _dbProvider;
 
@@ -18,13 +18,16 @@ class LocalWeatherRepository {
 
   static const String tableName = 'weather_cache';
 
-  static const String sqlCreateTable = '''
+  static const String sqlCreateTable =
+      '''
     CREATE TABLE IF NOT EXISTS $tableName (
       farm_id TEXT PRIMARY KEY,
       temperature INTEGER,
       description TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL,
-      payload_json TEXT
+      payload_json TEXT,
+      latitude REAL,
+      longitude REAL
     )
   ''';
 
@@ -36,12 +39,26 @@ class LocalWeatherRepository {
       } catch (_) {
         // Column already exists or table was just created with it
       }
+      try {
+        await db.execute('ALTER TABLE $tableName ADD COLUMN latitude REAL');
+      } catch (_) {
+        // Column already exists or table was just created with it
+      }
+      try {
+        await db.execute('ALTER TABLE $tableName ADD COLUMN longitude REAL');
+      } catch (_) {
+        // Column already exists or table was just created with it
+      }
     } catch (e) {
       debugPrint('LocalWeatherRepository: _ensureTable error: $e');
     }
   }
 
-  Future<WeatherSummary?> getCachedWeather({String? farmId}) async {
+  Future<WeatherSummary?> getCachedWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  }) async {
     final key = farmId ?? 'default';
     try {
       final db = await _database;
@@ -57,6 +74,18 @@ class LocalWeatherRepository {
       if (maps.isEmpty) return null;
 
       final row = maps.first;
+      if (latitude != null || longitude != null) {
+        final cachedLatitude = (row['latitude'] as num?)?.toDouble();
+        final cachedLongitude = (row['longitude'] as num?)?.toDouble();
+        if (latitude == null ||
+            longitude == null ||
+            cachedLatitude == null ||
+            cachedLongitude == null ||
+            (cachedLatitude - latitude).abs() > 0.000001 ||
+            (cachedLongitude - longitude).abs() > 0.000001) {
+          return null;
+        }
+      }
       final payloadJson = row['payload_json'] as String?;
       if (payloadJson != null && payloadJson.isNotEmpty) {
         try {
@@ -81,23 +110,26 @@ class LocalWeatherRepository {
     }
   }
 
-  Future<void> cacheWeather({String? farmId, required WeatherSummary weather}) async {
+  Future<void> cacheWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+    required WeatherSummary weather,
+  }) async {
     final key = farmId ?? 'default';
     try {
       final db = await _database;
       await _ensureTable(db);
 
-      await db.insert(
-        tableName,
-        {
-          'farm_id': key,
-          'temperature': weather.temperature?.round() ?? 0,
-          'description': weather.description,
-          'updated_at_utc': DateTime.now().toUtc().toIso8601String(),
-          'payload_json': jsonEncode(weather.toJson()),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert(tableName, {
+        'farm_id': key,
+        'temperature': weather.temperature?.round() ?? 0,
+        'description': weather.description,
+        'updated_at_utc': DateTime.now().toUtc().toIso8601String(),
+        'payload_json': jsonEncode(weather.toJson()),
+        'latitude': latitude,
+        'longitude': longitude,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     } catch (e) {
       debugPrint('LocalWeatherRepository: cacheWeather error: $e');
     }

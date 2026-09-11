@@ -1,5 +1,9 @@
 import '../domain/weather_summary.dart';
 
 abstract interface class WeatherRepository {
-  Future<WeatherSummary> getWeather({String? farmId});
+  Future<WeatherSummary> getWeather({
+    String? farmId,
+    double? latitude,
+    double? longitude,
+  });
 }
