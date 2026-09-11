@@ -8,5 +8,9 @@
     "rootDir": ".",
     "outDir": ".test-build"
   },
-  "include": ["lib/api.ts", "lib/auth.ts"]
+  "include": [
+    "lib/api.ts",
+    "lib/auth.ts",
+    "lib/latest-request-guard.ts"
+  ]
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -20,6 +20,7 @@ import {
   type AuthSession,
   type User,
 } from "@/lib/auth";
+import { LatestRequestGuard } from "@/lib/latest-request-guard";
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
   OPEN: "Yeni",
@@ -45,6 +46,8 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<CaseStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const caseRequests = useRef<LatestRequestGuard | null>(null);
+  caseRequests.current ??= new LatestRequestGuard();
 
   useEffect(() => {
     const session = getSession();
@@ -63,12 +66,28 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
+    const requestGuard = caseRequests.current!;
+    const requestId = requestGuard.begin();
     setLoading(true);
     setError("");
     fetchCases(filter || undefined)
-      .then((result) => setCases(result.items))
-      .catch((err) => setError(err instanceof Error ? err.message : "Vakalar yüklenemedi."))
-      .finally(() => setLoading(false));
+      .then((result) => {
+        if (requestGuard.isCurrent(requestId)) {
+          setCases(result.items);
+        }
+      })
+      .catch((err) => {
+        if (requestGuard.isCurrent(requestId)) {
+          setError(err instanceof Error ? err.message : "Vakalar yüklenemedi.");
+        }
+      })
+      .finally(() => {
+        if (requestGuard.isCurrent(requestId)) {
+          setLoading(false);
+        }
+      });
+
+    return () => requestGuard.invalidate(requestId);
   }, [filter, user]);
 
   if (!user) return <main className="loading-screen">Oturum doğrulanıyor…</main>;
