@@ -427,4 +427,34 @@ public class WeatherApiWeatherProviderTests : IDisposable
         batchResult[0].Current!.TemperatureC.Should().Be(28.5);
         batchResult[1].Current!.TemperatureC.Should().Be(28.5);
     }
+
+    [Fact]
+    public async Task GetWeatherAsync_RequestsConfiguredSevenDays()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Weather:WeatherApiKey"] = "test-api-key",
+                ["Weather:ForecastDays"] = "7"
+            })
+            .Build();
+
+        var handler = new MockHttpMessageHandler(req =>
+        {
+            capturedRequest = req;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(SampleWeatherApiResponse)
+            };
+        });
+
+        var client = new HttpClient(handler);
+        var provider = new WeatherApiWeatherProvider(client, config);
+
+        await provider.GetWeatherAsync(37.87, 32.48);
+
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.RequestUri!.ToString().Should().Contain("days=7");
+    }
 }

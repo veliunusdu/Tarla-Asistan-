@@ -38,48 +38,55 @@ class WeatherCard extends StatelessWidget {
       weather.weatherCode,
       weather.condition ?? weather.description,
     );
-    final tempStr = WeatherPresentationHelper.formatTemperature(weather.temperature);
-    final desc = WeatherPresentationHelper.capitalizeDescription(weather.description);
+    final tempStr = WeatherPresentationHelper.formatTemperature(
+      weather.temperature,
+    );
+    final desc = WeatherPresentationHelper.capitalizeDescription(
+      weather.description,
+    );
 
-    final feelsLikeStr = WeatherPresentationHelper.formatFeelsLike(weather.feelsLike);
-    final humidityStr = WeatherPresentationHelper.formatHumidity(weather.humidity);
-    final windStr = WeatherPresentationHelper.formatWind(weather.windSpeed, weather.windGust);
-    final minMaxStr = WeatherPresentationHelper.formatMinMax(weather.minTemperature, weather.maxTemperature);
-    final precipStr = WeatherPresentationHelper.formatPrecipitation(weather.precipitationProbability);
+    final feelsLikeStr = WeatherPresentationHelper.formatFeelsLike(
+      weather.feelsLike,
+    );
+    final humidityStr = WeatherPresentationHelper.formatHumidity(
+      weather.humidity,
+    );
+    final windStr = WeatherPresentationHelper.formatWind(
+      weather.windSpeed,
+      weather.windGust,
+    );
+    final minMaxStr = WeatherPresentationHelper.formatMinMax(
+      weather.minTemperature,
+      weather.maxTemperature,
+    );
+    final precipStr = WeatherPresentationHelper.formatPrecipitation(
+      weather.precipitationProbability,
+    );
 
     final metrics = <Widget>[];
     if (feelsLikeStr != null) {
-      metrics.add(_MetricItem(
-        icon: Icons.thermostat_outlined,
-        text: feelsLikeStr,
-      ));
+      metrics.add(
+        _MetricItem(icon: Icons.thermostat_outlined, text: feelsLikeStr),
+      );
     }
     if (humidityStr != null) {
-      metrics.add(_MetricItem(
-        icon: Icons.water_drop_outlined,
-        text: humidityStr,
-      ));
+      metrics.add(
+        _MetricItem(icon: Icons.water_drop_outlined, text: humidityStr),
+      );
     }
     if (windStr != null) {
-      metrics.add(_MetricItem(
-        icon: Icons.air,
-        text: windStr,
-      ));
+      metrics.add(_MetricItem(icon: Icons.air, text: windStr));
     }
     if (minMaxStr != null) {
-      metrics.add(_MetricItem(
-        icon: Icons.swap_vert,
-        text: minMaxStr,
-      ));
+      metrics.add(_MetricItem(icon: Icons.swap_vert, text: minMaxStr));
     }
     if (precipStr != null) {
-      metrics.add(_MetricItem(
-        icon: Icons.grain,
-        text: precipStr,
-      ));
+      metrics.add(_MetricItem(icon: Icons.grain, text: precipStr));
     }
 
-    final sortedRisks = WeatherPresentationHelper.sortRisksBySeverity(weather.risks);
+    final sortedRisks = WeatherPresentationHelper.sortRisksBySeverity(
+      weather.risks,
+    );
 
     return Card(
       child: Padding(
@@ -132,11 +139,7 @@ class WeatherCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: iconColor,
-                  size: 42,
-                ),
+                Icon(icon, color: iconColor, size: 42),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
@@ -188,12 +191,30 @@ class WeatherCard extends StatelessWidget {
               ),
             ],
 
+            // ── 7 Günlük Tahmin ──────────────────────────────────────────
+            if (weather.dailyForecasts.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              const Divider(height: 1),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                '7 Günlük Tahmin',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              _DailyForecastList(forecasts: weather.dailyForecasts),
+            ],
+
             // ── Hava Durumu Uyarıları (Risks) ──────────────────────────────
             if (sortedRisks.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.sm),
               const Divider(height: 1),
               const SizedBox(height: AppSpacing.sm),
-              ...sortedRisks.take(2).map(
+              ...sortedRisks
+                  .take(2)
+                  .map(
                     (risk) => Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                       child: _WeatherRiskItem(risk: risk),
@@ -258,7 +279,10 @@ class _WeatherRiskItem extends StatelessWidget {
     final icon = WeatherPresentationHelper.getRiskIcon(risk.riskType);
     final color = WeatherPresentationHelper.getRiskSeverityColor(risk.severity);
     final label = WeatherPresentationHelper.getRiskSeverityLabel(risk.severity);
-    final timing = WeatherPresentationHelper.formatRiskTiming(risk.startsAt, risk.endsAt);
+    final timing = WeatherPresentationHelper.formatRiskTiming(
+      risk.startsAt,
+      risk.endsAt,
+    );
     final hasAction =
         risk.suggestedAction != null && risk.suggestedAction!.trim().isNotEmpty;
 
@@ -266,10 +290,7 @@ class _WeatherRiskItem extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: color.withValues(alpha: 0.25),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
       ),
       padding: const EdgeInsets.all(AppSpacing.sm),
       child: Column(
@@ -277,11 +298,7 @@ class _WeatherRiskItem extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: color,
-              ),
+              Icon(icon, size: 18, color: color),
               const SizedBox(width: AppSpacing.xs),
               Expanded(
                 child: Text(
@@ -350,10 +367,7 @@ class _WeatherRiskItem extends StatelessWidget {
 }
 
 class _RiskSeverityBadge extends StatelessWidget {
-  const _RiskSeverityBadge({
-    required this.label,
-    required this.color,
-  });
+  const _RiskSeverityBadge({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -380,10 +394,7 @@ class _RiskSeverityBadge extends StatelessWidget {
 }
 
 class _MetricItem extends StatelessWidget {
-  const _MetricItem({
-    required this.icon,
-    required this.text,
-  });
+  const _MetricItem({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
@@ -408,6 +419,160 @@ class _MetricItem extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DailyForecastList extends StatelessWidget {
+  const _DailyForecastList({required this.forecasts});
+
+  final List<DailyWeatherForecast> forecasts;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: forecasts.map((forecast) {
+          return Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.xs),
+            child: _DailyForecastItem(forecast: forecast),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _DailyForecastItem extends StatelessWidget {
+  const _DailyForecastItem({required this.forecast});
+
+  final DailyWeatherForecast forecast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dayName = WeatherPresentationHelper.formatDayName(forecast.date);
+    final icon = WeatherPresentationHelper.getWeatherIcon(
+      forecast.weatherCode,
+      forecast.condition,
+    );
+    final iconColor = WeatherPresentationHelper.getWeatherIconColor(
+      forecast.weatherCode,
+      forecast.condition,
+    );
+
+    final minTempStr = WeatherPresentationHelper.formatDailyTemperature(
+      forecast.minTemperature,
+    );
+    final maxTempStr = WeatherPresentationHelper.formatDailyTemperature(
+      forecast.maxTemperature,
+    );
+
+    final hasPrecip = forecast.precipitationProbability != null;
+    final precipStr = hasPrecip
+        ? '%${forecast.precipitationProbability!.round()}'
+        : null;
+
+    final hasCondition =
+        forecast.condition != null && forecast.condition!.trim().isNotEmpty;
+    final conditionText = hasCondition ? forecast.condition!.trim() : null;
+
+    // Accessibility semantics label
+    final semanticsParts = <String>[
+      dayName,
+      ?conditionText,
+      'En düşük $minTempStr',
+      'En yüksek $maxTempStr',
+      if (precipStr != null) 'Yağış ihtimali $precipStr',
+    ];
+    final semanticsLabel = semanticsParts.join(', ');
+
+    return Semantics(
+      label: semanticsLabel,
+      child: Container(
+        width: 82,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: AppSpacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.textSecondary.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: AppColors.textSecondary.withValues(alpha: 0.15),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              dayName,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Icon(icon, color: iconColor, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              '$minTempStr / $maxTempStr',
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (precipStr != null) ...[
+              const SizedBox(height: 3),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.water_drop_outlined,
+                    size: 11,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 2),
+                  Flexible(
+                    child: Text(
+                      precipStr,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: AppColors.primary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (conditionText != null) ...[
+              const SizedBox(height: 3),
+              Text(
+                conditionText,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 10,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -13,6 +13,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
     private readonly string? _apiKey;
+    private readonly int _forecastDays;
 
     public WeatherApiWeatherProvider(HttpClient httpClient, IConfiguration config)
     {
@@ -25,6 +26,8 @@ public class WeatherApiWeatherProvider : IWeatherProvider
         _apiKey = string.IsNullOrWhiteSpace(configuredApiKey)
             ? Environment.GetEnvironmentVariable("WEATHER_API_KEY")
             : configuredApiKey;
+
+        _forecastDays = WeatherDefaults.GetForecastDays(config);
     }
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
@@ -44,7 +47,7 @@ public class WeatherApiWeatherProvider : IWeatherProvider
 
         var latStr = latitude.ToString("F4", CultureInfo.InvariantCulture);
         var lonStr = longitude.ToString("F4", CultureInfo.InvariantCulture);
-        var url = $"{_baseUrl.TrimEnd('/')}/forecast.json?key={Uri.EscapeDataString(_apiKey)}&q={latStr},{lonStr}&days=3&aqi=no&alerts=no&lang=tr";
+        var url = $"{_baseUrl.TrimEnd('/')}/forecast.json?key={Uri.EscapeDataString(_apiKey)}&q={latStr},{lonStr}&days={_forecastDays}&aqi=no&alerts=no&lang=tr";
 
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -183,7 +186,13 @@ public class WeatherApiWeatherProvider : IWeatherProvider
             }
         }
 
-        return new WeatherForecastData(points, currentDto, dailyList);
+        var sanitizedDaily = dailyList
+            .GroupBy(d => d.Date)
+            .Select(g => g.First())
+            .OrderBy(d => d.Date)
+            .ToList();
+
+        return new WeatherForecastData(points, currentDto, sanitizedDaily);
     }
 
     private static DateTime ReadObservedAtUtc(JsonElement element, string epochField, string localTimeField, string? timeZoneId)

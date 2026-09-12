@@ -161,7 +161,11 @@ public class WttrInWeatherProvider : IWeatherProvider
             }
         }
 
-        return new WeatherForecastData(points, current, dailyList.Count > 0 ? dailyList : null);
+        var sanitizedDaily = dailyList.Count > 0
+            ? dailyList.GroupBy(d => d.Date).Select(g => g.First()).OrderBy(d => d.Date).ToList()
+            : null;
+
+        return new WeatherForecastData(points, current, sanitizedDaily);
     }
 
     private static double? SumDailyPrecipitationMm(JsonElement day)

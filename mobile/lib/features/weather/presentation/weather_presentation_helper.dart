@@ -54,17 +54,25 @@ abstract final class WeatherPresentationHelper {
     if (min != null && max != null) {
       final minD = min.toDouble();
       final maxD = max.toDouble();
-      final minStr = (minD % 1 == 0) ? '${minD.toInt()}°' : '${minD.toStringAsFixed(1)}°';
-      final maxStr = (maxD % 1 == 0) ? '${maxD.toInt()}°' : '${maxD.toStringAsFixed(1)}°';
+      final minStr = (minD % 1 == 0)
+          ? '${minD.toInt()}°'
+          : '${minD.toStringAsFixed(1)}°';
+      final maxStr = (maxD % 1 == 0)
+          ? '${maxD.toInt()}°'
+          : '${maxD.toStringAsFixed(1)}°';
       return 'Bugün $minStr / $maxStr';
     }
     if (max != null) {
       final maxD = max.toDouble();
-      final maxStr = (maxD % 1 == 0) ? '${maxD.toInt()}' : maxD.toStringAsFixed(1);
+      final maxStr = (maxD % 1 == 0)
+          ? '${maxD.toInt()}'
+          : maxD.toStringAsFixed(1);
       return 'Maks. $maxStr°C';
     }
     final minD = min!.toDouble();
-    final minStr = (minD % 1 == 0) ? '${minD.toInt()}' : minD.toStringAsFixed(1);
+    final minStr = (minD % 1 == 0)
+        ? '${minD.toInt()}'
+        : minD.toStringAsFixed(1);
     return 'Min. $minStr°C';
   }
 
@@ -81,6 +89,54 @@ abstract final class WeatherPresentationHelper {
   static String capitalizeDescription(String text) {
     if (text.isEmpty) return '';
     return text[0].toUpperCase() + text.substring(1);
+  }
+
+  /// Formats day name for 7-day forecast: 'Bugün', 'Yarın', or Turkish short day name ('Pzt', 'Sal', etc.).
+  /// Compares with device local calendar date.
+  static String formatDayName(DateTime date, [DateTime? referenceNow]) {
+    final now = referenceNow ?? DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+    final diffDays = target.difference(today).inDays;
+
+    if (diffDays == 0) {
+      return 'Bugün';
+    } else if (diffDays == 1) {
+      return 'Yarın';
+    } else {
+      switch (target.weekday) {
+        case DateTime.monday:
+          return 'Pzt';
+        case DateTime.tuesday:
+          return 'Sal';
+        case DateTime.wednesday:
+          return 'Çar';
+        case DateTime.thursday:
+          return 'Per';
+        case DateTime.friday:
+          return 'Cum';
+        case DateTime.saturday:
+          return 'Cmt';
+        case DateTime.sunday:
+          return 'Paz';
+        default:
+          return '';
+      }
+    }
+  }
+
+  /// Formats daily temperature with '--' fallback (e.g. 24 -> "24°", null -> "--").
+  static String formatDailyTemperature(num? temp) {
+    if (temp == null) return '--';
+    final d = temp.toDouble();
+    if (d % 1 == 0) {
+      return '${d.toInt()}°';
+    }
+    final s = d.toStringAsFixed(1);
+    if (s.endsWith('.0')) {
+      return '${s.substring(0, s.length - 2)}°';
+    }
+    return '$s°';
   }
 
   /// Returns appropriate Material icon for the weather condition.
@@ -202,7 +258,9 @@ abstract final class WeatherPresentationHelper {
     if (risks.isEmpty) return const [];
     final indexed = risks.asMap().entries.toList();
     indexed.sort((a, b) {
-      final diff = _severityRank(b.value.severity).compareTo(_severityRank(a.value.severity));
+      final diff = _severityRank(
+        b.value.severity,
+      ).compareTo(_severityRank(a.value.severity));
       if (diff != 0) return diff;
       return a.key.compareTo(b.key);
     });
@@ -322,7 +380,8 @@ abstract final class WeatherPresentationHelper {
       final start = startsAt.toLocal();
       final end = endsAt.toLocal();
 
-      final isSameDay = start.year == end.year &&
+      final isSameDay =
+          start.year == end.year &&
           start.month == end.month &&
           start.day == end.day;
 

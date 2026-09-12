@@ -37,14 +37,16 @@ class WeatherRisk {
       riskType: (json['riskType'] ?? json['risk_type'] ?? '').toString(),
       severity: (json['severity'] ?? 'LOW').toString(),
       startsAt: json['startsAt'] != null || json['starts_at'] != null
-          ? DateTime.tryParse((json['startsAt'] ?? json['starts_at']).toString())
+          ? DateTime.tryParse(
+              (json['startsAt'] ?? json['starts_at']).toString(),
+            )
           : null,
       endsAt: json['endsAt'] != null || json['ends_at'] != null
           ? DateTime.tryParse((json['endsAt'] ?? json['ends_at']).toString())
           : null,
       message: (json['message'] ?? json['description'] ?? '').toString(),
-      suggestedAction:
-          (json['suggestedAction'] ?? json['suggested_action'])?.toString(),
+      suggestedAction: (json['suggestedAction'] ?? json['suggested_action'])
+          ?.toString(),
     );
   }
 
@@ -91,17 +93,154 @@ class WeatherRisk {
 
   @override
   int get hashCode => Object.hash(
-        riskType,
-        severity,
-        startsAt,
-        endsAt,
-        message,
-        suggestedAction,
-      );
+    riskType,
+    severity,
+    startsAt,
+    endsAt,
+    message,
+    suggestedAction,
+  );
 
   @override
   String toString() =>
       'WeatherRisk(riskType: $riskType, severity: $severity, startsAt: $startsAt, endsAt: $endsAt, message: $message, suggestedAction: $suggestedAction)';
+}
+
+/// Domain model representing a single day's weather forecast.
+class DailyWeatherForecast {
+  const DailyWeatherForecast({
+    required this.date,
+    this.minTemperature,
+    this.maxTemperature,
+    this.precipitationProbability,
+    this.precipitationAmount,
+    this.condition,
+    this.weatherCode,
+  });
+
+  /// The forecast date (midnight / calendar day).
+  final DateTime date;
+
+  /// Daily minimum forecast temperature in Celsius (°C).
+  final double? minTemperature;
+
+  /// Daily maximum forecast temperature in Celsius (°C).
+  final double? maxTemperature;
+
+  /// Precipitation probability percentage (0 - 100).
+  final double? precipitationProbability;
+
+  /// Expected precipitation amount in millimeters (mm).
+  final double? precipitationAmount;
+
+  /// Condition summary (e.g. 'Güneşli', 'Yağmurlu').
+  final String? condition;
+
+  /// WMO weather interpretation code.
+  final int? weatherCode;
+
+  factory DailyWeatherForecast.fromJson(Map<String, dynamic> json) {
+    final rawDate = json['date'];
+    final parsedDate = rawDate != null
+        ? DateTime.tryParse(rawDate.toString())
+        : null;
+    if (parsedDate == null) {
+      throw const FormatException('DailyWeatherForecast requires a valid date');
+    }
+
+    return DailyWeatherForecast(
+      date: parsedDate,
+      minTemperature:
+          ((json['minTemperature'] ??
+                      json['min_temperature'] ??
+                      json['min_temperature_c'])
+                  as num?)
+              ?.toDouble(),
+      maxTemperature:
+          ((json['maxTemperature'] ??
+                      json['max_temperature'] ??
+                      json['max_temperature_c'])
+                  as num?)
+              ?.toDouble(),
+      precipitationProbability:
+          ((json['precipitationProbability'] ??
+                      json['precipitation_probability'])
+                  as num?)
+              ?.toDouble(),
+      precipitationAmount:
+          ((json['precipitationAmount'] ??
+                      json['precipitation_amount'] ??
+                      json['precipitation_mm'])
+                  as num?)
+              ?.toDouble(),
+      condition: (json['condition'] ?? json['condition_text'])?.toString(),
+      weatherCode: ((json['weatherCode'] ?? json['weather_code']) as num?)
+          ?.toInt(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'date': date.toIso8601String(),
+      if (minTemperature != null) 'minTemperature': minTemperature,
+      if (maxTemperature != null) 'maxTemperature': maxTemperature,
+      if (precipitationProbability != null)
+        'precipitationProbability': precipitationProbability,
+      if (precipitationAmount != null)
+        'precipitationAmount': precipitationAmount,
+      if (condition != null) 'condition': condition,
+      if (weatherCode != null) 'weatherCode': weatherCode,
+    };
+  }
+
+  DailyWeatherForecast copyWith({
+    DateTime? date,
+    double? minTemperature,
+    double? maxTemperature,
+    double? precipitationProbability,
+    double? precipitationAmount,
+    String? condition,
+    int? weatherCode,
+  }) {
+    return DailyWeatherForecast(
+      date: date ?? this.date,
+      minTemperature: minTemperature ?? this.minTemperature,
+      maxTemperature: maxTemperature ?? this.maxTemperature,
+      precipitationProbability:
+          precipitationProbability ?? this.precipitationProbability,
+      precipitationAmount: precipitationAmount ?? this.precipitationAmount,
+      condition: condition ?? this.condition,
+      weatherCode: weatherCode ?? this.weatherCode,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DailyWeatherForecast &&
+          runtimeType == other.runtimeType &&
+          date == other.date &&
+          minTemperature == other.minTemperature &&
+          maxTemperature == other.maxTemperature &&
+          precipitationProbability == other.precipitationProbability &&
+          precipitationAmount == other.precipitationAmount &&
+          condition == other.condition &&
+          weatherCode == other.weatherCode;
+
+  @override
+  int get hashCode => Object.hash(
+    date,
+    minTemperature,
+    maxTemperature,
+    precipitationProbability,
+    precipitationAmount,
+    condition,
+    weatherCode,
+  );
+
+  @override
+  String toString() =>
+      'DailyWeatherForecast(date: $date, minTemp: $minTemperature, maxTemp: $maxTemperature, rainProb: $precipitationProbability, rainMm: $precipitationAmount, condition: $condition, code: $weatherCode)';
 }
 
 /// Domain model representing current weather conditions, forecast summaries,
@@ -119,6 +258,7 @@ class WeatherSummary {
     this.maxTemperature,
     this.precipitationProbability,
     this.precipitationAmount,
+    this.dailyForecasts = const [],
     this.risks = const [],
     this.isStale = false,
     this.staleReason,
@@ -126,6 +266,9 @@ class WeatherSummary {
     this.observedAt,
     this.fetchedAt,
   });
+
+  /// Up to 7-day daily weather forecasts in chronological order.
+  final List<DailyWeatherForecast> dailyForecasts;
 
   /// Current temperature in Celsius (°C). Null if data is missing/unavailable.
   final num? temperature;
@@ -185,10 +328,9 @@ class WeatherSummary {
   bool get hasCriticalRisks => risks.any((r) => r.isCritical);
 
   /// Helper to get condition if present, otherwise description if not empty.
-  String? get displayCondition =>
-      (condition != null && condition!.isNotEmpty)
-          ? condition
-          : (description.isNotEmpty ? description : null);
+  String? get displayCondition => (condition != null && condition!.isNotEmpty)
+      ? condition
+      : (description.isNotEmpty ? description : null);
 
   /// Simple deserialization of WeatherSummary's own flat fields.
   factory WeatherSummary.fromJson(Map<String, dynamic> json) {
@@ -206,22 +348,73 @@ class WeatherSummary {
     final rawObservedAt = json['observedAt'] ?? json['observed_at'];
     final rawFetchedAt = json['fetchedAt'] ?? json['fetched_at'];
 
+    final rawDaily = json['dailyForecasts'] ?? json['daily_forecasts'];
+    final List<DailyWeatherForecast> dailyForecasts;
+    if (rawDaily is List) {
+      final list = <DailyWeatherForecast>[];
+      for (final item in rawDaily) {
+        if (item is Map) {
+          try {
+            list.add(
+              DailyWeatherForecast.fromJson(Map<String, dynamic>.from(item)),
+            );
+          } catch (_) {
+            // Bozuk veya eksik tek bir günlük kayıt tüm hava cevabını çökertmemeli. Geçersiz kayıt atlanmalı.
+          }
+        }
+      }
+      dailyForecasts = list;
+    } else {
+      dailyForecasts = const [];
+    }
+
     return WeatherSummary(
       temperature: (json['temperature'] ?? json['temperature_c']) as num?,
       description: (json['description'] as String?) ?? '',
       condition: json['condition'] as String?,
-      feelsLike: ((json['feelsLike'] ?? json['feels_like'] ?? json['feels_like_c']) as num?)?.toDouble(),
-      humidity: ((json['humidity'] ?? json['humidity_percent']) as num?)?.toDouble(),
-      windSpeed: ((json['windSpeed'] ?? json['wind_speed'] ?? json['wind_speed_kmh']) as num?)?.toDouble(),
-      windGust: ((json['windGust'] ?? json['wind_gust'] ?? json['wind_gusts_kmh']) as num?)?.toDouble(),
-      minTemperature: ((json['minTemperature'] ?? json['min_temperature'] ?? json['min_temperature_c']) as num?)?.toDouble(),
-      maxTemperature: ((json['maxTemperature'] ?? json['max_temperature'] ?? json['max_temperature_c']) as num?)?.toDouble(),
-      precipitationProbability: ((json['precipitationProbability'] ?? json['precipitation_probability']) as num?)?.toDouble(),
-      precipitationAmount: ((json['precipitationAmount'] ?? json['precipitation_amount'] ?? json['precipitation_mm']) as num?)?.toDouble(),
+      feelsLike:
+          ((json['feelsLike'] ?? json['feels_like'] ?? json['feels_like_c'])
+                  as num?)
+              ?.toDouble(),
+      humidity: ((json['humidity'] ?? json['humidity_percent']) as num?)
+          ?.toDouble(),
+      windSpeed:
+          ((json['windSpeed'] ?? json['wind_speed'] ?? json['wind_speed_kmh'])
+                  as num?)
+              ?.toDouble(),
+      windGust:
+          ((json['windGust'] ?? json['wind_gust'] ?? json['wind_gusts_kmh'])
+                  as num?)
+              ?.toDouble(),
+      minTemperature:
+          ((json['minTemperature'] ??
+                      json['min_temperature'] ??
+                      json['min_temperature_c'])
+                  as num?)
+              ?.toDouble(),
+      maxTemperature:
+          ((json['maxTemperature'] ??
+                      json['max_temperature'] ??
+                      json['max_temperature_c'])
+                  as num?)
+              ?.toDouble(),
+      precipitationProbability:
+          ((json['precipitationProbability'] ??
+                      json['precipitation_probability'])
+                  as num?)
+              ?.toDouble(),
+      precipitationAmount:
+          ((json['precipitationAmount'] ??
+                      json['precipitation_amount'] ??
+                      json['precipitation_mm'])
+                  as num?)
+              ?.toDouble(),
+      dailyForecasts: dailyForecasts,
       risks: risks,
       isStale: ((json['isStale'] ?? json['is_stale']) as bool?) ?? false,
       staleReason: (json['staleReason'] ?? json['stale_reason']) as String?,
-      weatherCode: ((json['weatherCode'] ?? json['weather_code']) as num?)?.toInt(),
+      weatherCode: ((json['weatherCode'] ?? json['weather_code']) as num?)
+          ?.toInt(),
       observedAt: rawObservedAt != null
           ? DateTime.tryParse(rawObservedAt.toString())
           : null,
@@ -247,6 +440,7 @@ class WeatherSummary {
         'precipitationProbability': precipitationProbability,
       if (precipitationAmount != null)
         'precipitationAmount': precipitationAmount,
+      'dailyForecasts': dailyForecasts.map((d) => d.toJson()).toList(),
       'risks': risks.map((r) => r.toJson()).toList(),
       'isStale': isStale,
       if (staleReason != null) 'staleReason': staleReason,
@@ -268,6 +462,7 @@ class WeatherSummary {
     double? maxTemperature,
     double? precipitationProbability,
     double? precipitationAmount,
+    List<DailyWeatherForecast>? dailyForecasts,
     List<WeatherRisk>? risks,
     bool? isStale,
     String? staleReason,
@@ -288,6 +483,7 @@ class WeatherSummary {
       precipitationProbability:
           precipitationProbability ?? this.precipitationProbability,
       precipitationAmount: precipitationAmount ?? this.precipitationAmount,
+      dailyForecasts: dailyForecasts ?? this.dailyForecasts,
       risks: risks ?? this.risks,
       isStale: isStale ?? this.isStale,
       staleReason: staleReason ?? this.staleReason,
@@ -318,32 +514,34 @@ class WeatherSummary {
           weatherCode == other.weatherCode &&
           observedAt == other.observedAt &&
           fetchedAt == other.fetchedAt &&
+          _listEquals(dailyForecasts, other.dailyForecasts) &&
           _listEquals(risks, other.risks);
 
   @override
   int get hashCode => Object.hashAll([
-        temperature,
-        description,
-        condition,
-        feelsLike,
-        humidity,
-        windSpeed,
-        windGust,
-        minTemperature,
-        maxTemperature,
-        precipitationProbability,
-        precipitationAmount,
-        isStale,
-        staleReason,
-        weatherCode,
-        observedAt,
-        fetchedAt,
-        Object.hashAll(risks),
-      ]);
+    temperature,
+    description,
+    condition,
+    feelsLike,
+    humidity,
+    windSpeed,
+    windGust,
+    minTemperature,
+    maxTemperature,
+    precipitationProbability,
+    precipitationAmount,
+    isStale,
+    staleReason,
+    weatherCode,
+    observedAt,
+    fetchedAt,
+    Object.hashAll(dailyForecasts),
+    Object.hashAll(risks),
+  ]);
 
   @override
   String toString() =>
-      'WeatherSummary(temperature: $temperature, description: $description, condition: $condition, feelsLike: $feelsLike, humidity: $humidity, windSpeed: $windSpeed, windGust: $windGust, minTemp: $minTemperature, maxTemp: $maxTemperature, rainProb: $precipitationProbability, rainMm: $precipitationAmount, risks: ${risks.length}, isStale: $isStale)';
+      'WeatherSummary(temperature: $temperature, description: $description, condition: $condition, feelsLike: $feelsLike, humidity: $humidity, windSpeed: $windSpeed, windGust: $windGust, minTemp: $minTemperature, maxTemp: $maxTemperature, rainProb: $precipitationProbability, rainMm: $precipitationAmount, daily: ${dailyForecasts.length}, risks: ${risks.length}, isStale: $isStale)';
 
   static bool _listEquals<T>(List<T>? a, List<T>? b) {
     if (a == null) return b == null;
@@ -355,4 +553,3 @@ class WeatherSummary {
     return true;
   }
 }
-

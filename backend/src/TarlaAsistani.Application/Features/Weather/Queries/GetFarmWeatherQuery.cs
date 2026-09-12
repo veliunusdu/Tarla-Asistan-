@@ -119,7 +119,11 @@ public class GetFarmWeatherQueryHandler : IRequestHandler<GetFarmWeatherQuery, F
 
             points = weatherData.Points;
             current = weatherData.Current;
-            daily = weatherData.Daily;
+            daily = weatherData.Daily?
+                .GroupBy(d => d.Date)
+                .Select(g => g.First())
+                .OrderBy(d => d.Date)
+                .ToList();
 
             var snapshot = new WeatherSnapshot
             {

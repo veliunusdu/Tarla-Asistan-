@@ -93,35 +93,32 @@ void main() {
   });
 
   group('WeatherSummary', () {
-    test('maintains backwards compatibility with existing 2-parameter constructor', () {
-      const summary = WeatherSummary(
-        temperature: 24,
-        description: 'Güneşli',
-      );
+    test(
+      'maintains backwards compatibility with existing 2-parameter constructor',
+      () {
+        const summary = WeatherSummary(temperature: 24, description: 'Güneşli');
 
-      expect(summary.temperature, 24);
-      expect(summary.description, 'Güneşli');
-      expect(summary.hasTemperature, isTrue);
-      expect(summary.condition, isNull);
-      expect(summary.feelsLike, isNull);
-      expect(summary.humidity, isNull);
-      expect(summary.windSpeed, isNull);
-      expect(summary.windGust, isNull);
-      expect(summary.minTemperature, isNull);
-      expect(summary.maxTemperature, isNull);
-      expect(summary.precipitationProbability, isNull);
-      expect(summary.precipitationAmount, isNull);
-      expect(summary.risks, isEmpty);
-      expect(summary.isStale, isFalse);
-      expect(summary.staleReason, isNull);
-      expect(summary.hasRisks, isFalse);
-    });
+        expect(summary.temperature, 24);
+        expect(summary.description, 'Güneşli');
+        expect(summary.hasTemperature, isTrue);
+        expect(summary.condition, isNull);
+        expect(summary.feelsLike, isNull);
+        expect(summary.humidity, isNull);
+        expect(summary.windSpeed, isNull);
+        expect(summary.windGust, isNull);
+        expect(summary.minTemperature, isNull);
+        expect(summary.maxTemperature, isNull);
+        expect(summary.precipitationProbability, isNull);
+        expect(summary.precipitationAmount, isNull);
+        expect(summary.risks, isEmpty);
+        expect(summary.isStale, isFalse);
+        expect(summary.staleReason, isNull);
+        expect(summary.hasRisks, isFalse);
+      },
+    );
 
     test('temperature gerçek 0°C doğru şekilde temsil edilir', () {
-      const summary = WeatherSummary(
-        temperature: 0,
-        description: 'Dondurucu',
-      );
+      const summary = WeatherSummary(temperature: 0, description: 'Dondurucu');
 
       expect(summary.temperature, 0);
       expect(summary.hasTemperature, isTrue);
@@ -145,10 +142,7 @@ void main() {
         temperature: null,
         description: 'Eksik veri',
       );
-      const zero = WeatherSummary(
-        temperature: 0,
-        description: 'Sıfır derece',
-      );
+      const zero = WeatherSummary(temperature: 0, description: 'Sıfır derece');
 
       expect(missing.temperature, isNot(equals(zero.temperature)));
       expect(missing.hasTemperature, isFalse);
@@ -158,10 +152,7 @@ void main() {
     });
 
     test('decimal sıcaklık hassasiyeti kaybolmadan korunur (double/num)', () {
-      const summary = WeatherSummary(
-        temperature: 23.6,
-        description: 'Ilık',
-      );
+      const summary = WeatherSummary(temperature: 23.6, description: 'Ilık');
 
       expect(summary.temperature, 23.6);
       expect(summary.temperature, isNot(equals(24)));
@@ -169,38 +160,23 @@ void main() {
     });
 
     test('nullable feelsLike alanı desteklenir', () {
-      const withNull = WeatherSummary(
-        description: 'Açık',
-        feelsLike: null,
-      );
+      const withNull = WeatherSummary(description: 'Açık', feelsLike: null);
       expect(withNull.feelsLike, isNull);
 
-      const withVal = WeatherSummary(
-        description: 'Açık',
-        feelsLike: 25.4,
-      );
+      const withVal = WeatherSummary(description: 'Açık', feelsLike: 25.4);
       expect(withVal.feelsLike, 25.4);
     });
 
     test('nullable windGust alanı desteklenir', () {
-      const withNull = WeatherSummary(
-        description: 'Rüzgârlı',
-        windGust: null,
-      );
+      const withNull = WeatherSummary(description: 'Rüzgârlı', windGust: null);
       expect(withNull.windGust, isNull);
 
-      const withVal = WeatherSummary(
-        description: 'Rüzgârlı',
-        windGust: 32.8,
-      );
+      const withVal = WeatherSummary(description: 'Rüzgârlı', windGust: 32.8);
       expect(withVal.windGust, 32.8);
     });
 
     test('risks boş olduğunda güvenli davranır', () {
-      const summary = WeatherSummary(
-        description: 'Normal',
-        risks: [],
-      );
+      const summary = WeatherSummary(description: 'Normal', risks: []);
 
       expect(summary.risks, isEmpty);
       expect(summary.hasRisks, isFalse);
@@ -231,25 +207,28 @@ void main() {
       expect(summary.risks.last.isHigh, isTrue);
     });
 
-    test('current null, daily null, points boş envelope durumunda güvenli çalışır', () {
-      final summary = WeatherSummary.fromJson({
-        'current': null,
-        'daily': null,
-        'points': [],
-        'risks': [],
-      });
+    test(
+      'current null, daily null, points boş envelope durumunda güvenli çalışır',
+      () {
+        final summary = WeatherSummary.fromJson({
+          'current': null,
+          'daily': null,
+          'points': [],
+          'risks': [],
+        });
 
-      expect(summary.temperature, isNull);
-      expect(summary.hasTemperature, isFalse);
-      expect(summary.feelsLike, isNull);
-      expect(summary.minTemperature, isNull);
-      expect(summary.maxTemperature, isNull);
-      expect(summary.precipitationProbability, isNull);
-      expect(summary.precipitationAmount, isNull);
-      expect(summary.risks, isEmpty);
-      expect(summary.isStale, isFalse);
-      expect(summary.temperature == 0, isFalse);
-    });
+        expect(summary.temperature, isNull);
+        expect(summary.hasTemperature, isFalse);
+        expect(summary.feelsLike, isNull);
+        expect(summary.minTemperature, isNull);
+        expect(summary.maxTemperature, isNull);
+        expect(summary.precipitationProbability, isNull);
+        expect(summary.precipitationAmount, isNull);
+        expect(summary.risks, isEmpty);
+        expect(summary.isStale, isFalse);
+        expect(summary.temperature == 0, isFalse);
+      },
+    );
 
     test('malformed optional DateTime stringleri güvenle null yapar', () {
       final summary = WeatherSummary.fromJson({
@@ -261,75 +240,258 @@ void main() {
       expect(summary.fetchedAt, isNull);
     });
 
-    test('flat json serialization roundtrip preserves all types and values', () {
-      final original = WeatherSummary(
-        temperature: 22.5,
-        description: 'Açık hava',
-        condition: 'Açık',
-        feelsLike: 21.3,
-        humidity: 45.0,
-        windSpeed: 14.2,
-        windGust: 22.0,
-        minTemperature: 12.1,
-        maxTemperature: 26.8,
-        precipitationProbability: 10.0,
-        precipitationAmount: 0.0,
-        isStale: false,
-        staleReason: null,
-        weatherCode: 1,
-        observedAt: DateTime.parse('2026-09-04T12:00:00Z'),
-        fetchedAt: DateTime.parse('2026-09-04T12:05:00Z'),
-        risks: [
-          WeatherRisk(
-            riskType: 'FROST',
-            severity: 'CRITICAL',
-            startsAt: DateTime.parse('2026-09-05T03:00:00Z'),
-            endsAt: DateTime.parse('2026-09-05T06:00:00Z'),
-            message: 'Don tehlikesi.',
-            suggestedAction: 'Örtü altı önlem alın.',
+    test(
+      'flat json serialization roundtrip preserves all types and values',
+      () {
+        final original = WeatherSummary(
+          temperature: 22.5,
+          description: 'Açık hava',
+          condition: 'Açık',
+          feelsLike: 21.3,
+          humidity: 45.0,
+          windSpeed: 14.2,
+          windGust: 22.0,
+          minTemperature: 12.1,
+          maxTemperature: 26.8,
+          precipitationProbability: 10.0,
+          precipitationAmount: 0.0,
+          isStale: false,
+          staleReason: null,
+          weatherCode: 1,
+          observedAt: DateTime.parse('2026-09-04T12:00:00Z'),
+          fetchedAt: DateTime.parse('2026-09-04T12:05:00Z'),
+          risks: [
+            WeatherRisk(
+              riskType: 'FROST',
+              severity: 'CRITICAL',
+              startsAt: DateTime.parse('2026-09-05T03:00:00Z'),
+              endsAt: DateTime.parse('2026-09-05T06:00:00Z'),
+              message: 'Don tehlikesi.',
+              suggestedAction: 'Örtü altı önlem alın.',
+            ),
+          ],
+        );
+
+        final json = original.toJson();
+        final restored = WeatherSummary.fromJson(json);
+
+        expect(restored.temperature, 22.5);
+        expect(restored.description, 'Açık hava');
+        expect(restored.condition, 'Açık');
+        expect(restored.feelsLike, 21.3);
+        expect(restored.humidity, 45.0);
+        expect(restored.windSpeed, 14.2);
+        expect(restored.windGust, 22.0);
+        expect(restored.minTemperature, 12.1);
+        expect(restored.maxTemperature, 26.8);
+        expect(restored.precipitationProbability, 10.0);
+        expect(restored.precipitationAmount, 0.0);
+        expect(restored.risks.length, 1);
+        expect(restored.risks.first.riskType, 'FROST');
+        expect(restored.risks.first.severity, 'CRITICAL');
+        expect(restored.isStale, isFalse);
+      },
+    );
+
+    test(
+      'copyWith produces updated clone with decimal and nullable support',
+      () {
+        const initial = WeatherSummary(temperature: 20, description: 'Bulutlu');
+
+        final updated = initial.copyWith(
+          temperature: 22.7,
+          feelsLike: 21.5,
+          isStale: true,
+        );
+
+        expect(updated.temperature, 22.7);
+        expect(updated.description, 'Bulutlu');
+        expect(updated.feelsLike, 21.5);
+        expect(updated.isStale, isTrue);
+        expect(initial.temperature, 20);
+        expect(initial.isStale, isFalse);
+      },
+    );
+
+    test('dailyForecasts defaults to empty list and can be initialized', () {
+      const summary = WeatherSummary(temperature: 20, description: 'Açık');
+      expect(summary.dailyForecasts, isEmpty);
+
+      final withForecasts = WeatherSummary(
+        temperature: 20,
+        description: 'Açık',
+        dailyForecasts: [
+          DailyWeatherForecast(
+            date: DateTime.parse('2026-09-12'),
+            minTemperature: 12.0,
+            maxTemperature: 24.0,
+            precipitationProbability: 10.0,
+            precipitationAmount: 0.0,
+            condition: 'Güneşli',
+            weatherCode: 1,
           ),
         ],
       );
-
-      final json = original.toJson();
-      final restored = WeatherSummary.fromJson(json);
-
-      expect(restored.temperature, 22.5);
-      expect(restored.description, 'Açık hava');
-      expect(restored.condition, 'Açık');
-      expect(restored.feelsLike, 21.3);
-      expect(restored.humidity, 45.0);
-      expect(restored.windSpeed, 14.2);
-      expect(restored.windGust, 22.0);
-      expect(restored.minTemperature, 12.1);
-      expect(restored.maxTemperature, 26.8);
-      expect(restored.precipitationProbability, 10.0);
-      expect(restored.precipitationAmount, 0.0);
-      expect(restored.risks.length, 1);
-      expect(restored.risks.first.riskType, 'FROST');
-      expect(restored.risks.first.severity, 'CRITICAL');
-      expect(restored.isStale, isFalse);
+      expect(withForecasts.dailyForecasts.length, 1);
+      expect(withForecasts.dailyForecasts.first.condition, 'Güneşli');
     });
 
-    test('copyWith produces updated clone with decimal and nullable support', () {
-      const initial = WeatherSummary(
-        temperature: 20,
-        description: 'Bulutlu',
-      );
+    test('parses dailyForecasts from json and roundtrips via toJson', () {
+      final json = {
+        'temperature': 21.0,
+        'description': 'Açık',
+        'dailyForecasts': [
+          {
+            'date': '2026-09-12T00:00:00.000',
+            'minTemperature': 13.5,
+            'maxTemperature': 25.0,
+            'precipitationProbability': 20.0,
+            'precipitationAmount': 0.2,
+            'condition': 'Güneşli',
+            'weatherCode': 1,
+          },
+          {
+            'date': '2026-09-13T00:00:00.000',
+            'minTemperature': 14.0,
+            'maxTemperature': 26.5,
+            'precipitationProbability': 0.0,
+            'precipitationAmount': 0.0,
+            'condition': 'Açık',
+            'weatherCode': 0,
+          },
+        ],
+      };
 
+      final summary = WeatherSummary.fromJson(json);
+      expect(summary.dailyForecasts.length, 2);
+      expect(
+        summary.dailyForecasts[0].date,
+        DateTime.parse('2026-09-12T00:00:00.000'),
+      );
+      expect(summary.dailyForecasts[0].minTemperature, 13.5);
+      expect(summary.dailyForecasts[0].maxTemperature, 25.0);
+      expect(summary.dailyForecasts[0].precipitationProbability, 20.0);
+      expect(summary.dailyForecasts[0].condition, 'Güneşli');
+      expect(summary.dailyForecasts[1].maxTemperature, 26.5);
+
+      final exported = summary.toJson();
+      expect(exported['dailyForecasts'], isA<List>());
+      final reloaded = WeatherSummary.fromJson(exported);
+      expect(reloaded.dailyForecasts.length, 2);
+      expect(reloaded.dailyForecasts[0].minTemperature, 13.5);
+      expect(reloaded, equals(summary));
+    });
+
+    test('skips corrupted single daily entry in fromJson without crashing', () {
+      final json = {
+        'temperature': 21.0,
+        'description': 'Açık',
+        'dailyForecasts': [
+          {
+            'date': '2026-09-12T00:00:00.000',
+            'minTemperature': 13.0,
+            'maxTemperature': 24.0,
+          },
+          {
+            // Missing or invalid date
+            'date': 'not-a-date',
+            'minTemperature': 99.0,
+          },
+          'invalid-non-map-entry',
+          {
+            'date': '2026-09-14T00:00:00.000',
+            'minTemperature': 15.0,
+            'maxTemperature': 26.0,
+          },
+        ],
+      };
+
+      final summary = WeatherSummary.fromJson(json);
+      expect(summary.dailyForecasts.length, 2);
+      expect(summary.dailyForecasts[0].minTemperature, 13.0);
+      expect(summary.dailyForecasts[1].minTemperature, 15.0);
+    });
+
+    test(
+      'backward compatibility: legacy json without dailyForecasts parses with empty list',
+      () {
+        final legacyJson = {'temperature': 20.0, 'description': 'Bulutlu'};
+        final summary = WeatherSummary.fromJson(legacyJson);
+        expect(summary.dailyForecasts, isEmpty);
+      },
+    );
+
+    test('copyWith updates dailyForecasts', () {
+      const initial = WeatherSummary(temperature: 20, description: 'Bulutlu');
       final updated = initial.copyWith(
-        temperature: 22.7,
-        feelsLike: 21.5,
-        isStale: true,
+        dailyForecasts: [
+          DailyWeatherForecast(
+            date: DateTime.parse('2026-09-12'),
+            minTemperature: 10,
+            maxTemperature: 20,
+          ),
+        ],
+      );
+      expect(updated.dailyForecasts.length, 1);
+      expect(initial.dailyForecasts, isEmpty);
+    });
+  });
+
+  group('DailyWeatherForecast', () {
+    test('instantiates and holds all properties', () {
+      final forecast = DailyWeatherForecast(
+        date: DateTime.parse('2026-09-12'),
+        minTemperature: 11.5,
+        maxTemperature: 23.0,
+        precipitationProbability: 40.0,
+        precipitationAmount: 1.5,
+        condition: 'Yağmurlu',
+        weatherCode: 61,
       );
 
-      expect(updated.temperature, 22.7);
-      expect(updated.description, 'Bulutlu');
-      expect(updated.feelsLike, 21.5);
-      expect(updated.isStale, isTrue);
-      expect(initial.temperature, 20);
-      expect(initial.isStale, isFalse);
+      expect(forecast.date, DateTime.parse('2026-09-12'));
+      expect(forecast.minTemperature, 11.5);
+      expect(forecast.maxTemperature, 23.0);
+      expect(forecast.precipitationProbability, 40.0);
+      expect(forecast.precipitationAmount, 1.5);
+      expect(forecast.condition, 'Yağmurlu');
+      expect(forecast.weatherCode, 61);
+    });
+
+    test('roundtrips via fromJson and toJson', () {
+      final original = DailyWeatherForecast(
+        date: DateTime.parse('2026-09-12T00:00:00.000'),
+        minTemperature: 10.0,
+        maxTemperature: 22.0,
+        precipitationProbability: 30.0,
+        precipitationAmount: 2.0,
+        condition: 'Parçalı Bulutlu',
+        weatherCode: 2,
+      );
+
+      final json = original.toJson();
+      final restored = DailyWeatherForecast.fromJson(json);
+
+      expect(restored, equals(original));
+      expect(restored.hashCode, equals(original.hashCode));
+    });
+
+    test('copyWith creates modified clone', () {
+      final forecast = DailyWeatherForecast(
+        date: DateTime.parse('2026-09-12'),
+        minTemperature: 10.0,
+        maxTemperature: 20.0,
+      );
+
+      final modified = forecast.copyWith(
+        maxTemperature: 25.0,
+        condition: 'Açık',
+      );
+
+      expect(modified.maxTemperature, 25.0);
+      expect(modified.minTemperature, 10.0);
+      expect(modified.condition, 'Açık');
+      expect(forecast.maxTemperature, 20.0);
     });
   });
 }
-

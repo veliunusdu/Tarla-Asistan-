@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Infrastructure;
 using TarlaAsistani.Infrastructure.Services;
@@ -48,5 +49,35 @@ public class DependencyInjectionTests
         using var serviceProvider = services.BuildServiceProvider();
         serviceProvider.GetRequiredService<IAIChatProvider>()
             .Should().BeOfType<DeepSeekAIChatProvider>();
+    }
+
+    [Fact]
+    public void AddInfrastructure_RegistersSevenDayWeatherProviderBeforeShortRangeFallbacks()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Database=tarla;Username=postgres;Password=postgres"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(config);
+
+        services.AddInfrastructure(config);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+        var fallback = scope.ServiceProvider.GetRequiredService<IWeatherProvider>()
+            .Should().BeOfType<FallbackWeatherProvider>().Subject;
+        var providersField = typeof(FallbackWeatherProvider).GetField(
+            "_providers",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        var providers = providersField!.GetValue(fallback)
+            .Should().BeAssignableTo<IReadOnlyList<IWeatherProvider>>().Subject;
+
+        providers.Select(provider => provider.Name).Should().ContainInOrder(
+            "open_meteo",
+            "wttr_in");
+        providers[0].Name.Should().Be("open_meteo");
     }
 }

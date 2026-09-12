@@ -91,13 +91,12 @@ public static class DependencyInjection
             var wttrIn = sp.GetRequiredService<WttrInWeatherProvider>();
             var logger = sp.GetRequiredService<ILogger<FallbackWeatherProvider>>();
 
-            var providers = new List<IWeatherProvider>();
+            var providers = new List<IWeatherProvider> { openMeteo };
             if (weatherApi.IsConfigured)
             {
                 providers.Add(weatherApi);
             }
             providers.Add(wttrIn);
-            providers.Add(openMeteo);
 
             return new FallbackWeatherProvider(providers, logger);
         });

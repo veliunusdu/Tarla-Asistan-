@@ -204,6 +204,9 @@ class BackendWeatherRepository implements WeatherRepository {
     final bool isStale = raw['is_stale'] == true;
     final String? staleReason = raw['stale_reason']?.toString();
     final List<WeatherRisk> risks = _parseRisks(raw['risks']);
+    final List<DailyWeatherForecast> dailyForecasts = _parseDailyForecasts(
+      daily,
+    );
 
     final result = WeatherSummary(
       temperature: temperature,
@@ -217,6 +220,7 @@ class BackendWeatherRepository implements WeatherRepository {
       maxTemperature: maxTemperature,
       precipitationProbability: precipitationProbability,
       precipitationAmount: precipitationAmount,
+      dailyForecasts: dailyForecasts,
       risks: risks,
       isStale: isStale,
       staleReason: staleReason,
@@ -325,6 +329,69 @@ class BackendWeatherRepository implements WeatherRepository {
     return risks;
   }
 
+  static List<DailyWeatherForecast> _parseDailyForecasts(dynamic rawDaily) {
+    if (rawDaily is! List) return const [];
+    final valid = <DailyWeatherForecast>[];
+
+    for (final item in rawDaily) {
+      if (item is! Map) continue;
+      try {
+        final date = _toDateTime(item['date']);
+        if (date == null) continue;
+
+        final minTemp = _toDouble(
+          item['min_temperature_c'] ?? item['minTemperature'],
+        );
+        final maxTemp = _toDouble(
+          item['max_temperature_c'] ?? item['maxTemperature'],
+        );
+        final precipProb = _toDouble(
+          item['precipitation_probability'] ?? item['precipitationProbability'],
+        );
+        final precipAmount = _toDouble(
+          item['precipitation_mm'] ?? item['precipitationAmount'],
+        );
+        final condition = (item['condition'] ?? item['condition_text'])
+            ?.toString();
+        final weatherCode = _toInt(item['weather_code'] ?? item['weatherCode']);
+
+        valid.add(
+          DailyWeatherForecast(
+            date: date,
+            minTemperature: minTemp,
+            maxTemperature: maxTemp,
+            precipitationProbability: precipProb,
+            precipitationAmount: precipAmount,
+            condition: condition,
+            weatherCode: weatherCode,
+          ),
+        );
+      } catch (_) {
+        // Corrupted item skipped
+      }
+    }
+
+    // Sort chronologically by date
+    valid.sort((a, b) => a.date.compareTo(b.date));
+
+    // Remove duplicates (keep first occurrence of each calendar day)
+    final deduplicated = <DailyWeatherForecast>[];
+    final seenDates = <String>{};
+    for (final item in valid) {
+      final key =
+          '${item.date.year.toString().padLeft(4, '0')}-${item.date.month.toString().padLeft(2, '0')}-${item.date.day.toString().padLeft(2, '0')}';
+      if (seenDates.add(key)) {
+        deduplicated.add(item);
+      }
+    }
+
+    // Keep at most 7 days
+    if (deduplicated.length > 7) {
+      return deduplicated.sublist(0, 7);
+    }
+    return deduplicated;
+  }
+
   static String _descriptionFromWeatherCode(int? code) {
     if (code == null) return '';
     switch (code) {
@@ -420,6 +487,7 @@ class BackendWeatherRepository implements WeatherRepository {
       maxTemperature: cached.maxTemperature,
       precipitationProbability: cached.precipitationProbability,
       precipitationAmount: cached.precipitationAmount,
+      dailyForecasts: cached.dailyForecasts,
       risks: cached.risks,
       isStale: true,
       staleReason: cached.staleReason ?? 'Çevrimdışı önbellek verisi',

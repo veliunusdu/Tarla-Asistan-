@@ -1036,5 +1036,308 @@ void main() {
         client.close();
       },
     );
+
+    group('7-day weather forecast repository mapping and caching', () {
+      test('1. Yedi günlük backend response doğru parse edilir', () async {
+        final dailyData = List.generate(
+          7,
+          (i) => {
+            'date': '2026-09-${12 + i}',
+            'min_temperature_c': 12.0 + i,
+            'max_temperature_c': 24.0 + i,
+            'precipitation_probability': i * 10.0,
+            'precipitation_mm': i * 0.5,
+            'condition': i % 2 == 0 ? 'Güneşli' : 'Yağmurlu',
+            'weather_code': i % 2 == 0 ? 1 : 61,
+          },
+        );
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 24.0, 'condition': 'Güneşli'},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-7-days',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.dailyForecasts.length, 7);
+        expect(summary.dailyForecasts[0].date, DateTime.parse('2026-09-12'));
+        expect(summary.dailyForecasts[0].minTemperature, 12.0);
+        expect(summary.dailyForecasts[0].maxTemperature, 24.0);
+        expect(summary.dailyForecasts[0].condition, 'Güneşli');
+        expect(summary.dailyForecasts[6].date, DateTime.parse('2026-09-18'));
+        expect(summary.dailyForecasts[6].maxTemperature, 30.0);
+        // Main card fields are still populated from first day
+        expect(summary.minTemperature, 12.0);
+        expect(summary.maxTemperature, 24.0);
+        client.close();
+      });
+
+      test('2. Günler tarihe göre sıralanır', () async {
+        final dailyData = [
+          {
+            'date': '2026-09-15',
+            'min_temperature_c': 15.0,
+            'max_temperature_c': 25.0,
+          },
+          {
+            'date': '2026-09-12',
+            'min_temperature_c': 12.0,
+            'max_temperature_c': 22.0,
+          },
+          {
+            'date': '2026-09-14',
+            'min_temperature_c': 14.0,
+            'max_temperature_c': 24.0,
+          },
+          {
+            'date': '2026-09-13',
+            'min_temperature_c': 13.0,
+            'max_temperature_c': 23.0,
+          },
+        ];
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 20.0},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-unsorted',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(
+          summary.dailyForecasts
+              .map((d) => d.date.toIso8601String().substring(0, 10))
+              .toList(),
+          ['2026-09-12', '2026-09-13', '2026-09-14', '2026-09-15'],
+        );
+        client.close();
+      });
+
+      test('3. Duplicate tarihler kaldırılır', () async {
+        final dailyData = [
+          {
+            'date': '2026-09-12',
+            'min_temperature_c': 12.0,
+            'max_temperature_c': 22.0,
+            'condition': 'Güneşli',
+          },
+          {
+            'date': '2026-09-12',
+            'min_temperature_c': 11.0,
+            'max_temperature_c': 21.0,
+            'condition': 'Tekrar',
+          },
+          {
+            'date': '2026-09-13',
+            'min_temperature_c': 13.0,
+            'max_temperature_c': 23.0,
+          },
+        ];
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 20.0},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-duplicates',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.dailyForecasts.length, 2);
+        expect(summary.dailyForecasts[0].condition, 'Güneşli');
+        expect(summary.dailyForecasts[1].date, DateTime.parse('2026-09-13'));
+        client.close();
+      });
+
+      test('4. En fazla yedi gün tutulur', () async {
+        final dailyData = List.generate(
+          10,
+          (i) => {
+            'date': '2026-09-${(10 + i).toString().padLeft(2, '0')}',
+            'min_temperature_c': 10.0 + i,
+            'max_temperature_c': 20.0 + i,
+          },
+        );
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 20.0},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-10-days',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.dailyForecasts.length, 7);
+        client.close();
+      });
+
+      test('5. Bozuk kayıt atlanır', () async {
+        final dailyData = [
+          {
+            'date': '2026-09-12',
+            'min_temperature_c': 12.0,
+            'max_temperature_c': 22.0,
+          },
+          {'date': 'invalid-date', 'min_temperature_c': 99.0},
+          'string-not-a-map',
+          {'min_temperature_c': 10.0}, // no date
+          {
+            'date': '2026-09-13',
+            'min_temperature_c': 13.0,
+            'max_temperature_c': 23.0,
+          },
+        ];
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 20.0},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-corrupt',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.dailyForecasts.length, 2);
+        expect(summary.dailyForecasts[0].date, DateTime.parse('2026-09-12'));
+        expect(summary.dailyForecasts[1].date, DateTime.parse('2026-09-13'));
+        client.close();
+      });
+
+      test('6. Üç günlük response üç gün olarak kalır', () async {
+        final dailyData = [
+          {
+            'date': '2026-09-12',
+            'min_temperature_c': 12.0,
+            'max_temperature_c': 22.0,
+          },
+          {
+            'date': '2026-09-13',
+            'min_temperature_c': 13.0,
+            'max_temperature_c': 23.0,
+          },
+          {
+            'date': '2026-09-14',
+            'min_temperature_c': 14.0,
+            'max_temperature_c': 24.0,
+          },
+        ];
+
+        final client = makeClient(
+          handler: (_) async => http.Response(
+            jsonEncode({
+              'current': {'temperature_c': 20.0},
+              'daily': dailyData,
+              'points': [],
+              'risks': [],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        );
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-3-days',
+        );
+
+        final summary = await repo.getWeather();
+
+        expect(summary.dailyForecasts.length, 3);
+        client.close();
+      });
+
+      test('7. Stale fallback günlük tahminleri korur', () async {
+        final cachedSummary = WeatherSummary(
+          temperature: 22.0,
+          description: 'Açık',
+          dailyForecasts: [
+            DailyWeatherForecast(
+              date: DateTime.parse('2026-09-12'),
+              minTemperature: 12.0,
+              maxTemperature: 24.0,
+            ),
+            DailyWeatherForecast(
+              date: DateTime.parse('2026-09-13'),
+              minTemperature: 13.0,
+              maxTemperature: 25.0,
+            ),
+          ],
+        );
+
+        final fakeLocal = FakeLocalWeatherRepository(
+          cachedWeather: cachedSummary,
+        );
+        final client = makeClient(
+          handler: (_) async => http.Response('Internal Server Error', 503),
+        );
+
+        final repo = BackendWeatherRepository(
+          apiClient: client,
+          farmId: 'farm-fallback',
+          localRepo: fakeLocal,
+        );
+
+        final fallback = await repo.getWeather();
+
+        expect(fallback.isStale, isTrue);
+        expect(fallback.dailyForecasts.length, 2);
+        expect(fallback.dailyForecasts[0].minTemperature, 12.0);
+        expect(fallback.dailyForecasts[1].maxTemperature, 25.0);
+        client.close();
+      });
+    });
   });
 }

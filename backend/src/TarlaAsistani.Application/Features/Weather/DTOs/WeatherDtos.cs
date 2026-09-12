@@ -96,8 +96,17 @@ public static class WeatherDefaults
     public const string StaleAfterHoursConfigKey = "Weather:StaleAfterHours";
     public const int DefaultStaleAfterHours = 4;
 
+    public const string ForecastDaysConfigKey = "Weather:ForecastDays";
+    public const int DefaultForecastDays = 7;
+
     public static int GetStaleAfterHours(Microsoft.Extensions.Configuration.IConfiguration? config) =>
         config?.GetValue(StaleAfterHoursConfigKey, DefaultStaleAfterHours) ?? DefaultStaleAfterHours;
+
+    public static int GetForecastDays(Microsoft.Extensions.Configuration.IConfiguration? config)
+    {
+        var configured = config?.GetValue(ForecastDaysConfigKey, DefaultForecastDays) ?? DefaultForecastDays;
+        return Math.Clamp(configured, 1, 7);
+    }
 
     public static DateTime? CalculateWeatherAdvisoryValidUntil(
         DateTime? weatherFetchedAtUtc,

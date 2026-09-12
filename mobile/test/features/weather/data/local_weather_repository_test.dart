@@ -185,5 +185,58 @@ void main() {
         expect(cached.description, equals('Eski Önbellek'));
       },
     );
+
+    test(
+      'cacheWeather and getCachedWeather preserves 7-day daily forecasts',
+      () async {
+        final forecasts = List.generate(
+          7,
+          (i) => DailyWeatherForecast(
+            date: DateTime.utc(2026, 9, 12 + i),
+            minTemperature: 12.0 + i,
+            maxTemperature: 24.0 + i,
+            precipitationProbability: i * 10.0,
+            precipitationAmount: i * 0.5,
+            condition: i % 2 == 0 ? 'Güneşli' : 'Yağmurlu',
+            weatherCode: i % 2 == 0 ? 1 : 61,
+          ),
+        );
+
+        final summary = WeatherSummary(
+          temperature: 24.0,
+          description: 'Güneşli',
+          dailyForecasts: forecasts,
+        );
+
+        await repo.cacheWeather(farmId: 'farm-7-days', weather: summary);
+        final cached = await repo.getCachedWeather(farmId: 'farm-7-days');
+
+        expect(cached, isNotNull);
+        expect(cached!.dailyForecasts.length, equals(7));
+        expect(cached.dailyForecasts.first.minTemperature, equals(12.0));
+        expect(cached.dailyForecasts.first.condition, equals('Güneşli'));
+        expect(cached.dailyForecasts.last.maxTemperature, equals(30.0));
+        expect(cached.dailyForecasts.last.condition, equals('Güneşli'));
+      },
+    );
+
+    test(
+      'getCachedWeather does not crash when cached payload has no dailyForecasts',
+      () async {
+        final summaryWithoutDaily = const WeatherSummary(
+          temperature: 20.0,
+          description: 'Bulutlu',
+        );
+
+        await repo.cacheWeather(
+          farmId: 'farm-no-daily',
+          weather: summaryWithoutDaily,
+        );
+        final cached = await repo.getCachedWeather(farmId: 'farm-no-daily');
+
+        expect(cached, isNotNull);
+        expect(cached!.dailyForecasts, isEmpty);
+      },
+    );
   });
 }

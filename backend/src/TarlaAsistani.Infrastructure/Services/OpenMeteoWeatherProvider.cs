@@ -21,10 +21,12 @@ public class OpenMeteoWeatherProvider : IWeatherProvider
     private readonly HttpClient _httpClient;
     private readonly string _baseUrl;
     private readonly string? _apiKey;
+    private readonly int _forecastDays;
 
     public OpenMeteoWeatherProvider(HttpClient httpClient, IConfiguration config)
     {
         _httpClient = httpClient;
+        _forecastDays = WeatherDefaults.GetForecastDays(config);
 
         // BaseUrl: configurable, defaults to free Open-Meteo endpoint
         _baseUrl = FirstConfiguredValue(
@@ -178,7 +180,7 @@ public class OpenMeteoWeatherProvider : IWeatherProvider
         sb.Append("&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_gusts_10m");
         sb.Append("&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,wind_speed_10m");
         sb.Append("&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max");
-        sb.Append("&forecast_days=3&timezone=UTC&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm");
+        sb.Append($"&forecast_days={_forecastDays}&timezone=UTC&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm");
 
         // Attach API key if configured (commercial Open-Meteo customer endpoint)
         if (!string.IsNullOrWhiteSpace(_apiKey))
@@ -250,22 +252,34 @@ public class OpenMeteoWeatherProvider : IWeatherProvider
         List<DailyForecastDto>? dailyList = null;
         if (forecastData.Daily?.Time != null && forecastData.Daily.Time.Count > 0)
         {
-            dailyList = new List<DailyForecastDto>(forecastData.Daily.Time.Count);
+            dailyList = new List<DailyForecastDto>();
             for (int i = 0; i < forecastData.Daily.Time.Count; i++)
             {
                 var dateStr = forecastData.Daily.Time[i];
-                var date = DateOnly.TryParse(dateStr, CultureInfo.InvariantCulture, out var parsedDate)
-                    ? parsedDate
-                    : DateOnly.FromDateTime(DateTime.UtcNow.AddDays(i));
+                if (string.IsNullOrWhiteSpace(dateStr) ||
+                    !DateOnly.TryParse(dateStr, CultureInfo.InvariantCulture, out var parsedDate))
+                {
+                    continue;
+                }
 
-                var minTemp = i < forecastData.Daily.Temperature2mMin.Count ? forecastData.Daily.Temperature2mMin[i] : null;
-                var maxTemp = i < forecastData.Daily.Temperature2mMax.Count ? forecastData.Daily.Temperature2mMax[i] : null;
-                var precipProb = i < forecastData.Daily.PrecipitationProbabilityMax.Count ? forecastData.Daily.PrecipitationProbabilityMax[i] : null;
-                var precipSum = i < forecastData.Daily.PrecipitationSum.Count ? forecastData.Daily.PrecipitationSum[i] : null;
-                var code = i < forecastData.Daily.WeatherCode.Count ? forecastData.Daily.WeatherCode[i] : null;
+                var minTemp = forecastData.Daily.Temperature2mMin != null && i < forecastData.Daily.Temperature2mMin.Count
+                    ? forecastData.Daily.Temperature2mMin[i]
+                    : null;
+                var maxTemp = forecastData.Daily.Temperature2mMax != null && i < forecastData.Daily.Temperature2mMax.Count
+                    ? forecastData.Daily.Temperature2mMax[i]
+                    : null;
+                var precipProb = forecastData.Daily.PrecipitationProbabilityMax != null && i < forecastData.Daily.PrecipitationProbabilityMax.Count
+                    ? forecastData.Daily.PrecipitationProbabilityMax[i]
+                    : null;
+                var precipSum = forecastData.Daily.PrecipitationSum != null && i < forecastData.Daily.PrecipitationSum.Count
+                    ? forecastData.Daily.PrecipitationSum[i]
+                    : null;
+                var code = forecastData.Daily.WeatherCode != null && i < forecastData.Daily.WeatherCode.Count
+                    ? forecastData.Daily.WeatherCode[i]
+                    : null;
 
                 dailyList.Add(new DailyForecastDto(
-                    Date: date,
+                    Date: parsedDate,
                     MinTemperatureC: minTemp,
                     MaxTemperatureC: maxTemp,
                     PrecipitationProbability: precipProb,
@@ -274,6 +288,12 @@ public class OpenMeteoWeatherProvider : IWeatherProvider
                     WeatherCode: code
                 ));
             }
+
+            dailyList = dailyList
+                .GroupBy(d => d.Date)
+                .Select(g => g.First())
+                .OrderBy(d => d.Date)
+                .ToList();
         }
 
         return new WeatherForecastData(points, currentDto, dailyList);
