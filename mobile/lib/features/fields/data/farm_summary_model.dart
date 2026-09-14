@@ -20,12 +20,20 @@ class FarmSummaryResponse {
   const FarmSummaryResponse({
     required this.farms,
     required this.upcomingTasks,
+    this.isFromCache = false,
+    this.cachedAt,
   });
 
   final List<FarmWorkSummary> farms;
   final List<Faaliyet> upcomingTasks;
+  final bool isFromCache;
+  final DateTime? cachedAt;
 
-  factory FarmSummaryResponse.fromJson(Map<String, dynamic> json) {
+  factory FarmSummaryResponse.fromJson(
+    Map<String, dynamic> json, {
+    bool isFromCache = false,
+    DateTime? cachedAt,
+  }) {
     final rawFarms = (json['farms'] as List<dynamic>?) ?? [];
     final parsedFarms = rawFarms.map((item) {
       final map = item as Map<String, dynamic>;
@@ -75,6 +83,8 @@ class FarmSummaryResponse {
     return FarmSummaryResponse(
       farms: parsedFarms,
       upcomingTasks: parsedUpcoming,
+      isFromCache: isFromCache,
+      cachedAt: cachedAt,
     );
   }
 }

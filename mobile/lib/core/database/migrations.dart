@@ -165,6 +165,17 @@ abstract final class Migrations {
     }
   }
 
+  /// Version 10 -> 11: stores the last successful home summary per user.
+  static Future<void> v10ToV11(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS farm_summary_cache (
+        user_id TEXT PRIMARY KEY,
+        cached_at_utc TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+  }
+
   /// [table] tablosundaki mevcut kolon adlarını döndürür.
   static Future<Set<String>> _columnNames(Database db, String table) async {
     final rows = await db.rawQuery('PRAGMA table_info($table)');

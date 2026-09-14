@@ -16,6 +16,7 @@ import 'features/cases/data/pending_case_sync_service.dart';
 import 'features/weather/data/backend_weather_repository.dart';
 import 'features/fields/data/backend_farm_repository.dart';
 import 'features/fields/data/backend_tarla_repository.dart';
+import 'features/fields/data/farm_summary_cache.dart';
 import 'features/market/data/backend_market_repository.dart';
 import 'features/market/data/local_market_repository.dart';
 import 'features/finances/data/backend_financial_repository.dart';
@@ -353,6 +354,7 @@ class _TarimAsistaniAppState extends State<TarimAsistaniApp> {
                       }
                       final tarlaRepo = BackendTarlaRepository(
                         remote: BackendFarmRepository(apiClient: _apiClient),
+                        cache: const LocalFarmSummaryCache(),
                       );
                       return AnaEkran(
                         onLogout: _logout,

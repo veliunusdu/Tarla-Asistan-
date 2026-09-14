@@ -1055,4 +1055,27 @@ void main() {
       },
     );
   });
+
+  group('Migrations.v10ToV11', () {
+    test('creates a user-scoped farm summary cache idempotently', () async {
+      final db = await openDatabase(
+        inMemoryDatabasePath,
+        singleInstance: false,
+      );
+
+      await Migrations.v10ToV11(db);
+      await Migrations.v10ToV11(db);
+
+      final columns = await db.rawQuery(
+        'PRAGMA table_info(farm_summary_cache)',
+      );
+      expect(
+        columns.map((row) => row['name']),
+        containsAll(['user_id', 'cached_at_utc', 'payload_json']),
+      );
+      expect(columns.firstWhere((row) => row['name'] == 'user_id')['pk'], 1);
+
+      await db.close();
+    });
+  });
 }

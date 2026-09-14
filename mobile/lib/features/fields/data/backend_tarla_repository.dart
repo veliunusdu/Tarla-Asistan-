@@ -1,11 +1,12 @@
 import '../../location/domain/tarla_location.dart';
 import '../../../models/tarla.dart';
+import '../../../services/user_error_message.dart';
 import 'dto/farm_dto.dart';
 import 'farm_remote_repository.dart';
 import 'farm_summary_model.dart';
 import 'farm_summary_repository.dart';
+import 'farm_summary_cache.dart';
 import 'mappers/farm_mapper.dart';
-import 'tarla_location_repository.dart';
 import 'tarla_repository.dart';
 
 class BackendTarlaRepository
@@ -15,10 +16,10 @@ class BackendTarlaRepository
         TarlaArchiveRepository,
         TarlaUpdateRepository,
         FarmSummaryRepository {
-  const BackendTarlaRepository({required FarmRemoteRepository remote})
-    : _remote = remote;
+  const BackendTarlaRepository({required this.remote, this.cache});
 
-  final FarmRemoteRepository _remote;
+  final FarmRemoteRepository remote;
+  final FarmSummaryCache? cache;
 
   @override
   Future<void> addTarla(Tarla tarla) async {
@@ -28,7 +29,7 @@ class BackendTarlaRepository
       throw ArgumentError('Tarla ürünü ve ekim tarihi gereklidir.');
     }
     final cropType = _cropType(cropName);
-    await _remote.createFarm(
+    await remote.createFarm(
       FarmCreateRequestDto(
         name: tarla.name,
         latitude: tarla.latitude,
@@ -42,11 +43,11 @@ class BackendTarlaRepository
   }
 
   @override
-  Future<void> archiveTarla(String id) => _remote.archiveFarm(id);
+  Future<void> archiveTarla(String id) => remote.archiveFarm(id);
 
   @override
   Future<void> updateTarla(Tarla tarla) {
-    return _remote.updateFarm(
+    return remote.updateFarm(
       tarla.id,
       FarmUpdateRequestDto(
         name: tarla.name,
@@ -59,7 +60,7 @@ class BackendTarlaRepository
 
   @override
   Future<void> updateTarlaLocation(String id, TarlaLocation location) async {
-    await _remote.updateFarm(
+    await remote.updateFarm(
       id,
       FarmUpdateRequestDto(
         latitude: location.latitude,
@@ -70,14 +71,47 @@ class BackendTarlaRepository
 
   @override
   Future<List<Tarla>> getTarlalar() async {
-    final response = await _remote.getFarms();
-    return response.items.map(fromDto).toList();
+    try {
+      final response = await remote.getFarms();
+      return response.items.map(fromDto).toList();
+    } catch (error) {
+      if (!isTemporaryConnectionFailure(error)) rethrow;
+      final cached = await _readCacheSafely();
+      if (cached == null) rethrow;
+      return FarmSummaryResponse.fromJson(
+        cached.payload,
+      ).farms.map((item) => item.tarla).toList();
+    }
   }
 
   @override
   Future<FarmSummaryResponse> getFarmSummary({int upcomingLimit = 5}) async {
-    final json = await _remote.getFarmSummary(upcomingLimit: upcomingLimit);
-    return FarmSummaryResponse.fromJson(json);
+    try {
+      final json = await remote.getFarmSummary(upcomingLimit: upcomingLimit);
+      try {
+        await cache?.write(json);
+      } catch (_) {
+        // Cache persistence must never turn a valid API response into an error.
+      }
+      return FarmSummaryResponse.fromJson(json);
+    } catch (error) {
+      if (!isTemporaryConnectionFailure(error)) rethrow;
+      final cached = await _readCacheSafely();
+      if (cached == null) rethrow;
+      return FarmSummaryResponse.fromJson(
+        cached.payload,
+        isFromCache: true,
+        cachedAt: cached.cachedAt,
+      );
+    }
+  }
+
+  Future<FarmSummaryCacheSnapshot?> _readCacheSafely() async {
+    try {
+      return await cache?.read();
+    } catch (_) {
+      return null;
+    }
   }
 
   static Tarla fromDto(FarmResponseDto dto) {

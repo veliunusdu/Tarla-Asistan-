@@ -60,7 +60,7 @@ class DatabaseHelper implements SyncOperationStore {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -109,6 +109,7 @@ class DatabaseHelper implements SyncOperationStore {
     await _createMarketCacheTable(db);
     await _createDailyTaskTables(db);
     await _createPendingCaseTable(db);
+    await Migrations.v10ToV11(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -138,6 +139,9 @@ class DatabaseHelper implements SyncOperationStore {
     }
     if (oldVersion < 10) {
       await Migrations.v9ToV10(db);
+    }
+    if (oldVersion < 11) {
+      await Migrations.v10ToV11(db);
     }
   }
 
@@ -630,6 +634,13 @@ class DatabaseHelper implements SyncOperationStore {
           );
           try {
             await txn.delete(
+              'farm_summary_cache',
+              where: 'user_id = ?',
+              whereArgs: [activeUserId],
+            );
+          } catch (_) {}
+          try {
+            await txn.delete(
               'pending_task_actions',
               where: 'user_id = ?',
               whereArgs: [activeUserId],
@@ -669,6 +680,9 @@ class DatabaseHelper implements SyncOperationStore {
           await txn.delete('tarlalar');
           await txn.delete('faaliyetler');
           await txn.delete('sync_operations');
+          try {
+            await txn.delete('farm_summary_cache');
+          } catch (_) {}
           try {
             await txn.delete('pending_task_actions');
           } catch (_) {}

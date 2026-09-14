@@ -3,8 +3,10 @@ import 'package:mobile/features/fields/data/backend_tarla_repository.dart';
 import 'package:mobile/features/fields/data/dto/crop_period_dto.dart';
 import 'package:mobile/features/fields/data/dto/farm_dto.dart';
 import 'package:mobile/features/fields/data/farm_remote_repository.dart';
+import 'package:mobile/features/fields/data/farm_summary_cache.dart';
 import 'package:mobile/features/location/domain/tarla_location.dart';
 import 'package:mobile/models/tarla.dart';
+import 'package:mobile/services/api_client.dart';
 
 void main() {
   test(
@@ -130,6 +132,124 @@ void main() {
     expect(remote.updatedRequest?.latitude, 38.42);
     expect(remote.updatedRequest?.longitude, 27.14);
   });
+
+  group('farm summary offline fallback', () {
+    test('stores the last successful farm summary', () async {
+      final remote = _FakeFarmRemoteRepository();
+      final cache = _FakeFarmSummaryCache();
+      final repository = BackendTarlaRepository(remote: remote, cache: cache);
+
+      final result = await repository.getFarmSummary();
+
+      expect(result.farms.single.tarla.name, 'Backend Tarla');
+      expect(result.isFromCache, isFalse);
+      expect(cache.writeCount, 1);
+      expect(cache.snapshot?.payload['farms'], isNotEmpty);
+    });
+
+    test(
+      'returns the last successful summary on a temporary failure',
+      () async {
+        final remote = _FakeFarmRemoteRepository()
+          ..summaryError = const ApiException(
+            'Bağlantı kurulamadı',
+            retryable: true,
+          );
+        final cache = _FakeFarmSummaryCache(
+          FarmSummaryCacheSnapshot(
+            payload: _summaryJson(),
+            cachedAt: DateTime.utc(2026, 9, 14, 8),
+          ),
+        );
+        final repository = BackendTarlaRepository(remote: remote, cache: cache);
+
+        final result = await repository.getFarmSummary();
+
+        expect(result.farms.single.tarla.name, 'Backend Tarla');
+        expect(result.isFromCache, isTrue);
+        expect(result.cachedAt, DateTime.utc(2026, 9, 14, 8));
+      },
+    );
+
+    test('keeps the temporary failure when no cached summary exists', () async {
+      final error = const ApiException('Bağlantı kurulamadı', retryable: true);
+      final remote = _FakeFarmRemoteRepository()..summaryError = error;
+      final repository = BackendTarlaRepository(
+        remote: remote,
+        cache: _FakeFarmSummaryCache(),
+      );
+
+      await expectLater(repository.getFarmSummary(), throwsA(same(error)));
+    });
+
+    test(
+      'does not expose cached data after an authorization failure',
+      () async {
+        final remote = _FakeFarmRemoteRepository()
+          ..summaryError = const ApiException(
+            'Yetkisiz',
+            statusCode: 401,
+            retryable: false,
+          );
+        final repository = BackendTarlaRepository(
+          remote: remote,
+          cache: _FakeFarmSummaryCache(
+            FarmSummaryCacheSnapshot(
+              payload: _summaryJson(),
+              cachedAt: DateTime.utc(2026, 9, 14, 8),
+            ),
+          ),
+        );
+
+        await expectLater(
+          repository.getFarmSummary(),
+          throwsA(
+            isA<ApiException>().having((e) => e.statusCode, 'statusCode', 401),
+          ),
+        );
+      },
+    );
+  });
+}
+
+Map<String, dynamic> _summaryJson() => {
+  'farms': [
+    {
+      'farm': {
+        'id': 'farm-1',
+        'owner_id': 'owner-1',
+        'name': 'Backend Tarla',
+        'latitude': 38.4237,
+        'longitude': 27.1428,
+        'size_in_hectares': 2.5,
+        'created_at_utc': '2026-01-01T00:00:00Z',
+        'updated_at_utc': '2026-01-01T00:00:00Z',
+        'current_crop_period': null,
+      },
+      'next_task': null,
+      'last_activity': null,
+    },
+  ],
+  'upcoming_tasks': <dynamic>[],
+};
+
+class _FakeFarmSummaryCache implements FarmSummaryCache {
+  _FakeFarmSummaryCache([this.snapshot]);
+
+  FarmSummaryCacheSnapshot? snapshot;
+  int writeCount = 0;
+
+  @override
+  Future<FarmSummaryCacheSnapshot?> read() async => snapshot;
+
+  @override
+  Future<void> write(Map<String, dynamic> payload) async {
+    writeCount++;
+    snapshot = FarmSummaryCacheSnapshot(
+      payload: payload,
+      cachedAt: DateTime.utc(2026, 9, 14, 9),
+    );
+  }
 }
 
 class _FakeFarmRemoteRepository implements FarmRemoteRepository {
@@ -137,6 +257,7 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   String? updatedFarmId;
   FarmUpdateRequestDto? updatedRequest;
   String? archivedFarmId;
+  Object? summaryError;
 
   final _farm = FarmResponseDto(
     id: 'farm-1',
@@ -198,6 +319,9 @@ class _FakeFarmRemoteRepository implements FarmRemoteRepository {
   Future<void> archiveFarm(String farmId) async => archivedFarmId = farmId;
 
   @override
-  Future<Map<String, dynamic>> getFarmSummary({int upcomingLimit = 5}) async =>
-      {'farms': [], 'upcoming_tasks': []};
+  Future<Map<String, dynamic>> getFarmSummary({int upcomingLimit = 5}) async {
+    final error = summaryError;
+    if (error != null) throw error;
+    return _summaryJson();
+  }
 }
