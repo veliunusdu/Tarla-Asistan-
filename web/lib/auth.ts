@@ -1,12 +1,15 @@
-export type Role = "FARMER" | "AGRONOMIST";
+export type Role = "FARMER" | "AGRONOMIST" | "ADMIN";
 
 export type User = {
   id: string;
   phone_number: string;
+  firebase_uid?: string | null;
   full_name: string | null;
   province: string | null;
   district: string | null;
   role: Role;
+  active_role?: Role;
+  roles?: Role[];
   profile_complete: boolean;
 };
 

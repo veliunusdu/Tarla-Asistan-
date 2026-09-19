@@ -339,6 +339,12 @@ public class AIAgentChatIntegrationTests : IClassFixture<AIAgentWebApplicationFa
     {
         // Arrange
         var farmerId = Guid.NewGuid();
+        using (var seedScope = _factory.Services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            seedDb.Users.Add(new User { Id = farmerId, PhoneNumber = "+905540000001", AccountStatus = AccountStatus.Active, Role = UserRole.Farmer });
+            await seedDb.SaveChangesAsync();
+        }
 
         _factory.MockAIAgentProvider.Reset();
         _factory.MockAIAgentProvider
@@ -514,6 +520,12 @@ public class AIAgentChatIntegrationTests : IClassFixture<AIAgentWebApplicationFa
         var localClient = localFactory.CreateClient();
 
         var farmerId = Guid.NewGuid();
+        using (var seedScope = localFactory.Services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            seedDb.Users.Add(new User { Id = farmerId, PhoneNumber = "+905540000002", AccountStatus = AccountStatus.Active, Role = UserRole.Farmer });
+            await seedDb.SaveChangesAsync();
+        }
 
         _factory.MockAIAgentProvider.Reset();
 
@@ -553,6 +565,12 @@ public class AIAgentChatIntegrationTests : IClassFixture<AIAgentWebApplicationFa
         var disabledClient = disabledFactory.CreateClient();
 
         var farmerId = Guid.NewGuid();
+        using (var seedScope = disabledFactory.Services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            seedDb.Users.Add(new User { Id = farmerId, PhoneNumber = "+905540000003", AccountStatus = AccountStatus.Active, Role = UserRole.Farmer });
+            await seedDb.SaveChangesAsync();
+        }
 
         _factory.MockAIAgentProvider.Reset();
         _factory.MockAIChatProvider.Reset();

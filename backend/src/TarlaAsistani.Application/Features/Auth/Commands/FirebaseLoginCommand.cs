@@ -8,11 +8,13 @@ using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.Application.Features.Auth.Commands;
 
 public record FirebaseLoginCommand(
     string IdToken,
+    UserRole? ActiveRole = null,
     UserRole? Role = null
 ) : IRequest<TokenResponseDto>;
 
@@ -52,10 +54,12 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
         }
 
         var now = DateTime.UtcNow;
+        var requestedRole = request.ActiveRole ?? request.Role;
 
         // 1. Locate existing user by FirebaseUid or PhoneNumber
         var user = await _db.Users
             .Include(u => u.Profile)
+            .Include(u => u.RoleAssignments)
             .FirstOrDefaultAsync(u => u.FirebaseUid == tokenInfo.Uid ||
                                      (!string.IsNullOrEmpty(tokenInfo.PhoneNumber) && u.PhoneNumber == tokenInfo.PhoneNumber),
                                  cancellationToken);
@@ -87,7 +91,26 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
                 };
             }
 
+            var initialAssignment = new UserRoleAssignment
+            {
+                UserId = user.Id,
+                Role = UserRole.Farmer,
+                GrantedAtUtc = now,
+                GrantReason = "Self registration"
+            };
+            user.RoleAssignments.Add(initialAssignment);
+            _db.UserRoleAssignments.Add(initialAssignment);
+
             _db.Users.Add(user);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            // New registration cannot be granted privileged session
+            if (requestedRole.HasValue && requestedRole.Value != UserRole.Farmer)
+            {
+                throw new ForbiddenException(requestedRole.Value == UserRole.Agronomist
+                    ? "Bu hesap için ziraatçi yetkisi bulunmuyor."
+                    : "Bu hesap için yönetici yetkisi bulunmuyor.");
+            }
         }
         else
         {
@@ -124,8 +147,44 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
             user.UpdatedAtUtc = now;
         }
 
-        // 2. Generate Access & Refresh Tokens
-        var accessToken = _jwtService.GenerateAccessToken(user);
+        // 2. Fetch active roles
+        var activeRoles = await _db.UserRoleAssignments
+            .Where(ura => ura.UserId == user.Id && ura.RevokedAtUtc == null)
+            .Select(ura => ura.Role)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        UserRole effectiveActiveRole;
+        if (requestedRole.HasValue)
+        {
+            if (!activeRoles.Contains(requestedRole.Value))
+            {
+                throw new ForbiddenException(requestedRole.Value == UserRole.Agronomist
+                    ? "Bu hesap için ziraatçi yetkisi bulunmuyor."
+                    : (requestedRole.Value == UserRole.Admin
+                        ? "Bu hesap için yönetici yetkisi bulunmuyor."
+                        : "Bu hesap için belirtilen rol yetkisi bulunmuyor."));
+            }
+            effectiveActiveRole = requestedRole.Value;
+        }
+        else
+        {
+            if (activeRoles.Contains(UserRole.Farmer))
+            {
+                effectiveActiveRole = UserRole.Farmer;
+            }
+            else if (activeRoles.Count > 0)
+            {
+                effectiveActiveRole = activeRoles[0];
+            }
+            else
+            {
+                throw new ForbiddenException("Bu hesap için aktif bir rol ataması bulunmuyor.");
+            }
+        }
+
+        // 3. Generate Access & Refresh Tokens with effective active role
+        var accessToken = _jwtService.GenerateAccessToken(user, effectiveActiveRole);
         var rawRefreshToken = _jwtService.GenerateRefreshToken();
         var refreshTokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawRefreshToken))).ToLowerInvariant();
 
@@ -134,6 +193,7 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
         {
             UserId = user.Id,
             TokenHash = refreshTokenHash,
+            ActiveRole = effectiveActiveRole,
             FamilyId = Guid.NewGuid(),
             ExpiresAtUtc = now.AddDays(expiryDays),
             CreatedAtUtc = now
@@ -147,7 +207,7 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
             RefreshToken: rawRefreshToken,
             TokenType: "bearer",
             ExpiresIn: 900,
-            User: UserDto.FromEntity(user)
+            User: UserDto.FromEntity(user, effectiveActiveRole, activeRoles)
         );
     }
 

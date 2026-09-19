@@ -57,6 +57,7 @@ public static class CaseEndpoints
             }
         })
         .WithName("CreateCase")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<CaseDetailDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
@@ -92,6 +93,7 @@ public static class CaseEndpoints
             return Results.Ok(result);
         })
         .WithName("ListCases")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<CaseListDto>(StatusCodes.Status200OK);
 
         // 3. GET /api/v1/cases/{id} - Get case details
@@ -110,6 +112,7 @@ public static class CaseEndpoints
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Vaka bulunamadı." });
         })
         .WithName("GetCaseById")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<CaseDetailDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
@@ -156,6 +159,7 @@ public static class CaseEndpoints
             }
         })
         .WithName("UpdateCaseStatus")
+        .RequireAuthorization("AgronomistContext")
         .Produces<CaseDetailDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
@@ -215,6 +219,7 @@ public static class CaseEndpoints
             }
         })
         .WithName("CreateCaseMessage")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<CaseMessageDto>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
@@ -271,6 +276,7 @@ public static class CaseEndpoints
             }
         })
         .WithName("CreateExpertResponse")
+        .RequireAuthorization("AgronomistContext")
         .Produces<CaseDetailDto>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)

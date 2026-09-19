@@ -1,6 +1,15 @@
 const assert = require("node:assert/strict");
 const { afterEach, beforeEach, test } = require("node:test");
-const { ApiError, createFarmTask } = require("../.test-build/lib/api.js");
+const {
+  ApiError,
+  createFarmTask,
+  loginWithFirebase,
+  adminFetchUsers,
+  adminFetchUser,
+  adminAssignRole,
+  adminRevokeRole,
+  adminFetchRoleHistory,
+} = require("../.test-build/lib/api.js");
 const { saveSession } = require("../.test-build/lib/auth.js");
 
 const session = {
@@ -116,4 +125,101 @@ test("createFarmTask surfaces an invalid-date response instead of reporting succ
     createFarmTask("farm-1", { ...taskInput, dueDate: "invalid" }),
     (error) => error instanceof ApiError && error.status === 400,
   );
+});
+
+test("loginWithFirebase sends id_token and active_role to /auth/firebase", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json(session, { status: 200 });
+  });
+
+  const res = await loginWithFirebase("firebase-sample-token", "AGRONOMIST");
+
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/v1/auth/firebase");
+  assert.equal(requests[0].init.method, "POST");
+  const body = JSON.parse(requests[0].init.body);
+  assert.equal(body.id_token, "firebase-sample-token");
+  assert.equal(body.active_role, "AGRONOMIST");
+  assert.equal(res.access_token, "test-access-token");
+});
+
+test("loginWithFirebase surfaces 403 ApiError on unauthorized role request", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ detail: "Bu hesap için ziraatçi yetkisi bulunmuyor." }, { status: 403 }),
+  );
+
+  await assert.rejects(
+    loginWithFirebase("unauthorized-token", "AGRONOMIST"),
+    (error) => error instanceof ApiError && error.status === 403 && error.message.includes("ziraatçi yetkisi bulunmuyor"),
+  );
+});
+
+test("adminFetchUsers sends search, pagination and authorization header", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({ items: [], total: 0, page: 1, pageSize: 20 }, { status: 200 });
+  });
+
+  await adminFetchUsers("555123", 2, 10);
+
+  assert.equal(requests.length, 1);
+  const parsedUrl = new URL(requests[0].url);
+  assert.equal(parsedUrl.pathname, "/api/v1/admin/users");
+  assert.equal(parsedUrl.searchParams.get("search"), "555123");
+  assert.equal(parsedUrl.searchParams.get("page"), "2");
+  assert.equal(parsedUrl.searchParams.get("pageSize"), "10");
+  assert.equal(requests[0].init.headers.Authorization, "Bearer test-access-token");
+});
+
+test("adminAssignRole sends role and reason payload", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({
+      id: "assignment-1",
+      role: "AGRONOMIST",
+      granted_at_utc: new Date().toISOString(),
+      granted_by_user_id: "expert-1",
+      grant_reason: "Ziraat Odası Onayı",
+    }, { status: 201 });
+  });
+
+  await adminAssignRole("target-user-1", "AGRONOMIST", "Ziraat Odası Onayı");
+
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/v1/admin/users/target-user-1/role-assignments");
+  assert.equal(requests[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(requests[0].init.body), { role: "AGRONOMIST", reason: "Ziraat Odası Onayı" });
+});
+
+test("adminRevokeRole sends reason and targets role revocation path", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({ message: "AGRONOMIST rolü başarıyla geri alındı." }, { status: 200 });
+  });
+
+  await adminRevokeRole("target-user-1", "AGRONOMIST", "Yetki sonlandırıldı");
+
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/v1/admin/users/target-user-1/role-assignments/AGRONOMIST/revoke");
+  assert.equal(requests[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(requests[0].init.body), { reason: "Yetki sonlandırıldı" });
+});
+
+test("adminFetchRoleHistory sends GET to role-history path", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json([], { status: 200 });
+  });
+
+  await adminFetchRoleHistory("target-user-1");
+
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/v1/admin/users/target-user-1/role-history");
+  assert.equal(requests[0].init.method, "GET");
 });

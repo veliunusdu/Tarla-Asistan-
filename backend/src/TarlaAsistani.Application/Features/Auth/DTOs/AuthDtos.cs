@@ -13,21 +13,43 @@ public record UserDto(
     UserRole Role,
     bool TermsAccepted,
     bool NotificationsEnabled,
-    bool ProfileComplete
+    bool ProfileComplete,
+    UserRole ActiveRole,
+    IReadOnlyList<UserRole> Roles
 )
 {
-    public static UserDto FromEntity(User u) => new(
-        u.Id,
-        u.PhoneNumber,
-        u.FirebaseUid,
-        u.Profile?.FullName,
-        u.Profile?.Province,
-        u.Profile?.District,
-        u.Role,
-        u.Profile?.TermsAccepted ?? false,
-        u.Profile?.NotificationsEnabled ?? true,
-        ProfileComplete: !string.IsNullOrWhiteSpace(u.Profile?.FullName) && (u.Profile?.TermsAccepted ?? false)
-    );
+    public static UserDto FromEntity(User u, UserRole? activeRole = null, IEnumerable<UserRole>? roles = null)
+    {
+        var resolvedRoles = roles?.Distinct().ToList()
+            ?? u.RoleAssignments
+                .Where(a => a.RevokedAtUtc == null)
+                .Select(a => a.Role)
+                .Distinct()
+                .ToList();
+
+        var effectiveActiveRole = (activeRole.HasValue && resolvedRoles.Contains(activeRole.Value))
+            ? activeRole.Value
+            : (resolvedRoles.Contains(u.Role)
+                ? u.Role
+                : (resolvedRoles.Contains(UserRole.Farmer)
+                    ? UserRole.Farmer
+                    : (resolvedRoles.Count > 0 ? resolvedRoles[0] : UserRole.Farmer)));
+
+        return new UserDto(
+            u.Id,
+            u.PhoneNumber,
+            u.FirebaseUid,
+            u.Profile?.FullName,
+            u.Profile?.Province,
+            u.Profile?.District,
+            Role: effectiveActiveRole,
+            TermsAccepted: u.Profile?.TermsAccepted ?? false,
+            NotificationsEnabled: u.Profile?.NotificationsEnabled ?? true,
+            ProfileComplete: !string.IsNullOrWhiteSpace(u.Profile?.FullName) && (u.Profile?.TermsAccepted ?? false),
+            ActiveRole: effectiveActiveRole,
+            Roles: resolvedRoles
+        );
+    }
 }
 
 public record TokenResponseDto(

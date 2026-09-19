@@ -1,4 +1,4 @@
-﻿using TarlaAsistani.Domain.Entities;
+using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 
 public class User
@@ -19,5 +19,6 @@ public class User
     public ICollection<Farm> Farms { get; set; } = new List<Farm>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<FirebaseLinkApproval> FirebaseLinkApprovals { get; set; } = new List<FirebaseLinkApproval>();
+    public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = new List<UserRoleAssignment>();
     public AccountDeletionJob? AccountDeletionJob { get; set; }
 }

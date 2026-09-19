@@ -47,6 +47,7 @@ public static class CurrentUserExtensions
     {
         // 1. Try ClaimsPrincipal (from JWT Bearer token)
         var roleClaim = context.User.FindFirst(ClaimTypes.Role)?.Value
+                     ?? context.User.FindFirst("active_role")?.Value
                      ?? context.User.FindFirst("role")?.Value;
 
         if (!string.IsNullOrWhiteSpace(roleClaim) &&
@@ -79,9 +80,15 @@ public static class CurrentUserExtensions
 
     public static Guid ResolveUserId(this HttpContext context, Guid? explicitUserId = null, Guid? headerUserId = null)
     {
+        var idFromClaim = context.GetUserId();
+        if (idFromClaim.HasValue)
+        {
+            return idFromClaim.Value;
+        }
+
         if (context.IsProduction())
         {
-            return context.GetUserId() ?? Guid.Empty;
+            return Guid.Empty;
         }
 
         if (explicitUserId.HasValue && explicitUserId.Value != Guid.Empty)
@@ -94,14 +101,20 @@ public static class CurrentUserExtensions
             return headerUserId.Value;
         }
 
-        return context.GetUserId() ?? Guid.Empty;
+        return Guid.Empty;
     }
 
     public static UserRole ResolveUserRole(this HttpContext context, UserRole? explicitRole = null, string? headerRole = null, UserRole defaultRole = UserRole.Farmer)
     {
+        var roleFromClaim = context.GetUserRole();
+        if (roleFromClaim.HasValue)
+        {
+            return roleFromClaim.Value;
+        }
+
         if (context.IsProduction())
         {
-            return context.GetUserRole() ?? UserRole.Farmer;
+            return defaultRole;
         }
 
         if (explicitRole.HasValue)
@@ -115,9 +128,9 @@ public static class CurrentUserExtensions
             return parsedHeaderRole;
         }
 
-        return context.GetUserRole() ?? defaultRole;
+        return defaultRole;
     }
 
-    private static bool IsProduction(this HttpContext context) =>
+    internal static bool IsProduction(this HttpContext context) =>
         context.RequestServices.GetRequiredService<IHostEnvironment>().IsProduction();
 }

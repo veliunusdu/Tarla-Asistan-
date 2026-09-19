@@ -51,9 +51,11 @@ public static class FarmEndpoints
             return Results.Created($"/api/v1/farms/{farmId}", new { id = farmId });
         })
         .WithName("CreateFarm")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces(StatusCodes.Status201Created)
         .ProducesValidationProblem()
-        .Produces(StatusCodes.Status401Unauthorized);
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
 
         // 2. GET /api/v1/farms - List active farms (tenant-isolated for farmers)
         group.MapGet("", async (
@@ -73,6 +75,7 @@ public static class FarmEndpoints
             return Results.Ok(farms);
         })
         .WithName("GetFarms")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<List<FarmDto>>(StatusCodes.Status200OK);
 
         // 2.1 GET /api/v1/farms/summary - Aggregate dashboard & overview summary
@@ -99,6 +102,7 @@ public static class FarmEndpoints
             return Results.Ok(summary);
         })
         .WithName("GetFarmSummary")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<FarmSummaryResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized);
 
@@ -120,6 +124,7 @@ public static class FarmEndpoints
             return farm is not null ? Results.Ok(farm) : Results.NotFound();
         })
         .WithName("GetFarmById")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<FarmDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
@@ -161,6 +166,7 @@ public static class FarmEndpoints
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
         .WithName("UpdateFarm")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<FarmMutationResultDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized)
@@ -189,6 +195,7 @@ public static class FarmEndpoints
             return isArchived ? Results.NoContent() : Results.NotFound();
         })
         .WithName("ArchiveFarm")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces(StatusCodes.Status204NoContent)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);

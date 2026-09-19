@@ -3,6 +3,7 @@ import {
   getSession,
   saveSession,
   type AuthSession,
+  type Role,
 } from "./auth";
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN;
@@ -53,10 +54,10 @@ export function verifyOtp(phoneNumber: string, otpCode: string) {
   });
 }
 
-export function loginWithFirebase(idToken: string) {
+export function loginWithFirebase(idToken: string, activeRole?: Role) {
   return request<AuthSession>("/auth/firebase", {
     method: "POST",
-    body: JSON.stringify({ id_token: idToken }),
+    body: JSON.stringify({ id_token: idToken, active_role: activeRole }),
   });
 }
 
@@ -294,6 +295,7 @@ export async function fetchProtectedMedia(path: string): Promise<Blob> {
   });
   if (response.status === 401) {
     const refreshed = await refreshSession(session.refresh_token);
+
     saveSession(refreshed);
     response = await fetch(mediaUrl, {
       headers: { Authorization: `Bearer ${refreshed.access_token}` },
@@ -301,4 +303,95 @@ export async function fetchProtectedMedia(path: string): Promise<Blob> {
   }
   if (!response.ok) throw new ApiError("Medya açılamadı.", response.status);
   return response.blob();
+}
+
+export type AdminUserListItem = {
+  id: string;
+  phone_number: string;
+  firebase_uid: string | null;
+  full_name: string | null;
+  roles: Role[];
+  account_status: string;
+  created_at_utc: string;
+};
+
+export type AdminUserListResponse = {
+  items: AdminUserListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type AdminRoleAssignment = {
+  id: string;
+  role: Role;
+  granted_at_utc: string;
+  granted_by_user_id: string | null;
+  grant_reason: string | null;
+};
+
+export type AdminUserDetail = {
+  id: string;
+  phone_number: string;
+  firebase_uid: string | null;
+  full_name: string | null;
+  province: string | null;
+  district: string | null;
+  account_status: string;
+  created_at_utc: string;
+  roles: Role[];
+  active_assignments: AdminRoleAssignment[];
+};
+
+export type AdminRoleHistoryItem = {
+  id: string;
+  role: Role;
+  granted_at_utc: string;
+  granted_by_user_id: string | null;
+  grant_reason: string | null;
+  revoked_at_utc: string | null;
+  revoked_by_user_id: string | null;
+  revoke_reason: string | null;
+};
+
+export function adminFetchUsers(search?: string, page = 1, pageSize = 20) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  return authenticatedRequest<AdminUserListResponse>(`/admin/users?${params.toString()}`, {
+    method: "GET",
+  });
+}
+
+export function adminFetchUser(userId: string) {
+  return authenticatedRequest<AdminUserDetail>(`/admin/users/${userId}`, {
+    method: "GET",
+  });
+}
+
+export function adminAssignRole(userId: string, role: Role, reason: string) {
+  return authenticatedRequest<AdminRoleAssignment>(`/admin/users/${userId}/role-assignments`, {
+    method: "POST",
+    body: JSON.stringify({ role, reason }),
+  });
+}
+
+export function adminRevokeRole(userId: string, role: Role, reason: string) {
+  return authenticatedRequest<{ message: string }>(
+    `/admin/users/${userId}/role-assignments/${role}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export function adminFetchRoleHistory(userId: string) {
+  return authenticatedRequest<AdminRoleHistoryItem[]>(
+    `/admin/users/${userId}/role-history`,
+    {
+      method: "GET",
+    },
+  );
 }

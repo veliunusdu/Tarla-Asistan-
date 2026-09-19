@@ -9,7 +9,7 @@ import { firebaseAuth } from "@/lib/firebase";
 import { saveSession } from "@/lib/auth";
 import { signInWithEmailAndPassword, type AuthError } from "firebase/auth";
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,17 +23,17 @@ export default function LoginPage() {
     try {
       const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
       const idToken = await credential.user.getIdToken();
-      const session = await loginWithFirebase(idToken, "AGRONOMIST");
-      if (session.user.role !== "AGRONOMIST" && session.user.active_role !== "AGRONOMIST") {
-        throw new Error("Bu hesap için ziraatçi yetkisi bulunmuyor");
+      const session = await loginWithFirebase(idToken, "ADMIN");
+      if (session.user.role !== "ADMIN" && session.user.active_role !== "ADMIN") {
+        throw new Error("Bu hesap için yönetici yetkisi bulunmuyor.");
       }
       saveSession(session);
-      router.replace("/dashboard");
+      router.replace("/admin/users");
     } catch (err) {
       const code = (err as AuthError | undefined)?.code;
       const status = (err as { status?: number } | undefined)?.status;
       if (status === 403) {
-        setError("Bu hesap için ziraatçi yetkisi bulunmuyor");
+        setError("Bu hesap için yönetici yetkisi bulunmuyor.");
       } else if (code === "auth/invalid-credential" || code === "auth/user-not-found") {
         setError("E-posta veya şifre hatalı.");
       } else if (err instanceof Error) {
@@ -48,13 +48,12 @@ export default function LoginPage() {
 
   return (
     <main className="login-shell">
-      <section className="brand-panel" aria-label="Tarla Asistanı tanıtımı">
+      <section className="brand-panel" aria-label="Tarla Asistanı Yönetici Alanı">
         <div className="brand-mark" aria-hidden="true">TA</div>
         <p className="eyebrow">TARLA ASİSTANI</p>
-        <h1>Tarladaki bilgi, doğru karara dönüşsün.</h1>
+        <h1>Yönetici Portali</h1>
         <p className="brand-copy">
-          Üreticilerinizi, günlük faaliyetleri ve saha bildirimlerini tek bir
-          uzman ekranından yönetin.
+          Kullanıcı rolleri, ziraatçi yetkilendirmeleri ve operasyonel denetim merkezi.
         </p>
         <div className="field-lines" aria-hidden="true">
           <span /><span /><span /><span />
@@ -63,34 +62,46 @@ export default function LoginPage() {
 
       <section className="form-panel">
         <div className="login-card">
-          <p className="eyebrow dark">UZMAN PANELİ</p>
+          <p className="eyebrow dark">YÖNETİCİ GİRİŞİ</p>
           <h2>Hoş geldiniz</h2>
-          <p className="muted">Firebase hesabınızla güvenli giriş yapın.</p>
+          <p className="muted">Güvenli yönetici oturumu için giriş yapın.</p>
 
           <form onSubmit={submit}>
             <label>
-              E-posta adresi
-              <input type="email" autoComplete="email" value={email}
+              Yönetici E-posta Adresi
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="uzman@example.com" required />
+                placeholder="admin@example.com"
+                required
+              />
             </label>
             <label>
               Şifre
-              <input type="password" autoComplete="current-password" value={password}
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Şifrenizi girin" minLength={6} required />
+                placeholder="Şifrenizi girin"
+                minLength={6}
+                required
+              />
             </label>
 
             {error && <p className="error" id="form-error" role="alert">{error}</p>}
 
             <button type="submit" disabled={busy}>
-              {busy ? "Lütfen bekleyin…" : "Güvenli giriş yap"}
+              {busy ? "Giriş yapılıyor…" : "Yönetici Girişi Yap"}
             </button>
           </form>
+
           <p className="auth-switch">
-            Çiftçi hesabınız yok mu? <Link href="/register">Hesap oluşturun</Link>
+            Uzman paneline dön: <Link href="/login">Uzman Girişi</Link>
           </p>
-          <p className="security-note">Firebase Authentication ile korunan giriş</p>
+          <p className="security-note">AdminContext ile korunan oturum</p>
         </div>
       </section>
     </main>

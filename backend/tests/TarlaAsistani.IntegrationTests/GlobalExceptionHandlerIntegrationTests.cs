@@ -30,6 +30,7 @@ public class GlobalExceptionHandlerIntegrationTests : IClassFixture<CustomWebApp
     {
         // Arrange: Create farm
         var ownerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         var createResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: ownerId,
             Name: "Hata Test Tarlası",

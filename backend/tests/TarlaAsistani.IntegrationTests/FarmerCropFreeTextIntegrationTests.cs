@@ -5,6 +5,7 @@ using FluentAssertions;
 using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application.Features.CropPeriods.DTOs;
 using TarlaAsistani.Application.Features.Farms.DTOs;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.IntegrationTests;
 
@@ -14,8 +15,11 @@ public class FarmerCropFreeTextIntegrationTests : IClassFixture<CustomWebApplica
 {
     private readonly HttpClient _client;
 
+    private readonly CustomWebApplicationFactory _factory;
+
     public FarmerCropFreeTextIntegrationTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -24,6 +28,7 @@ public class FarmerCropFreeTextIntegrationTests : IClassFixture<CustomWebApplica
     public async Task CreateFarm_WithCustomCrop_ApiResponseShouldContainCropName()
     {
         var ownerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         var createRequest = new CreateFarmRequest(
             OwnerId: ownerId,
             Name: "Güneydoğu Nohut Sahası",
@@ -72,6 +77,7 @@ public class FarmerCropFreeTextIntegrationTests : IClassFixture<CustomWebApplica
     {
         // 1. Create farm with initial crop "Buğday"
         var ownerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         var createRequest = new CreateFarmRequest(
             OwnerId: ownerId,
             Name: "Çukurova Sahası",

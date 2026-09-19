@@ -30,6 +30,7 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     {
         // 1. Create Farm with active crop period
         var ownerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         var createRequest = new CreateFarmRequest(
             OwnerId: ownerId,
             Name: "Görev Test Sahası",
@@ -126,11 +127,45 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
             options: CustomWebApplicationFactory.JsonOptions);
 
         var response = await _client.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
-        response.StatusCode.Should().Be(HttpStatusCode.Created, responseBody);
-        var task = await response.Content.ReadFromJsonAsync<TaskDto>(
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized);
+
+        var agronomistId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = agronomistId,
+                PhoneNumber = "+905550000009",
+                Role = UserRole.Agronomist,
+                AccountStatus = AccountStatus.Active,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var agroRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/farms/{farm!["id"]}/tasks");
+        agroRequest.Headers.Add("X-User-Id", agronomistId.ToString());
+        agroRequest.Headers.Add("X-User-Role", "Agronomist");
+        agroRequest.Content = JsonContent.Create(
+            new CreateExpertTaskApiRequest(
+                null,
+                "Sulama yap",
+                "Akşam sulama",
+                "Uzman tarafından planlandı",
+                TaskPriority.Medium,
+                TaskConfidence.High,
+                DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+                null),
+            options: CustomWebApplicationFactory.JsonOptions);
+
+        var agroResponse = await _client.SendAsync(agroRequest);
+        var agroResponseBody = await agroResponse.Content.ReadAsStringAsync();
+        agroResponse.StatusCode.Should().Be(HttpStatusCode.Created, agroResponseBody);
+        var task = await agroResponse.Content.ReadFromJsonAsync<TaskDto>(
             CustomWebApplicationFactory.JsonOptions);
-        task!.Source.Should().Be(TaskSource.Manual);
+        task!.Source.Should().Be(TaskSource.Expert);
 
         var listRequest = new HttpRequestMessage(
             HttpMethod.Get,

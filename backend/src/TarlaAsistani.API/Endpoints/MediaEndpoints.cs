@@ -13,7 +13,9 @@ public static class MediaEndpoints
 {
     public static IEndpointRouteBuilder MapMediaEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/media").WithTags("Media");
+        var group = app.MapGroup("/api/v1/media")
+            .WithTags("Media")
+            .RequireAuthorization("ActiveRoleAssignment");
 
         // 1. POST /api/v1/media - Upload image or audio file
         group.MapPost("", async (

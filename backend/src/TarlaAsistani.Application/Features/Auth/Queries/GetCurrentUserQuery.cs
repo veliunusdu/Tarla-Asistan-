@@ -2,10 +2,11 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.DTOs;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.Application.Features.Auth.Queries;
 
-public record GetCurrentUserQuery(Guid UserId) : IRequest<UserDto?>;
+public record GetCurrentUserQuery(Guid UserId, UserRole? ActiveRole = null) : IRequest<UserDto?>;
 
 public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, UserDto?>
 {
@@ -20,8 +21,25 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
     {
         var user = await _db.Users
             .Include(u => u.Profile)
+            .Include(u => u.RoleAssignments)
             .FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken);
 
-        return user != null ? UserDto.FromEntity(user) : null;
+        if (user == null) return null;
+
+        var activeRoles = user.RoleAssignments
+            .Where(ura => ura.RevokedAtUtc == null)
+            .Select(ura => ura.Role)
+            .Distinct()
+            .ToList();
+
+        var effectiveActiveRole = (request.ActiveRole.HasValue && activeRoles.Contains(request.ActiveRole.Value))
+            ? request.ActiveRole.Value
+            : (activeRoles.Contains(user.Role)
+                ? user.Role
+                : (activeRoles.Contains(UserRole.Farmer)
+                    ? UserRole.Farmer
+                    : (activeRoles.Count > 0 ? activeRoles[0] : UserRole.Farmer)));
+
+        return UserDto.FromEntity(user, effectiveActiveRole, activeRoles);
     }
 }

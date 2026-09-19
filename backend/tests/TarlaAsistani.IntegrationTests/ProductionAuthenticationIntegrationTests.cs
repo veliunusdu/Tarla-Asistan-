@@ -89,7 +89,7 @@ public class ProductionAuthenticationIntegrationTests : IDisposable
             $"/api/v1/auth/me?userId={anotherUser.Id}");
         request.Headers.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            _factory.Services.GetRequiredService<IJwtService>().GenerateAccessToken(authenticatedUser));
+            _factory.Services.GetRequiredService<IJwtService>().GenerateAccessToken(authenticatedUser, UserRole.Farmer));
 
         var response = await _client.SendAsync(request);
 

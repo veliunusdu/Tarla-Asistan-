@@ -46,6 +46,7 @@ public static class UserEndpoints
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
         })
         .WithName("UpdateProfile")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<UserDto>(StatusCodes.Status200OK)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
@@ -81,6 +82,7 @@ public static class UserEndpoints
             }
         })
         .WithName("RequestAccountDeletion")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<AccountDeletionResponseDto>(StatusCodes.Status202Accepted)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
@@ -99,10 +101,11 @@ public static class UserEndpoints
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
+            var activeRole = httpContext.GetUserRole();
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId, activeRole));
             if (result == null) return Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
 
-            if (result.Role != UserRole.Farmer)
+            if (result.ActiveRole != UserRole.Farmer || !result.Roles.Contains(UserRole.Farmer))
             {
                 return Results.Json(new { detail = "Bu alana yalnızca çiftçiler erişebilir." }, statusCode: StatusCodes.Status403Forbidden);
             }
@@ -110,6 +113,7 @@ public static class UserEndpoints
             return Results.Ok(result);
         })
         .WithName("FarmerArea")
+        .RequireAuthorization("FarmerContext")
         .Produces<UserDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
@@ -128,10 +132,11 @@ public static class UserEndpoints
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
+            var activeRole = httpContext.GetUserRole();
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId, activeRole));
             if (result == null) return Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
 
-            if (result.Role != UserRole.Agronomist)
+            if (result.ActiveRole != UserRole.Agronomist || !result.Roles.Contains(UserRole.Agronomist))
             {
                 return Results.Json(new { detail = "Bu alana yalnızca ziraat mühendisleri/uzmanlar erişebilir." }, statusCode: StatusCodes.Status403Forbidden);
             }
@@ -139,6 +144,7 @@ public static class UserEndpoints
             return Results.Ok(result);
         })
         .WithName("AgronomistArea")
+        .RequireAuthorization("AgronomistContext")
         .Produces<UserDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)

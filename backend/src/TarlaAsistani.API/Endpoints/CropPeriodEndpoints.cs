@@ -14,7 +14,8 @@ public static class CropPeriodEndpoints
     public static IEndpointRouteBuilder MapCropPeriodEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/farms/{farmId:guid}/production-periods")
-                       .WithTags("Crop Periods");
+                       .WithTags("Crop Periods")
+                       .RequireAuthorization("ActiveRoleAssignment");
 
         // 1. GET /api/v1/farms/{farmId}/production-periods - List crop periods
         group.MapGet("", async (

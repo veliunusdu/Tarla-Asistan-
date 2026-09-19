@@ -22,6 +22,8 @@ public class RefreshToken
 
     public DateTime? RevokedAtUtc { get; set; }
 
+    public UserRole ActiveRole { get; set; } = UserRole.Farmer;
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     // Navigation

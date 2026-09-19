@@ -79,6 +79,7 @@ public static class TaskEndpoints
             }
         })
         .WithName("CreateExpertTask")
+        .RequireAuthorization("AgronomistContext")
         .Produces<TaskDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
@@ -105,6 +106,7 @@ public static class TaskEndpoints
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Tarla bulunamadı." });
         })
         .WithName("ListDailyTasks")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<DailyTaskListDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
@@ -127,6 +129,7 @@ public static class TaskEndpoints
                 : Results.NotFound(new { detail = "Tarla bulunamadı." });
         })
         .WithName("ListAllFarmTasks")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<List<TaskDto>>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
@@ -146,6 +149,7 @@ public static class TaskEndpoints
             return result is not null ? Results.Ok(result) : Results.NotFound(new { detail = "Görev bulunamadı." });
         })
         .WithName("GetTaskById")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<TaskDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
@@ -196,6 +200,7 @@ public static class TaskEndpoints
             }
         })
         .WithName("UpdateTaskStatus")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<TaskDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
@@ -233,6 +238,7 @@ public static class TaskEndpoints
             }
         })
         .WithName("CompleteTask")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<TaskDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)

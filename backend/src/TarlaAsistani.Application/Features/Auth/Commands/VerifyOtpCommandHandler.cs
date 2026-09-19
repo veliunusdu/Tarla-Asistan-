@@ -7,6 +7,7 @@ using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.Application.Features.Auth.Commands;
 
@@ -54,36 +55,50 @@ public class VerifyOtpCommandHandler : IRequestHandler<VerifyOtpCommand, TokenRe
 
         if (user == null)
         {
-            var agronomistConfig = _config["Auth:AgronomistPhoneNumbers"] 
-                                ?? _config["AGRONOMIST_PHONE_NUMBERS"] 
-                                ?? string.Empty;
-
-            var agronomistPhones = agronomistConfig
-                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.Trim())
-                .ToList();
-
-            if (!agronomistPhones.Any())
-            {
-                agronomistPhones = _config.GetSection("Auth:AgronomistPhoneNumbers").Get<List<string>>() ?? new();
-            }
-
-            var role = agronomistPhones.Contains(phone) ? UserRole.Agronomist : UserRole.Farmer;
-
+            var now = DateTime.UtcNow;
             user = new User
             {
+                Id = Guid.NewGuid(),
                 PhoneNumber = phone,
-                Role = role,
+                Role = UserRole.Farmer,
+                AccountStatus = AccountStatus.Active,
                 IsVerified = true,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
             };
             _db.Users.Add(user);
+
+            var initialAssignment = new UserRoleAssignment
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Role = UserRole.Farmer,
+                GrantedAtUtc = now,
+                GrantReason = "OTP verification initial farmer role"
+            };
+            user.RoleAssignments.Add(initialAssignment);
+            _db.UserRoleAssignments.Add(initialAssignment);
+
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        // Issue session tokens
-        var accessToken = _jwtService.GenerateAccessToken(user);
+        // Issue session tokens based ONLY on active role assignments
+        var activeRoles = await _db.UserRoleAssignments
+            .Where(ura => ura.UserId == user.Id && ura.RevokedAtUtc == null)
+            .Select(ura => ura.Role)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (activeRoles.Count == 0)
+        {
+            throw new ForbiddenException("Kullanıcının aktif bir rol ataması bulunmamaktadır.");
+        }
+
+        var effectiveActiveRole = activeRoles.Contains(UserRole.Farmer)
+            ? UserRole.Farmer
+            : activeRoles[0];
+
+        var accessToken = _jwtService.GenerateAccessToken(user, effectiveActiveRole);
         var rawRefreshToken = _jwtService.GenerateRefreshToken();
         var refreshHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawRefreshToken))).ToLowerInvariant();
         var refreshDays = _config.GetValue("Auth:RefreshTokenExpireDays", 30);
@@ -93,6 +108,7 @@ public class VerifyOtpCommandHandler : IRequestHandler<VerifyOtpCommand, TokenRe
             UserId = user.Id,
             FamilyId = Guid.NewGuid(),
             TokenHash = refreshHash,
+            ActiveRole = effectiveActiveRole,
             ExpiresAtUtc = DateTime.UtcNow.AddDays(refreshDays),
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -105,7 +121,7 @@ public class VerifyOtpCommandHandler : IRequestHandler<VerifyOtpCommand, TokenRe
             RefreshToken: rawRefreshToken,
             TokenType: "bearer",
             ExpiresIn: _config.GetValue("Auth:AccessTokenExpireMinutes", 15) * 60,
-            User: UserDto.FromEntity(user)
+            User: UserDto.FromEntity(user, effectiveActiveRole, activeRoles)
         );
     }
 }

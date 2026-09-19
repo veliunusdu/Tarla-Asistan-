@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Domain.Entities;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.Infrastructure.Services;
 
@@ -18,8 +19,9 @@ public class JwtService : IJwtService
         _config = config;
     }
 
-    public string GenerateAccessToken(User user)
+    public string GenerateAccessToken(User user, UserRole activeRole)
     {
+        var effectiveRole = activeRole;
         var secret = _config["Auth:JwtSecret"] 
                   ?? _config["Jwt:Secret"] 
                   ?? _config["JWT_SECRET"]
@@ -35,8 +37,9 @@ public class JwtService : IJwtService
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Role, user.Role.ToString().ToUpperInvariant()),
-            new Claim("role", user.Role.ToString().ToUpperInvariant()),
+            new Claim(ClaimTypes.Role, effectiveRole.ToString().ToUpperInvariant()),
+            new Claim("role", effectiveRole.ToString().ToUpperInvariant()),
+            new Claim("active_role", effectiveRole.ToString().ToUpperInvariant()),
             new Claim("phone", user.PhoneNumber)
         };
 
