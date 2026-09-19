@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<UserRoleAssignment> UserRoleAssignments => Set<UserRoleAssignment>();
     public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
     public DbSet<FirebaseLinkApproval> FirebaseLinkApprovals => Set<FirebaseLinkApproval>();
     public DbSet<AccountDeletionJob> AccountDeletionJobs => Set<AccountDeletionJob>();
@@ -121,11 +122,48 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.HasIndex(rt => rt.FamilyId);
 
             entity.Property(rt => rt.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(rt => rt.ActiveRole)
+                  .HasConversion<string>()
+                  .HasDefaultValue(UserRole.Farmer);
 
             entity.HasOne(rt => rt.User)
                   .WithMany(u => u.RefreshTokens)
                   .HasForeignKey(rt => rt.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // USER ROLE ASSIGNMENT
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<UserRoleAssignment>(entity =>
+        {
+            entity.ToTable("user_role_assignments");
+            entity.HasKey(ura => ura.Id);
+            entity.Property(ura => ura.Role)
+                  .HasConversion<string>()
+                  .IsRequired();
+
+            entity.Property(ura => ura.GrantReason).HasMaxLength(500);
+            entity.Property(ura => ura.RevokeReason).HasMaxLength(500);
+
+            entity.HasOne(ura => ura.User)
+                  .WithMany(u => u.RoleAssignments)
+                  .HasForeignKey(ura => ura.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ura => ura.GrantedByUser)
+                  .WithMany()
+                  .HasForeignKey(ura => ura.GrantedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(ura => ura.RevokedByUser)
+                  .WithMany()
+                  .HasForeignKey(ura => ura.RevokedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(ura => new { ura.UserId, ura.Role })
+                  .HasFilter("\"RevokedAtUtc\" IS NULL")
+                  .IsUnique();
         });
 
         // ══════════════════════════════════════════════════════
@@ -824,6 +862,42 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             if (string.IsNullOrWhiteSpace(entry.Entity.CropName) && entry.Entity.CropType.HasValue)
             {
                 entry.Entity.CropName = CropTypeHelper.ToTurkishName(entry.Entity.CropType.Value);
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<User>().Where(e => e.State == EntityState.Added))
+        {
+            if (entry.Entity.AccountStatus == AccountStatus.Active && !entry.Entity.RoleAssignments.Any())
+            {
+                var now = DateTime.UtcNow;
+                entry.Entity.RoleAssignments.Add(new UserRoleAssignment
+                {
+                    UserId = entry.Entity.Id,
+                    Role = UserRole.Farmer,
+                    GrantedAtUtc = now,
+                    GrantReason = "Initial assignment"
+                });
+
+                if (entry.Entity.Role == UserRole.Agronomist)
+                {
+                    entry.Entity.RoleAssignments.Add(new UserRoleAssignment
+                    {
+                        UserId = entry.Entity.Id,
+                        Role = UserRole.Agronomist,
+                        GrantedAtUtc = now,
+                        GrantReason = "Initial legacy agronomist assignment"
+                    });
+                }
+                else if (entry.Entity.Role == UserRole.Admin)
+                {
+                    entry.Entity.RoleAssignments.Add(new UserRoleAssignment
+                    {
+                        UserId = entry.Entity.Id,
+                        Role = UserRole.Admin,
+                        GrantedAtUtc = now,
+                        GrantReason = "Initial admin assignment"
+                    });
+                }
             }
         }
 

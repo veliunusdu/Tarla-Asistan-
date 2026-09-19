@@ -56,7 +56,7 @@ void main() {
 
     final accessToken = await service.authenticateWithFirebase('firebase-id');
 
-    expect(body, {'id_token': 'firebase-id'});
+    expect(body, {'id_token': 'firebase-id', 'active_role': 'FARMER'});
     expect(accessToken, 'backend-access');
     expect(await service.currentAccessToken(), 'backend-access');
     service.close();

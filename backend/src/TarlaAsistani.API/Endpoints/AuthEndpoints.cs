@@ -6,6 +6,7 @@ using TarlaAsistani.Application.Features.Auth.Commands;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Application.Features.Auth.Queries;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.API.Endpoints;
 
@@ -21,7 +22,7 @@ public static class AuthEndpoints
             IMediator mediator,
             IValidator<FirebaseLoginCommand> validator) =>
         {
-            var command = new FirebaseLoginCommand(req.IdToken, req.Role);
+            var command = new FirebaseLoginCommand(req.IdToken, req.ActiveRole, req.Role);
             var validation = await validator.ValidateAsync(command);
             if (!validation.IsValid) return Results.ValidationProblem(validation.ToDictionary());
 
@@ -29,6 +30,10 @@ public static class AuthEndpoints
             {
                 var result = await mediator.Send(command);
                 return Results.Ok(result);
+            }
+            catch (ForbiddenException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -43,6 +48,7 @@ public static class AuthEndpoints
         .Produces<TokenResponseDto>(StatusCodes.Status200OK)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status400BadRequest);
 
         // 4. POST /api/v1/auth/refresh
@@ -88,15 +94,18 @@ public static class AuthEndpoints
                 return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId));
+            var activeRole = httpContext.GetUserRole();
+            var result = await mediator.Send(new GetCurrentUserQuery(queryUserId, activeRole));
             return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Kullanıcı bulunamadı." });
         })
         .WithName("GetCurrentUser")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<UserDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
-        // 7. POST /api/v1/auth/approvals - Operator approval for Agronomist Firebase linking
+        // 7. POST /api/v1/auth/approvals - Operator approval for Agronomist Firebase linking (Admin only)
         group.MapPost("/approvals", async (
             ApproveFirebaseLinkApiRequest req,
             IMediator mediator,
@@ -124,8 +133,11 @@ public static class AuthEndpoints
             }
         })
         .WithName("ApproveFirebaseLink")
+        .RequireAuthorization("AdminContext")
         .Produces<FirebaseLinkApprovalDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict);
 
@@ -133,6 +145,6 @@ public static class AuthEndpoints
     }
 }
 
-public record FirebaseLoginApiRequest(string IdToken, UserRole? Role = null);
+public record FirebaseLoginApiRequest(string IdToken, UserRole? ActiveRole = null, UserRole? Role = null);
 public record RefreshTokenApiRequest(string RefreshToken);
 public record ApproveFirebaseLinkApiRequest(Guid UserId, string FirebaseUid, string OperatorName);

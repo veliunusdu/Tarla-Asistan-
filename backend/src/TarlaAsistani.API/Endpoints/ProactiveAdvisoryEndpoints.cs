@@ -12,7 +12,9 @@ public static class ProactiveAdvisoryEndpoints
 {
     public static IEndpointRouteBuilder MapProactiveAdvisoryEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/ai/advisories").WithTags("Proactive AI Advisories");
+        var group = app.MapGroup("/api/v1/ai/advisories")
+            .WithTags("Proactive AI Advisories")
+            .RequireAuthorization("ActiveRoleAssignment");
 
         // 1. GET /api/v1/ai/advisories — List active advisories for user or specific farm
         group.MapGet("/", async (

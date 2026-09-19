@@ -4,6 +4,7 @@ public enum UserRole
 {
     Farmer,
     Agronomist,
+    Admin,
 }
 
 public enum IrrigationMethod

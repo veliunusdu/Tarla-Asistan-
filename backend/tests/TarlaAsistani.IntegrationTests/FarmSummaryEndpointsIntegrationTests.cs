@@ -119,6 +119,7 @@ public class FarmSummaryEndpointsIntegrationTests : IClassFixture<CustomWebAppli
     public async Task GetSummary_WhenUserHasNoFarms_Returns200WithEmptyLists()
     {
         var userId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(userId, UserRole.Farmer);
         using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/farms/summary");
         req.Headers.Add("X-User-Id", userId.ToString());
         req.Headers.Add("X-User-Role", "Farmer");

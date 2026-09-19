@@ -5,6 +5,7 @@ using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.Commands;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 using TarlaAsistani.UnitTests.Common;
 
 namespace TarlaAsistani.UnitTests.Features.Auth;
@@ -14,6 +15,12 @@ public class FirebaseLoginCommandHandlerTests
 {
     private readonly Mock<IFirebaseAuthService> _firebaseAuthMock = new();
     private readonly Mock<IJwtService> _jwtServiceMock = new();
+
+    public FirebaseLoginCommandHandlerTests()
+    {
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>())).Returns("fake_access_token");
+        _jwtServiceMock.Setup(j => j.GenerateRefreshToken()).Returns("fake_refresh_token");
+    }
 
     private IConfiguration CreateConfig()
     {
@@ -35,7 +42,7 @@ public class FirebaseLoginCommandHandlerTests
         _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "test@example.com", "Mehmet Demir"));
 
-        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>()))
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>()))
             .Returns("fake_access_token");
         _jwtServiceMock.Setup(j => j.GenerateRefreshToken())
             .Returns("fake_refresh_token");
@@ -55,6 +62,8 @@ public class FirebaseLoginCommandHandlerTests
         result.User.FirebaseUid.Should().Be(uid);
         result.User.PhoneNumber.Should().Be(phone);
         result.User.FullName.Should().Be("Mehmet Demir");
+        result.User.Role.Should().Be(UserRole.Farmer);
+        result.User.ActiveRole.Should().Be(UserRole.Farmer);
     }
 
     [Fact]
@@ -124,7 +133,7 @@ public class FirebaseLoginCommandHandlerTests
         _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "agro@example.com", "Ayşe Uzman"));
 
-        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>())).Returns("fake_jwt");
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>())).Returns("fake_jwt");
         _jwtServiceMock.Setup(j => j.GenerateRefreshToken()).Returns("fake_refresh");
 
         var agronomist = new User
@@ -147,8 +156,17 @@ public class FirebaseLoginCommandHandlerTests
             ConsumedAtUtc = null
         };
 
+        var agroAssignment = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = agronomist.Id,
+            Role = UserRole.Agronomist,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+
         var db = new MockDbContextBuilder()
             .WithUsers(agronomist)
+            .WithUserRoleAssignments(agroAssignment)
             .WithFirebaseLinkApprovals(approval)
             .Build();
 
@@ -166,7 +184,7 @@ public class FirebaseLoginCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_WhenNewUserSelfRegisters_ShouldAlwaysDefaultToFarmerRole()
+    public async Task Handle_WhenNewUserSelfRegistersRequestingAgronomist_ShouldCreateAsFarmerAndThrowForbidden()
     {
         // Arrange
         var idToken = "firebase_new_user_token";
@@ -176,21 +194,172 @@ public class FirebaseLoginCommandHandlerTests
         _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "new@example.com", "Yeni Kullanıcı"));
 
-        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>())).Returns("fake_jwt");
-        _jwtServiceMock.Setup(j => j.GenerateRefreshToken()).Returns("fake_refresh");
+        var db = new MockDbContextBuilder().Build();
+        var config = CreateConfig();
+        var handler = new FirebaseLoginCommandHandler(db, _firebaseAuthMock.Object, _jwtServiceMock.Object, config);
+
+        var command = new FirebaseLoginCommand(idToken, UserRole.Agronomist);
+
+        // Act & Assert - must throw ForbiddenException, but user is created as Farmer
+        var act = () => handler.Handle(command, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>()
+            .WithMessage("*ziraatçi yetkisi bulunmuyor*");
+
+        var createdUser = db.Users.FirstOrDefault(u => u.FirebaseUid == uid);
+        createdUser.Should().NotBeNull();
+        createdUser!.Role.Should().Be(UserRole.Farmer);
+        createdUser.RoleAssignments.Should().ContainSingle(r => r.Role == UserRole.Farmer);
+    }
+
+    [Fact]
+    public async Task Handle_WhenNewUserSelfRegistersRequestingAdmin_ShouldCreateAsFarmerAndThrowForbidden()
+    {
+        // Arrange
+        var idToken = "firebase_admin_req_token";
+        var uid = "new_admin_uid";
+        var phone = "+905550009988";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "admin@example.com", "Admin Talep"));
 
         var db = new MockDbContextBuilder().Build();
         var config = CreateConfig();
         var handler = new FirebaseLoginCommandHandler(db, _firebaseAuthMock.Object, _jwtServiceMock.Object, config);
 
-        // Attempt to pass Agronomist role
+        var command = new FirebaseLoginCommand(idToken, UserRole.Admin);
+
+        // Act & Assert
+        var act = () => handler.Handle(command, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>()
+            .WithMessage("*yönetici yetkisi bulunmuyor*");
+
+        var createdUser = db.Users.FirstOrDefault(u => u.FirebaseUid == uid);
+        createdUser.Should().NotBeNull();
+        createdUser!.Role.Should().Be(UserRole.Farmer);
+        createdUser.RoleAssignments.Should().ContainSingle(r => r.Role == UserRole.Farmer);
+    }
+
+    [Fact]
+    public async Task Handle_WhenNewUserSelfRegistersRequestingFarmer_ShouldSucceedWithFarmerActiveRole()
+    {
+        // Arrange
+        var idToken = "firebase_farmer_new_token";
+        var uid = "new_farmer_uid";
+        var phone = "+905550007766";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "ciftci@example.com", "Yeni Çiftçi"));
+
+        var db = new MockDbContextBuilder().Build();
+        var config = CreateConfig();
+        var handler = new FirebaseLoginCommandHandler(db, _firebaseAuthMock.Object, _jwtServiceMock.Object, config);
+
+        var command = new FirebaseLoginCommand(idToken, UserRole.Farmer);
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.User.Role.Should().Be(UserRole.Farmer);
+        result.User.ActiveRole.Should().Be(UserRole.Farmer);
+        result.User.Roles.Should().Contain(UserRole.Farmer);
+    }
+
+    [Fact]
+    public async Task Handle_WhenExistingUserRequestsUnassignedRole_ShouldThrowForbidden()
+    {
+        // Arrange
+        var idToken = "firebase_existing_token";
+        var uid = "existing_user_uid";
+        var phone = "+905551112233";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "existing@example.com", "Mevcut Kullanıcı"));
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = phone,
+            FirebaseUid = uid,
+            Role = UserRole.Farmer,
+            AccountStatus = AccountStatus.Active
+        };
+        var farmerAssignment = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Role = UserRole.Farmer,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .WithUserRoleAssignments(farmerAssignment)
+            .Build();
+
+        var config = CreateConfig();
+        var handler = new FirebaseLoginCommandHandler(db, _firebaseAuthMock.Object, _jwtServiceMock.Object, config);
+
+        var command = new FirebaseLoginCommand(idToken, UserRole.Agronomist);
+
+        // Act & Assert
+        var act = () => handler.Handle(command, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>()
+            .WithMessage("*ziraatçi yetkisi bulunmuyor*");
+    }
+
+    [Fact]
+    public async Task Handle_WhenExistingUserWithAgronomistRole_RequestsAgronomist_ShouldSucceedWithAgronomistActiveRole()
+    {
+        // Arrange
+        var idToken = "firebase_agro_token";
+        var uid = "existing_agro_uid";
+        var phone = "+905551114455";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, "agro@example.com", "Ziraat Uzmanı"));
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = phone,
+            FirebaseUid = uid,
+            Role = UserRole.Farmer,
+            AccountStatus = AccountStatus.Active
+        };
+        var farmerAssignment = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Role = UserRole.Farmer,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+        var agroAssignment = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Role = UserRole.Agronomist,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .WithUserRoleAssignments(farmerAssignment, agroAssignment)
+            .Build();
+
+        var config = CreateConfig();
+        var handler = new FirebaseLoginCommandHandler(db, _firebaseAuthMock.Object, _jwtServiceMock.Object, config);
+
         var command = new FirebaseLoginCommand(idToken, UserRole.Agronomist);
 
         // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert - new self-registered users MUST always be created as Farmer
-        result.User.Role.Should().Be(UserRole.Farmer);
+        // Assert
+        result.Should().NotBeNull();
+        result.User.ActiveRole.Should().Be(UserRole.Agronomist);
+        result.User.Roles.Should().Contain(new[] { UserRole.Farmer, UserRole.Agronomist });
     }
 
     [Fact]
@@ -203,7 +372,7 @@ public class FirebaseLoginCommandHandlerTests
             .ReturnsAsync(new FirebaseTokenInfo("email_uid_1", null, "first@example.com", null));
         _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(secondToken, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new FirebaseTokenInfo("email_uid_2", null, "second@example.com", null));
-        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>())).Returns("fake_jwt");
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>())).Returns("fake_jwt");
         _jwtServiceMock.Setup(j => j.GenerateRefreshToken()).Returns("fake_refresh");
 
         var handler = new FirebaseLoginCommandHandler(

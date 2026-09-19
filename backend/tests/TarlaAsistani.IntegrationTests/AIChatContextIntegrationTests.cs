@@ -42,6 +42,7 @@ public class AIChatContextIntegrationTests : IClassFixture<CustomWebApplicationF
         double? lon = 33.0,
         string? cropType = null)
     {
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         // Create farm (also seeds user implicitly in Integration test db)
         var req = new
         {

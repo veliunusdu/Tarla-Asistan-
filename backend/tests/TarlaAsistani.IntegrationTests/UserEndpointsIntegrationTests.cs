@@ -27,7 +27,7 @@ public class UserEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var user = await db.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.Id == userId);
+        var user = await db.Users.Include(u => u.Profile).Include(u => u.RoleAssignments).FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null)
         {
             user = new User
@@ -43,6 +43,17 @@ public class UserEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
                     District = district ?? "Çankaya",
                     TermsAccepted = true,
                     NotificationsEnabled = true,
+                },
+                RoleAssignments = new List<UserRoleAssignment>
+                {
+                    new()
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = userId,
+                        Role = role,
+                        GrantedAtUtc = DateTime.UtcNow,
+                        GrantReason = "Test setup seed"
+                    }
                 }
             };
             db.Users.Add(user);

@@ -7,6 +7,7 @@ using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.Commands;
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 using TarlaAsistani.UnitTests.Common;
 
 namespace TarlaAsistani.UnitTests.Features.Auth;
@@ -50,7 +51,7 @@ public class VerifyOtpCommandHandlerTests
             .WithOtpCodes(otp)
             .Build();
 
-        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>()))
+        _jwtServiceMock.Setup(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>()))
             .Returns("fake_access_token");
         _jwtServiceMock.Setup(j => j.GenerateRefreshToken())
             .Returns("fake_refresh_token");
@@ -103,5 +104,61 @@ public class VerifyOtpCommandHandlerTests
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*geçersiz*");
         otp.AttemptCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_WhenExistingUserHasNoActiveRoles_ShouldThrowForbiddenExceptionAndNotGenerateTokens()
+    {
+        // Arrange
+        var phone = "+905551234567";
+        var code = "123456";
+        var codeHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code)));
+        var userId = Guid.NewGuid();
+
+        var existingUser = new User
+        {
+            Id = userId,
+            PhoneNumber = phone,
+            Role = UserRole.Agronomist,
+            AccountStatus = AccountStatus.Active,
+            IsVerified = true
+        };
+
+        var revokedAssignment = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Role = UserRole.Agronomist,
+            GrantedAtUtc = DateTime.UtcNow.AddMonths(-1),
+            RevokedAtUtc = DateTime.UtcNow.AddDays(-1)
+        };
+
+        var otp = new OtpCode
+        {
+            PhoneNumber = phone,
+            CodeHash = codeHash,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(3),
+            IsUsed = false,
+            AttemptCount = 0
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(existingUser)
+            .WithUserRoleAssignments(revokedAssignment)
+            .WithOtpCodes(otp)
+            .Build();
+
+        var config = CreateConfig();
+        var handler = new VerifyOtpCommandHandler(db, _jwtServiceMock.Object, config);
+        var command = new VerifyOtpCommand(phone, code);
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<ForbiddenException>()
+            .WithMessage("*aktif bir rol ataması bulunmamaktadır*");
+        _jwtServiceMock.Verify(j => j.GenerateAccessToken(It.IsAny<User>(), It.IsAny<UserRole>()), Times.Never);
+        _jwtServiceMock.Verify(j => j.GenerateRefreshToken(), Times.Never);
     }
 }

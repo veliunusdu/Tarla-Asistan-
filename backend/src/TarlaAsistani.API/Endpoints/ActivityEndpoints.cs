@@ -16,10 +16,12 @@ public static class ActivityEndpoints
     public static IEndpointRouteBuilder MapActivityEndpoints(this IEndpointRouteBuilder app)
     {
         var farmActivities = app.MapGroup("/api/v1/farms/{farmId:guid}")
-                                .WithTags("Activities & Journal");
+                                .WithTags("Activities & Journal")
+                                .RequireAuthorization("ActiveRoleAssignment");
 
         var activities = app.MapGroup("/api/v1/activities")
-                            .WithTags("Activities");
+                            .WithTags("Activities")
+                            .RequireAuthorization("ActiveRoleAssignment");
 
         // 1. POST /api/v1/farms/{farmId}/activities - Create activity or voice draft
         farmActivities.MapPost("/activities", async (

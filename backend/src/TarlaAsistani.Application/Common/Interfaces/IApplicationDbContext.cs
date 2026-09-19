@@ -9,6 +9,7 @@ public interface IApplicationDbContext
     DbSet<User> Users { get; }
     DbSet<Profile> Profiles { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<UserRoleAssignment> UserRoleAssignments { get; }
     DbSet<OtpCode> OtpCodes { get; }
     DbSet<FirebaseLinkApproval> FirebaseLinkApprovals { get; }
     DbSet<AccountDeletionJob> AccountDeletionJobs { get; }

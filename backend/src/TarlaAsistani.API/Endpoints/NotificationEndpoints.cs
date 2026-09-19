@@ -13,7 +13,9 @@ public static class NotificationEndpoints
 {
     public static IEndpointRouteBuilder MapNotificationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/notifications").WithTags("Notifications");
+        var group = app.MapGroup("/api/v1/notifications")
+            .WithTags("Notifications")
+            .RequireAuthorization("ActiveRoleAssignment");
 
         // 1. POST /api/v1/notifications/devices - Register push device token
         group.MapPost("/devices", async (

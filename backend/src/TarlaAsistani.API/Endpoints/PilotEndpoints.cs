@@ -58,6 +58,7 @@ public static class PilotEndpoints
             }
         })
         .WithName("CreatePilotFeedback")
+        .RequireAuthorization("ActiveRoleAssignment")
         .Produces<PilotFeedbackDto>(StatusCodes.Status201Created)
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
@@ -97,6 +98,7 @@ public static class PilotEndpoints
             }
         })
         .WithName("ListPilotFeedback")
+        .RequireAuthorization("AgronomistContext")
         .Produces<PilotFeedbackListDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status403Forbidden);
 
@@ -126,6 +128,7 @@ public static class PilotEndpoints
             }
         })
         .WithName("UpdatePilotFeedbackStatus")
+        .RequireAuthorization("AgronomistContext")
         .Produces<PilotFeedbackDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
@@ -154,6 +157,7 @@ public static class PilotEndpoints
             }
         })
         .WithName("GetPilotMetrics")
+        .RequireAuthorization("AgronomistContext")
         .Produces<PilotMetricsDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status403Forbidden);
 

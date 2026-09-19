@@ -14,7 +14,9 @@ public static class AIEndpoints
 {
     public static IEndpointRouteBuilder MapAIEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/ai").WithTags("AI Chat");
+        var group = app.MapGroup("/api/v1/ai")
+            .WithTags("AI Chat")
+            .RequireAuthorization("ActiveRoleAssignment");
 
         // POST /api/v1/ai/chat — Start or continue conversational AI chat with optional image.
         // Authenticated user ID is resolved from JWT ClaimsPrincipal (production source of truth).

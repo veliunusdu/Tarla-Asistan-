@@ -49,7 +49,10 @@ class AuthService {
     String idToken, {
     String? firebaseUid,
   }) async {
-    final response = await _post('/auth/firebase', {'id_token': idToken});
+    final response = await _post('/auth/firebase', {
+      'id_token': idToken,
+      'active_role': 'FARMER',
+    });
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('backend_session_uid');
     final token = await _saveSession(response);

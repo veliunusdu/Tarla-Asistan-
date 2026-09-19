@@ -13,6 +13,7 @@ public class MockDbContextBuilder
     private List<User> _users = new();
     private List<Profile> _profiles = new();
     private List<RefreshToken> _refreshTokens = new();
+    private List<UserRoleAssignment> _userRoleAssignments = new();
     private List<OtpCode> _otpCodes = new();
     private List<FirebaseLinkApproval> _firebaseLinkApprovals = new();
     private List<AccountDeletionJob> _accountDeletionJobs = new();
@@ -70,6 +71,12 @@ public class MockDbContextBuilder
     public MockDbContextBuilder WithRefreshTokens(params RefreshToken[] tokens)
     {
         _refreshTokens.AddRange(tokens);
+        return this;
+    }
+
+    public MockDbContextBuilder WithUserRoleAssignments(params UserRoleAssignment[] assignments)
+    {
+        _userRoleAssignments.AddRange(assignments);
         return this;
     }
 
@@ -198,6 +205,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.Users, _users);
         SetupDbSet(_mockDb, db => db.Profiles, _profiles);
         SetupDbSet(_mockDb, db => db.RefreshTokens, _refreshTokens);
+        SetupDbSet(_mockDb, db => db.UserRoleAssignments, _userRoleAssignments);
         SetupDbSet(_mockDb, db => db.OtpCodes, _otpCodes);
         SetupDbSet(_mockDb, db => db.FirebaseLinkApprovals, _firebaseLinkApprovals);
         SetupDbSet(_mockDb, db => db.AccountDeletionJobs, _accountDeletionJobs);

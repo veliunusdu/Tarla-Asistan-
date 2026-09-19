@@ -3,14 +3,20 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application.Features.Farms.DTOs;
+using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.IntegrationTests;
 
 public sealed class FinancialEndpointsIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly HttpClient _client;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public FinancialEndpointsIntegrationTests(CustomWebApplicationFactory factory) => _client = factory.CreateClient();
+    public FinancialEndpointsIntegrationTests(CustomWebApplicationFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateClient();
+    }
 
     [Fact]
     public async Task OwnerCanCreateAndReadFinancialRecords_ServerCalculatesSaleTotal()
@@ -130,6 +136,7 @@ public sealed class FinancialEndpointsIntegrationTests : IClassFixture<CustomWeb
     private async Task<(Guid Owner, Guid FarmId, Guid PeriodId)> CreateFarmWithPeriod()
     {
         var owner = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(owner, UserRole.Farmer);
         var response = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(owner, "Finans Tarlası",
             38.4, 27.1, 5, null, "Buğday", null, new DateOnly(2026, 1, 1)), CustomWebApplicationFactory.JsonOptions);
         response.StatusCode.Should().Be(HttpStatusCode.Created);

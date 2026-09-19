@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
+using TarlaAsistani.Domain.Entities;
+using TarlaAsistani.Domain.Enums;
 using TarlaAsistani.Infrastructure.Persistence;
 
 namespace TarlaAsistani.IntegrationTests;
@@ -38,6 +40,51 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     public Mock<IAIAgentProvider> MockAIAgentProvider { get; } = new();
     public Mock<IFirebaseAuthService> MockFirebaseAuthService { get; } = new();
     public Mock<IPushNotificationService> MockPushService { get; } = new();
+
+    public async Task SeedUserWithRolesAsync(Guid userId, params UserRole[] roles)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var user = await db.Users.Include(u => u.RoleAssignments).FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null)
+        {
+            user = new User
+            {
+                Id = userId,
+                PhoneNumber = "+905550000000",
+                AccountStatus = AccountStatus.Active,
+                Role = (roles != null && roles.Length > 0) ? roles[0] : UserRole.Farmer,
+                Profile = new Profile
+                {
+                    FullName = "Integration Test User",
+                    Province = "Ankara",
+                    District = "Polatlı",
+                    TermsAccepted = true
+                }
+            };
+            db.Users.Add(user);
+        }
+
+        var effectiveRoles = (roles != null && roles.Length > 0) ? roles : new[] { UserRole.Farmer };
+
+        foreach (var role in effectiveRoles)
+        {
+            if (!user.RoleAssignments.Any(r => r.Role == role && r.RevokedAtUtc == null))
+            {
+                user.RoleAssignments.Add(new UserRoleAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Role = role,
+                    GrantedAtUtc = DateTime.UtcNow,
+                    GrantReason = "Test setup seed"
+                });
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

@@ -10,9 +10,11 @@ namespace TarlaAsistani.IntegrationTests;
 public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
     private readonly HttpClient _client;
+    private readonly CustomWebApplicationFactory _factory;
 
     public ActivityEndpointsIntegrationTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -22,6 +24,8 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
         // 1. Farmer A creates a farm
         var farmerA = Guid.NewGuid();
         var farmerB = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(farmerA, UserRole.Farmer);
+        await _factory.SeedUserWithRolesAsync(farmerB, UserRole.Farmer);
 
         var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerA,
@@ -80,7 +84,7 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
     {
         // 1. Farmer A creates a farm
         var farmerA = Guid.NewGuid();
-
+        await _factory.SeedUserWithRolesAsync(farmerA, UserRole.Farmer);
         var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerA,
             Name: "Kendi Tarlam Faaliyet Test",
@@ -132,6 +136,8 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
         // 1. Farmer A creates a farm
         var farmerA = Guid.NewGuid();
         var agronomistId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(farmerA, UserRole.Farmer);
+        await _factory.SeedUserWithRolesAsync(agronomistId, UserRole.Agronomist);
 
         var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerA,
@@ -182,6 +188,7 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
     {
         // 1. Farmer creates farm
         var farmerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(farmerId, UserRole.Farmer);
         var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerId,
             Name: "Serbest Metin Tarla",
@@ -219,6 +226,7 @@ public class ActivityEndpointsIntegrationTests : IClassFixture<CustomWebApplicat
     {
         // 1. Farmer creates farm
         var farmerId = Guid.NewGuid();
+        await _factory.SeedUserWithRolesAsync(farmerId, UserRole.Farmer);
         var farmResponse = await _client.PostAsJsonAsync("/api/v1/farms", new CreateFarmRequest(
             OwnerId: farmerId,
             Name: "Çapa Tarla",

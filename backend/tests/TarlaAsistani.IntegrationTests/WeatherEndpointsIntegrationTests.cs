@@ -27,6 +27,7 @@ public class WeatherEndpointsIntegrationTests : IClassFixture<CustomWebApplicati
 
     private async Task<Guid> CreateFarmAsync(Guid ownerId, double? lat = 37.87, double? lon = 32.49, string name = "Hava Durumu Test Tarlası")
     {
+        await _factory.SeedUserWithRolesAsync(ownerId, UserRole.Farmer);
         var createRequest = new CreateFarmRequest(
             OwnerId: ownerId,
             Name: name,
@@ -188,6 +189,7 @@ public class WeatherEndpointsIntegrationTests : IClassFixture<CustomWebApplicati
         var userA = Guid.NewGuid();
         var userB = Guid.NewGuid();
         var farmA = await CreateFarmAsync(userA, name: "User A Farm");
+        await _factory.SeedUserWithRolesAsync(userB, UserRole.Farmer);
 
         var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/farms/{farmA}/weather");
         request.Headers.Add("X-User-Id", userB.ToString()); // User B trying to access User A's farm weather

@@ -14,9 +14,14 @@ public static class FinancialEndpoints
     public static IEndpointRouteBuilder MapFinancialEndpoints(this IEndpointRouteBuilder app)
     {
         var farmPeriods = app.MapGroup("/api/v1/farms/{farmId:guid}/production-periods/{periodId:guid}")
-            .WithTags("Finance");
-        var expenses = app.MapGroup("/api/v1/expenses").WithTags("Finance");
-        var sales = app.MapGroup("/api/v1/sales").WithTags("Finance");
+            .WithTags("Finance")
+            .RequireAuthorization("ActiveRoleAssignment");
+        var expenses = app.MapGroup("/api/v1/expenses")
+            .WithTags("Finance")
+            .RequireAuthorization("ActiveRoleAssignment");
+        var sales = app.MapGroup("/api/v1/sales")
+            .WithTags("Finance")
+            .RequireAuthorization("ActiveRoleAssignment");
 
         farmPeriods.MapGet("/financial-summary", async (Guid farmId, Guid periodId, HttpContext context,
             [FromHeader(Name = "X-User-Id")] Guid? headerUserId, IMediator mediator) =>
