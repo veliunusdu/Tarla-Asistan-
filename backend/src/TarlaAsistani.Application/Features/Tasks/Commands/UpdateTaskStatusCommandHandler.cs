@@ -37,9 +37,22 @@ public class UpdateTaskStatusCommandHandler : IRequestHandler<UpdateTaskStatusCo
         }
 
         // 2. Role permission check
-        if (request.Role == UserRole.Agronomist && request.Status != TaskStatus.Cancelled)
+        if (request.Role == UserRole.Agronomist)
         {
-            throw new UnauthorizedAccessException("Uzman yalnızca görevi iptal edebilir.");
+            if (request.Status != TaskStatus.Cancelled)
+            {
+                throw new UnauthorizedAccessException("Uzman yalnızca görevi iptal edebilir.");
+            }
+
+            var isCreator = task.CreatedById == request.UserId;
+            var isAssignedToCase = task.CaseId.HasValue && await _db.SupportCases.AnyAsync(
+                c => c.Id == task.CaseId.Value && c.AssignedExpertId == request.UserId,
+                cancellationToken);
+
+            if (!isCreator && !isAssignedToCase)
+            {
+                throw new UnauthorizedAccessException("Yalnızca görevi oluşturan veya ilgili vakaya atanmış uzman bu görevi iptal edebilir.");
+            }
         }
 
         if (request.Role == UserRole.Farmer && request.Status == TaskStatus.Cancelled)

@@ -25,6 +25,11 @@ public class GetTaskByIdQueryHandler : IRequestHandler<GetTaskByIdQuery, TaskDto
         {
             query = query.Where(t => t.Farm.OwnerId == request.UserId);
         }
+        else if (request.Role == UserRole.Agronomist)
+        {
+            query = query.Where(t => t.CreatedById == request.UserId ||
+                                    (t.CaseId != null && _db.SupportCases.Any(c => c.Id == t.CaseId && c.AssignedExpertId == request.UserId)));
+        }
 
         var task = await query.FirstOrDefaultAsync(cancellationToken);
         if (task == null)

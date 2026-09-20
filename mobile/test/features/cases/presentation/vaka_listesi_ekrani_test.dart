@@ -23,7 +23,10 @@ class MockCaseRepository implements CaseRepository {
   Future<String> createCase(CreateCaseInput input) async => 'created-id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async {
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async {
     if (shouldThrow) {
       throw Exception('Failed to load cases');
     }
@@ -48,6 +51,9 @@ class MockCaseRepository implements CaseRepository {
       messages: [],
     );
   }
+
+  @override
+  Future<CaseDetail> claimCase(String caseId) => getCaseById(caseId);
 
   @override
   Future<CaseMessage> sendMessage(
@@ -133,7 +139,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Kayıtlı bir sorun bildiriminiz bulunmuyor.'), findsOneWidget);
+    expect(
+      find.text('Kayıtlı bir sorun bildiriminiz bulunmuyor.'),
+      findsOneWidget,
+    );
     expect(find.byType(FloatingActionButton), findsOneWidget);
   });
 
@@ -210,7 +219,9 @@ void main() {
     expect(find.byType(VakaDetayEkrani), findsOneWidget);
   });
 
-  testWidgets('navigates to SorunBildirEkrani when FAB is tapped', (tester) async {
+  testWidgets('navigates to SorunBildirEkrani when FAB is tapped', (
+    tester,
+  ) async {
     final repo = MockCaseRepository(cases: []);
     final tarlaRepo = FakeTarlaRepository();
 

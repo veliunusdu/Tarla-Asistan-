@@ -45,6 +45,46 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
             throw new UnauthorizedAccessException("Yalnızca kendi tarlanıza görev ekleyebilirsiniz.");
         }
 
+        // 1.1 Verify CaseId if provided
+        if (request.CaseId.HasValue)
+        {
+            var supportCase = await _db.SupportCases
+                .Include(c => c.Farm)
+                .FirstOrDefaultAsync(c => c.Id == request.CaseId.Value && c.Farm.ArchivedAt == null, cancellationToken);
+
+            if (supportCase == null)
+            {
+                throw new KeyNotFoundException("İlişkilendirilmek istenen vaka bulunamadı.");
+            }
+
+            if (supportCase.FarmId != request.FarmId)
+            {
+                throw new InvalidOperationException("Vaka belirtilen tarlaya ait değil.");
+            }
+
+            if (supportCase.Status == CaseStatus.Closed)
+            {
+                throw new InvalidOperationException("Kapalı vakalar için görev oluşturulamaz.");
+            }
+
+            if (request.CreatedByRole == UserRole.Agronomist && supportCase.AssignedExpertId != request.CreatedById)
+            {
+                throw new UnauthorizedAccessException("Yalnızca vakayı üstlenen uzman vakayla ilişkili görev oluşturabilir.");
+            }
+        }
+        else if (request.CreatedByRole == UserRole.Agronomist)
+        {
+            var hasOpenAssignedCase = await _db.SupportCases
+                .AnyAsync(c => c.FarmId == request.FarmId &&
+                               c.AssignedExpertId == request.CreatedById &&
+                               c.Status != CaseStatus.Closed, cancellationToken);
+
+            if (!hasOpenAssignedCase)
+            {
+                throw new UnauthorizedAccessException("Bu tarlada size atanmış açık bir vaka bulunmadığından görev oluşturamazsınız.");
+            }
+        }
+
         // 2. Resolve CropPeriodId
         Guid? resolvedCropPeriodId = request.CropPeriodId;
         if (resolvedCropPeriodId == null)
@@ -66,7 +106,7 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
 
         // 3. Generate DedupeKey
         var source = request.CreatedByRole == UserRole.Farmer ? TaskSource.Manual : TaskSource.Expert;
-        var dedupeRaw = $"{source}|{request.FarmId:D}|{request.DueDate:yyyy-MM-dd}|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId?.ToString("D")}";
+        var dedupeRaw = $"{source}|{request.FarmId:D}|{request.DueDate:yyyy-MM-dd}|{request.Title.Trim()}|{request.Description.Trim()}|{request.Reason.Trim()}|{resolvedCropPeriodId?.ToString("D")}|{request.CaseId?.ToString("D")}";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(dedupeRaw));
         var dedupeKey = Convert.ToHexString(hashBytes).ToLowerInvariant();
         if (dedupeKey.Length > 64)
@@ -95,6 +135,7 @@ public class CreateExpertTaskCommandHandler : IRequestHandler<CreateExpertTaskCo
                 FarmId = farm.Id,
                 CropPeriodId = resolvedCropPeriodId,
                 CreatedById = request.CreatedById,
+                CaseId = request.CaseId,
                 Title = request.Title.Trim(),
                 Description = request.Description.Trim(),
                 Reason = request.Reason.Trim(),

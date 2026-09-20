@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Cases.DTOs;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.Application.Features.Cases.Queries;
 
@@ -33,12 +34,40 @@ public class GetCaseByIdQueryHandler : IRequestHandler<GetCaseByIdQuery, CaseDet
             .Include(sc => sc.Context)
             .Where(sc => sc.Id == request.CaseId && sc.Farm.ArchivedAt == null);
 
-        if (request.Role == UserRole.Farmer)
+        var supportCase = await query.FirstOrDefaultAsync(cancellationToken);
+        if (supportCase == null)
         {
-            query = query.Where(sc => sc.Farm.OwnerId == request.UserId);
+            return null;
         }
 
-        var supportCase = await query.FirstOrDefaultAsync(cancellationToken);
-        return supportCase != null ? CaseDetailDto.FromEntity(supportCase) : null;
+        if (request.Role == UserRole.Farmer)
+        {
+            if (supportCase.Farm.OwnerId != request.UserId)
+            {
+                return null;
+            }
+            return CaseDetailDto.FromEntity(supportCase);
+        }
+
+        if (request.Role == UserRole.Agronomist)
+        {
+            // Case assigned to another expert -> Forbidden
+            if (supportCase.AssignedExpertId.HasValue && supportCase.AssignedExpertId.Value != request.UserId)
+            {
+                throw new ForbiddenException("Bu vaka başka bir uzmana atanmıştır.");
+            }
+
+            // Case unassigned in pool -> Redacted view
+            if (!supportCase.AssignedExpertId.HasValue)
+            {
+                return CaseDetailDto.FromEntityRedacted(supportCase);
+            }
+
+            // Assigned to this expert -> Full view
+            return CaseDetailDto.FromEntity(supportCase);
+        }
+
+        // Admin -> Full view
+        return CaseDetailDto.FromEntity(supportCase);
     }
 }

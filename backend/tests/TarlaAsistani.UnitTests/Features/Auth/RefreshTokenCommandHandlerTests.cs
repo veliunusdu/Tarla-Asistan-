@@ -245,4 +245,66 @@ public class RefreshTokenCommandHandlerTests
         await act.Should().ThrowAsync<UnauthorizedAccessException>()
             .WithMessage("*süresi doldu*");
     }
+
+    [Fact]
+    public async Task Handle_WhenUserIsDeletionPending_ShouldRevokeTokenAndThrowAccountDeletionPendingException()
+    {
+        // Arrange
+        const string rawToken = "pending_deletion_user_token";
+        var hash = HashToken(rawToken);
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = "+905551112244",
+            Role = UserRole.Farmer,
+            AccountStatus = AccountStatus.DeletionPending
+        };
+
+        var farmerRole = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Role = UserRole.Farmer,
+            GrantedAtUtc = DateTime.UtcNow.AddDays(-10)
+        };
+
+        var storedToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            User = user,
+            TokenHash = hash,
+            ActiveRole = UserRole.Farmer,
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(10),
+            RevokedAtUtc = null,
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-1)
+        };
+
+        var deletionJob = new AccountDeletionJob
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Status = AccountDeletionStatus.Pending
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .WithUserRoleAssignments(farmerRole)
+            .WithRefreshTokens(storedToken)
+            .WithAccountDeletionJobs(deletionJob)
+            .Build();
+
+        var config = CreateConfig();
+        var handler = new RefreshTokenCommandHandler(db, _jwtServiceMock.Object, config);
+        var command = new RefreshTokenCommand(rawToken);
+
+        // Act
+        var act = () => handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<TarlaAsistani.Domain.Exceptions.AccountDeletionPendingException>();
+        ex.Which.RequestId.Should().Be(deletionJob.Id);
+        storedToken.RevokedAtUtc.Should().NotBeNull();
+    }
 }

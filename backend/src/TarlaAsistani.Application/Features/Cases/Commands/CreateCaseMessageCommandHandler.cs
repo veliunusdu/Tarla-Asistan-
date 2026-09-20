@@ -70,6 +70,14 @@ public class CreateCaseMessageCommandHandler : IRequestHandler<CreateCaseMessage
         var supportCase = await query.FirstOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Vaka bulunamadı.");
 
+        if (request.Role == UserRole.Agronomist)
+        {
+            if (!supportCase.AssignedExpertId.HasValue || supportCase.AssignedExpertId.Value != request.SenderId)
+            {
+                throw new UnauthorizedAccessException("Yalnızca vakayı üstlenen uzman mesaj gönderebilir.");
+            }
+        }
+
         if (supportCase.Status == CaseStatus.Closed)
         {
             throw new InvalidOperationException("Kapalı vakaya mesaj eklenemez.");

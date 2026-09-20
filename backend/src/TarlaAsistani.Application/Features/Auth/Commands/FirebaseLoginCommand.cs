@@ -56,13 +56,28 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
         var now = DateTime.UtcNow;
         var requestedRole = request.ActiveRole ?? request.Role;
 
-        // 1. Locate existing user by FirebaseUid or PhoneNumber
+        // 1. Locate existing user by FirebaseUid first
         var user = await _db.Users
             .Include(u => u.Profile)
             .Include(u => u.RoleAssignments)
-            .FirstOrDefaultAsync(u => u.FirebaseUid == tokenInfo.Uid ||
-                                     (!string.IsNullOrEmpty(tokenInfo.PhoneNumber) && u.PhoneNumber == tokenInfo.PhoneNumber),
-                                 cancellationToken);
+            .FirstOrDefaultAsync(u => u.FirebaseUid == tokenInfo.Uid, cancellationToken);
+
+        if (user == null && !string.IsNullOrEmpty(tokenInfo.PhoneNumber))
+        {
+            var userByPhone = await _db.Users
+                .Include(u => u.Profile)
+                .Include(u => u.RoleAssignments)
+                .FirstOrDefaultAsync(u => u.PhoneNumber == tokenInfo.PhoneNumber, cancellationToken);
+
+            if (userByPhone != null)
+            {
+                if (!string.IsNullOrEmpty(userByPhone.FirebaseUid) && userByPhone.FirebaseUid != tokenInfo.Uid)
+                {
+                    throw new UnauthorizedAccessException("Bu telefon numarasına ait hesap başka bir Firebase kimliği ile ilişkilendirilmiştir.");
+                }
+                user = userByPhone;
+            }
+        }
 
         if (user == null)
         {
@@ -119,11 +134,25 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
                 throw new InvalidOperationException("Bu hesap silinmiştir.");
             }
 
+            if (user.AccountStatus == AccountStatus.DeletionPending)
+            {
+                var activeJob = await _db.AccountDeletionJobs
+                    .FirstOrDefaultAsync(j => j.UserId == user.Id &&
+                                             (j.Status == AccountDeletionStatus.Pending ||
+                                              j.Status == AccountDeletionStatus.Processing ||
+                                              j.Status == AccountDeletionStatus.RetryRequired),
+                                         cancellationToken);
+                throw new AccountDeletionPendingException(user.Id, activeJob?.Id, activeJob?.Status);
+            }
+
             // Link Firebase UID if previously unlinked
             if (string.IsNullOrEmpty(user.FirebaseUid))
             {
                 // If user is Agronomist, must have an unconsumed and non-expired approval
-                if (user.Role == UserRole.Agronomist)
+                var isAgronomist = await _db.UserRoleAssignments
+                    .AnyAsync(ra => ra.UserId == user.Id && ra.Role == UserRole.Agronomist && ra.RevokedAtUtc == null, cancellationToken)
+                    || user.RoleAssignments.Any(ra => ra.Role == UserRole.Agronomist && ra.RevokedAtUtc == null);
+                if (isAgronomist)
                 {
                     var approval = await _db.FirebaseLinkApprovals
                         .FirstOrDefaultAsync(a => a.UserId == user.Id &&
@@ -143,7 +172,6 @@ public class FirebaseLoginCommandHandler : IRequestHandler<FirebaseLoginCommand,
                 user.FirebaseUid = tokenInfo.Uid;
             }
 
-            user.AccountStatus = AccountStatus.Active;
             user.UpdatedAtUtc = now;
         }
 

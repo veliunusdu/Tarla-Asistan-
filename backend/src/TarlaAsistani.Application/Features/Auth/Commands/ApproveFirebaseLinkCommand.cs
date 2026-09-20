@@ -13,13 +13,14 @@ public record FirebaseLinkApprovalDto(
     string FirebaseUid,
     string ApprovedBy,
     DateTime ApprovedAtUtc,
-    DateTime ExpiresAtUtc
+    DateTime ExpiresAtUtc,
+    Guid? ApprovedByUserId = null
 );
 
 public record ApproveFirebaseLinkCommand(
     Guid UserId,
     string FirebaseUid,
-    string OperatorName
+    Guid ApprovedByUserId
 ) : IRequest<FirebaseLinkApprovalDto>;
 
 public class ApproveFirebaseLinkCommandValidator : AbstractValidator<ApproveFirebaseLinkCommand>
@@ -28,7 +29,7 @@ public class ApproveFirebaseLinkCommandValidator : AbstractValidator<ApproveFire
     {
         RuleFor(x => x.UserId).NotEmpty().WithMessage("Kullanıcı kimliği boş olamaz.");
         RuleFor(x => x.FirebaseUid).NotEmpty().MaximumLength(128).WithMessage("Geçersiz Firebase UID.");
-        RuleFor(x => x.OperatorName).NotEmpty().MaximumLength(120).WithMessage("Operatör adı gereklidir.");
+        RuleFor(x => x.ApprovedByUserId).NotEmpty().WithMessage("Operatör kullanıcı kimliği gereklidir.");
     }
 }
 
@@ -47,10 +48,15 @@ public class ApproveFirebaseLinkCommandHandler : IRequestHandler<ApproveFirebase
 
         // 1. Verify user exists and is an active Agronomist without existing FirebaseUid
         var user = await _db.Users
+            .Include(u => u.RoleAssignments)
             .FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken)
             ?? throw new KeyNotFoundException("Kullanıcı bulunamadı.");
 
-        if (user.Role != UserRole.Agronomist)
+        var isAgronomist = await _db.UserRoleAssignments
+            .AnyAsync(ra => ra.UserId == user.Id && ra.Role == UserRole.Agronomist && ra.RevokedAtUtc == null, cancellationToken)
+            || user.RoleAssignments.Any(ra => ra.Role == UserRole.Agronomist && ra.RevokedAtUtc == null);
+
+        if (!isAgronomist)
         {
             throw new InvalidOperationException("Yalnızca uzman / ziraat mühendisi hesapları onay gerektirir.");
         }
@@ -74,24 +80,65 @@ public class ApproveFirebaseLinkCommandHandler : IRequestHandler<ApproveFirebase
             throw new InvalidOperationException("Bu Firebase kimliği zaten başka bir kullanıcıya bağlı.");
         }
 
-        // 3. Verify no active (unconsumed & non-expired) approval already exists
-        var existingActiveApproval = await _db.FirebaseLinkApprovals
+        // 2.1 Invalidate any expired approvals for this user or UID so they do not block unique indexes
+        var expiredApprovals = await _db.FirebaseLinkApprovals
+            .Where(a => (a.UserId == request.UserId || a.FirebaseUid == request.FirebaseUid) &&
+                        a.ConsumedAtUtc == null &&
+                        a.ExpiresAtUtc <= now)
+            .ToListAsync(cancellationToken);
+
+        foreach (var exp in expiredApprovals)
+        {
+            exp.ConsumedAtUtc = now;
+        }
+
+        // 3. Check for existing active approval (Idempotency: return existing if same user and UID)
+        var existingSameApproval = await _db.FirebaseLinkApprovals
+            .FirstOrDefaultAsync(a => a.UserId == request.UserId &&
+                                      a.FirebaseUid == request.FirebaseUid &&
+                                      a.ConsumedAtUtc == null &&
+                                      a.ExpiresAtUtc > now, cancellationToken);
+
+        if (existingSameApproval != null)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            return new FirebaseLinkApprovalDto(
+                existingSameApproval.Id,
+                existingSameApproval.UserId,
+                existingSameApproval.FirebaseUid,
+                existingSameApproval.ApprovedBy,
+                existingSameApproval.ApprovedAtUtc,
+                existingSameApproval.ExpiresAtUtc,
+                existingSameApproval.ApprovedByUserId
+            );
+        }
+
+        // Verify no conflicting active approval exists
+        var conflictApproval = await _db.FirebaseLinkApprovals
             .AnyAsync(a => (a.UserId == request.UserId || a.FirebaseUid == request.FirebaseUid) &&
                            a.ConsumedAtUtc == null &&
                            a.ExpiresAtUtc > now, cancellationToken);
 
-        if (existingActiveApproval)
+        if (conflictApproval)
         {
             throw new InvalidOperationException("Bu kullanıcı veya Firebase kimliği için halihazırda geçerli bir onay bulunmaktadır.");
         }
 
-        // 4. Create new approval token with 24 hours TTL
+        // 4. Resolve operator name server-side from admin user
+        var adminUser = await _db.Users
+            .Include(u => u.Profile)
+            .FirstOrDefaultAsync(u => u.Id == request.ApprovedByUserId, cancellationToken);
+
+        var operatorName = adminUser?.Profile?.FullName ?? adminUser?.PhoneNumber ?? request.ApprovedByUserId.ToString();
+
+        // 5. Create new approval token with 24 hours TTL
         var approval = new FirebaseLinkApproval
         {
             Id = Guid.NewGuid(),
             UserId = request.UserId,
             FirebaseUid = request.FirebaseUid.Trim(),
-            ApprovedBy = request.OperatorName.Trim(),
+            ApprovedBy = operatorName,
+            ApprovedByUserId = request.ApprovedByUserId,
             ApprovedAtUtc = now,
             ExpiresAtUtc = now.AddHours(24),
             ConsumedAtUtc = null,
@@ -99,7 +146,32 @@ public class ApproveFirebaseLinkCommandHandler : IRequestHandler<ApproveFirebase
         };
 
         _db.FirebaseLinkApprovals.Add(approval);
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            var existing = await _db.FirebaseLinkApprovals
+                .AsNoTracking()
+                .FirstOrDefaultAsync(a => a.UserId == request.UserId &&
+                                          a.FirebaseUid == request.FirebaseUid &&
+                                          a.ConsumedAtUtc == null &&
+                                          a.ExpiresAtUtc > now, cancellationToken);
+            if (existing != null)
+            {
+                return new FirebaseLinkApprovalDto(
+                    existing.Id,
+                    existing.UserId,
+                    existing.FirebaseUid,
+                    existing.ApprovedBy,
+                    existing.ApprovedAtUtc,
+                    existing.ExpiresAtUtc,
+                    existing.ApprovedByUserId
+                );
+            }
+            throw;
+        }
 
         return new FirebaseLinkApprovalDto(
             approval.Id,
@@ -107,7 +179,8 @@ public class ApproveFirebaseLinkCommandHandler : IRequestHandler<ApproveFirebase
             approval.FirebaseUid,
             approval.ApprovedBy,
             approval.ApprovedAtUtc,
-            approval.ExpiresAtUtc
+            approval.ExpiresAtUtc,
+            approval.ApprovedByUserId
         );
     }
 }

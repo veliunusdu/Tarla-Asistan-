@@ -31,6 +31,18 @@ public static class AuthEndpoints
                 var result = await mediator.Send(command);
                 return Results.Ok(result);
             }
+            catch (AccountDeletionPendingException ex)
+            {
+                return Results.Json(new
+                {
+                    error = "ACCOUNT_DELETION_PENDING",
+                    detail = ex.Message,
+                    account_status = "DELETION_PENDING",
+                    request_id = ex.RequestId,
+                    status = ex.JobStatus?.ToString(),
+                    job_status = ex.JobStatus?.ToString()
+                }, statusCode: StatusCodes.Status423Locked);
+            }
             catch (ForbiddenException ex)
             {
                 return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
@@ -49,6 +61,7 @@ public static class AuthEndpoints
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status423Locked)
         .Produces(StatusCodes.Status400BadRequest);
 
         // 4. POST /api/v1/auth/refresh
@@ -61,6 +74,18 @@ public static class AuthEndpoints
                 var result = await mediator.Send(new RefreshTokenCommand(req.RefreshToken));
                 return Results.Ok(result);
             }
+            catch (AccountDeletionPendingException ex)
+            {
+                return Results.Json(new
+                {
+                    error = "ACCOUNT_DELETION_PENDING",
+                    detail = ex.Message,
+                    account_status = "DELETION_PENDING",
+                    request_id = ex.RequestId,
+                    status = ex.JobStatus?.ToString(),
+                    job_status = ex.JobStatus?.ToString()
+                }, statusCode: StatusCodes.Status423Locked);
+            }
             catch (UnauthorizedAccessException ex)
             {
                 return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status401Unauthorized);
@@ -68,7 +93,8 @@ public static class AuthEndpoints
         })
         .WithName("RefreshSession")
         .Produces<TokenResponseDto>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status401Unauthorized);
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status423Locked);
 
         // 5. POST /api/v1/auth/logout
         group.MapPost("/logout", async (
@@ -107,11 +133,18 @@ public static class AuthEndpoints
 
         // 7. POST /api/v1/auth/approvals - Operator approval for Agronomist Firebase linking (Admin only)
         group.MapPost("/approvals", async (
+            HttpContext httpContext,
             ApproveFirebaseLinkApiRequest req,
             IMediator mediator,
             IValidator<ApproveFirebaseLinkCommand> validator) =>
         {
-            var command = new ApproveFirebaseLinkCommand(req.UserId, req.FirebaseUid, req.OperatorName);
+            var adminUserId = httpContext.ResolveUserId();
+            if (adminUserId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var command = new ApproveFirebaseLinkCommand(req.UserId, req.FirebaseUid, adminUserId);
             var validation = await validator.ValidateAsync(command);
             if (!validation.IsValid)
             {
@@ -147,4 +180,4 @@ public static class AuthEndpoints
 
 public record FirebaseLoginApiRequest(string IdToken, UserRole? ActiveRole = null, UserRole? Role = null);
 public record RefreshTokenApiRequest(string RefreshToken);
-public record ApproveFirebaseLinkApiRequest(Guid UserId, string FirebaseUid, string OperatorName);
+public record ApproveFirebaseLinkApiRequest(Guid UserId, string FirebaseUid);

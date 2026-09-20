@@ -18,6 +18,8 @@ public class FarmTask
 
     public Guid? CreatedById { get; set; }
 
+    public Guid? CaseId { get; set; }
+
     /// <summary>Max 160 chars.</summary>
     public string Title { get; set; } = null!;
 
@@ -64,4 +66,5 @@ public class FarmTask
     public CropPeriod? CropPeriod { get; set; }
 
     public User? CreatedBy { get; set; }
+    public SupportCase? Case { get; set; }
 }

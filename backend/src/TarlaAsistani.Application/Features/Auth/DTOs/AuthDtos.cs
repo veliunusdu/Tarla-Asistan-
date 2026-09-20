@@ -15,7 +15,8 @@ public record UserDto(
     bool NotificationsEnabled,
     bool ProfileComplete,
     UserRole ActiveRole,
-    IReadOnlyList<UserRole> Roles
+    IReadOnlyList<UserRole> Roles,
+    AccountStatus AccountStatus = AccountStatus.Active
 )
 {
     public static UserDto FromEntity(User u, UserRole? activeRole = null, IEnumerable<UserRole>? roles = null)
@@ -47,7 +48,8 @@ public record UserDto(
             NotificationsEnabled: u.Profile?.NotificationsEnabled ?? true,
             ProfileComplete: !string.IsNullOrWhiteSpace(u.Profile?.FullName) && (u.Profile?.TermsAccepted ?? false),
             ActiveRole: effectiveActiveRole,
-            Roles: resolvedRoles
+            Roles: resolvedRoles,
+            AccountStatus: u.AccountStatus
         );
     }
 }

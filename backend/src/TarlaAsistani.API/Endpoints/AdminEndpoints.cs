@@ -60,11 +60,6 @@ public static class AdminEndpoints
                     .Distinct()
                     .ToList();
 
-                if (!roles.Contains(UserRole.Farmer) && u.AccountStatus == AccountStatus.Active)
-                {
-                    roles.Add(UserRole.Farmer);
-                }
-
                 return new AdminUserListItemDto(
                     Id: u.Id,
                     PhoneNumber: u.PhoneNumber,
@@ -102,11 +97,6 @@ public static class AdminEndpoints
                 .Select(ra => ra.Role)
                 .Distinct()
                 .ToList();
-
-            if (!roles.Contains(UserRole.Farmer) && user.AccountStatus == AccountStatus.Active)
-            {
-                roles.Add(UserRole.Farmer);
-            }
 
             var activeAssignments = user.RoleAssignments
                 .Where(ra => ra.RevokedAtUtc == null)
@@ -320,6 +310,75 @@ public static class AdminEndpoints
         .Produces<List<AdminRoleHistoryItemDto>>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status404NotFound);
 
+        // 6. POST /api/v1/admin/cases/{id}/reassign - Reassign case to another expert
+        group.MapPost("/cases/{id:guid}/reassign", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            AdminReassignCaseRequest req,
+            IApplicationDbContext db) =>
+        {
+            var adminUserId = httpContext.ResolveUserId(null, headerUserId);
+            var supportCase = await db.SupportCases
+                .Include(c => c.Farm)
+                .FirstOrDefaultAsync(c => c.Id == id && c.Farm.ArchivedAt == null);
+
+            if (supportCase == null)
+            {
+                return Results.NotFound(new { detail = "Vaka bulunamadı." });
+            }
+
+            // Verify target user is active Agronomist
+            var isAgronomist = await db.UserRoleAssignments
+                .AnyAsync(ra => ra.UserId == req.ExpertId && ra.Role == UserRole.Agronomist && ra.RevokedAtUtc == null);
+
+            if (!isAgronomist)
+            {
+                return Results.BadRequest(new { detail = "Belirtilen kullanıcı aktif bir ziraatçi değil." });
+            }
+
+            if (supportCase.AssignedExpertId == req.ExpertId)
+            {
+                return Results.Ok(new
+                {
+                    message = "Vaka zaten bu uzmana atanmış durumda.",
+                    caseId = supportCase.Id,
+                    assignedExpertId = supportCase.AssignedExpertId
+                });
+            }
+
+            var previousExpertId = supportCase.AssignedExpertId;
+            supportCase.AssignedExpertId = req.ExpertId;
+            var now = DateTime.UtcNow;
+
+            var assignmentEvent = new CaseAssignmentEvent
+            {
+                Id = Guid.NewGuid(),
+                CaseId = supportCase.Id,
+                PreviousExpertId = previousExpertId,
+                NewExpertId = req.ExpertId,
+                ChangedByUserId = adminUserId,
+                ChangeType = CaseAssignmentChangeType.Reassign,
+                Reason = req.Reason ?? "Admin reassignment",
+                ChangedAtUtc = now
+            };
+
+            db.CaseAssignmentEvents.Add(assignmentEvent);
+            await db.SaveChangesAsync();
+
+            return Results.Ok(new
+            {
+                message = "Vaka başarıyla yeniden atandı.",
+                caseId = supportCase.Id,
+                previousExpertId = previousExpertId,
+                assignedExpertId = supportCase.AssignedExpertId
+            });
+        })
+        .WithName("AdminReassignCase")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 }
@@ -381,4 +440,9 @@ public record AdminRoleHistoryItemDto(
     DateTime? RevokedAtUtc,
     Guid? RevokedByUserId,
     string? RevokeReason
+);
+
+public record AdminReassignCaseRequest(
+    Guid ExpertId,
+    string? Reason = null
 );

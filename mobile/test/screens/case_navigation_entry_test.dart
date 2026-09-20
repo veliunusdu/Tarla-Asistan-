@@ -36,7 +36,10 @@ class MockCaseNavRepository implements CaseRepository {
   Future<String> createCase(CreateCaseInput input) async => 'id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async => [];
 
   @override
   Future<CaseDetail> getCaseById(String caseId) async {
@@ -54,6 +57,9 @@ class MockCaseNavRepository implements CaseRepository {
   }
 
   @override
+  Future<CaseDetail> claimCase(String caseId) => getCaseById(caseId);
+
+  @override
   Future<CaseMessage> sendMessage(
     String caseId, {
     required String body,
@@ -68,76 +74,85 @@ class MockCaseNavRepository implements CaseRepository {
 }
 
 void main() {
-  testWidgets('TarlaDetayEkrani provides Bildirimleri Gör button that opens VakaListesiEkrani', (tester) async {
-    final tarla = Tarla(
-      id: 'tarla-42',
-      name: 'Zeytinlik',
-      size: 5.0,
-      cropType: 'Zeytin',
-      plantingDate: DateTime(2025, 1, 1),
-    );
+  testWidgets(
+    'TarlaDetayEkrani provides Bildirimleri Gör button that opens VakaListesiEkrani',
+    (tester) async {
+      final tarla = Tarla(
+        id: 'tarla-42',
+        name: 'Zeytinlik',
+        size: 5.0,
+        cropType: 'Zeytin',
+        plantingDate: DateTime(2025, 1, 1),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: TarlaDetayEkrani(
-          tarla: tarla,
-          faaliyetRepository: const MockLocalFaaliyetRepository(),
-          tarlaRepository: const LocalTarlaRepository(),
-          caseRepository: MockCaseNavRepository(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final button = find.text('Bildirimleri Gör');
-    expect(button, findsOneWidget);
-
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(VakaListesiEkrani), findsOneWidget);
-  });
-
-  testWidgets('ProfilEkrani provides Sorun Bildirimlerim menu item that opens VakaListesiEkrani', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ProfilEkrani(
-          caseRepository: MockCaseNavRepository(),
-          tarlaRepository: const LocalTarlaRepository(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final menuItem = find.text('Sorun Bildirimlerim');
-    expect(menuItem, findsOneWidget);
-
-    await tester.tap(menuItem);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(VakaListesiEkrani), findsOneWidget);
-  });
-
-  testWidgets('NotificationTargetScreen renders VakaDetayEkrani when target is supportCase', (tester) async {
-    final client = ApiClient(
-      httpClient: MockClient((request) async => http.Response('{}', 200)),
-      idTokenProvider: () async => 'dummy-token',
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: NotificationTargetScreen(
-          target: NotificationTarget(
-            type: NotificationTargetType.supportCase,
-            resourceId: 'case-99',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TarlaDetayEkrani(
+            tarla: tarla,
+            faaliyetRepository: const MockLocalFaaliyetRepository(),
+            tarlaRepository: const LocalTarlaRepository(),
+            caseRepository: MockCaseNavRepository(),
           ),
-          apiClient: client,
-          caseRepository: MockCaseNavRepository(),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(VakaDetayEkrani), findsOneWidget);
-  });
+      final button = find.text('Bildirimleri Gör');
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VakaListesiEkrani), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'ProfilEkrani provides Sorun Bildirimlerim menu item that opens VakaListesiEkrani',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfilEkrani(
+            caseRepository: MockCaseNavRepository(),
+            tarlaRepository: const LocalTarlaRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final menuItem = find.text('Sorun Bildirimlerim');
+      expect(menuItem, findsOneWidget);
+
+      await tester.tap(menuItem);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VakaListesiEkrani), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'NotificationTargetScreen renders VakaDetayEkrani when target is supportCase',
+    (tester) async {
+      final client = ApiClient(
+        httpClient: MockClient((request) async => http.Response('{}', 200)),
+        idTokenProvider: () async => 'dummy-token',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationTargetScreen(
+            target: NotificationTarget(
+              type: NotificationTargetType.supportCase,
+              resourceId: 'case-99',
+            ),
+            apiClient: client,
+            caseRepository: MockCaseNavRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(VakaDetayEkrani), findsOneWidget);
+    },
+  );
 }

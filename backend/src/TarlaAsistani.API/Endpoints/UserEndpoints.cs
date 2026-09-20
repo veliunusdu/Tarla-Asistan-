@@ -2,7 +2,9 @@ using System.Text.Json.Serialization;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.API.Common;
+using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Auth.DTOs;
 using TarlaAsistani.Application.Features.Auth.Queries;
 using TarlaAsistani.Application.Features.Users.Commands;
@@ -85,6 +87,41 @@ public static class UserEndpoints
         .RequireAuthorization("ActiveRoleAssignment")
         .Produces<AccountDeletionResponseDto>(StatusCodes.Status202Accepted)
         .ProducesValidationProblem()
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status404NotFound);
+
+        // 2.5 GET /api/v1/users/me/deletion-request - Get current account deletion status
+        group.MapGet("/me/deletion-request", async (
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            IApplicationDbContext db) =>
+        {
+            var userId = httpContext.ResolveUserId(null, headerUserId);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var job = await db.AccountDeletionJobs
+                .Where(j => j.UserId == userId)
+                .OrderByDescending(j => j.CreatedAtUtc)
+                .FirstOrDefaultAsync();
+
+            if (job == null)
+            {
+                return Results.NotFound(new { detail = "Aktif bir silme talebi bulunamadı." });
+            }
+
+            return Results.Ok(new
+            {
+                request_id = job.Id,
+                status = job.Status.ToString().ToUpperInvariant(),
+                requested_at_utc = job.CreatedAtUtc
+            });
+        })
+        .WithName("GetAccountDeletionStatus")
+        .RequireAuthorization("ActiveRoleAssignment")
+        .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status404NotFound);
 

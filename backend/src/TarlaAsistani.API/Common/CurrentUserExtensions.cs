@@ -21,19 +21,19 @@ public static class CurrentUserExtensions
             return idFromClaim;
         }
 
-        if (context.IsProduction())
+        if (!context.IsTesting())
         {
             return null;
         }
 
-        // 2. Fallback: X-User-Id header (for pilot & testing)
+        // 2. Fallback: X-User-Id header (for isolated automated testing only)
         if (context.Request.Headers.TryGetValue("X-User-Id", out var headerVal) &&
             Guid.TryParse(headerVal.ToString(), out var idFromHeader))
         {
             return idFromHeader;
         }
 
-        // 3. Fallback: Query parameter "userId"
+        // 3. Fallback: Query parameter "userId" (for isolated automated testing only)
         if (context.Request.Query.TryGetValue("userId", out var queryVal) &&
             Guid.TryParse(queryVal.ToString(), out var idFromQuery))
         {
@@ -56,19 +56,19 @@ public static class CurrentUserExtensions
             return roleFromClaim;
         }
 
-        if (context.IsProduction())
+        if (!context.IsTesting())
         {
             return null;
         }
 
-        // 2. Fallback: X-User-Role header
+        // 2. Fallback: X-User-Role header (for isolated automated testing only)
         if (context.Request.Headers.TryGetValue("X-User-Role", out var headerVal) &&
             Enum.TryParse<UserRole>(headerVal.ToString(), ignoreCase: true, out var roleFromHeader))
         {
             return roleFromHeader;
         }
 
-        // 3. Fallback: Query parameter "role"
+        // 3. Fallback: Query parameter "role" (for isolated automated testing only)
         if (context.Request.Query.TryGetValue("role", out var queryVal) &&
             Enum.TryParse<UserRole>(queryVal.ToString(), ignoreCase: true, out var roleFromQuery))
         {
@@ -86,7 +86,7 @@ public static class CurrentUserExtensions
             return idFromClaim.Value;
         }
 
-        if (context.IsProduction())
+        if (!context.IsTesting())
         {
             return Guid.Empty;
         }
@@ -112,7 +112,7 @@ public static class CurrentUserExtensions
             return roleFromClaim.Value;
         }
 
-        if (context.IsProduction())
+        if (!context.IsTesting())
         {
             return defaultRole;
         }
@@ -130,6 +130,9 @@ public static class CurrentUserExtensions
 
         return defaultRole;
     }
+
+    internal static bool IsTesting(this HttpContext context) =>
+        context.RequestServices.GetRequiredService<IHostEnvironment>().IsEnvironment("Testing");
 
     internal static bool IsProduction(this HttpContext context) =>
         context.RequestServices.GetRequiredService<IHostEnvironment>().IsProduction();

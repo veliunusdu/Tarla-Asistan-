@@ -72,6 +72,11 @@ public class CreateExpertResponseCommandHandler : IRequestHandler<CreateExpertRe
             .FirstOrDefaultAsync(sc => sc.Id == request.CaseId && sc.Farm.ArchivedAt == null, cancellationToken)
             ?? throw new KeyNotFoundException("Vaka bulunamadı.");
 
+        if (!supportCase.AssignedExpertId.HasValue || supportCase.AssignedExpertId.Value != request.ExpertId)
+        {
+            throw new UnauthorizedAccessException("Yalnızca vakayı üstlenen uzman uzman yanıtı verebilir.");
+        }
+
         if (supportCase.Status == CaseStatus.Closed)
         {
             throw new InvalidOperationException("Kapalı vakaya cevap eklenemez.");

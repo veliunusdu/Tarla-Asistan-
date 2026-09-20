@@ -17,6 +17,8 @@ public class MockDbContextBuilder
     private List<OtpCode> _otpCodes = new();
     private List<FirebaseLinkApproval> _firebaseLinkApprovals = new();
     private List<AccountDeletionJob> _accountDeletionJobs = new();
+    private List<AgronomistApplication> _agronomistApplications = new();
+    private List<CaseAssignmentEvent> _caseAssignmentEvents = new();
 
     private List<Farm> _farms = new();
     private List<CropPeriod> _cropPeriods = new();
@@ -95,6 +97,18 @@ public class MockDbContextBuilder
     public MockDbContextBuilder WithAccountDeletionJobs(params AccountDeletionJob[] jobs)
     {
         _accountDeletionJobs.AddRange(jobs);
+        return this;
+    }
+
+    public MockDbContextBuilder WithAgronomistApplications(params AgronomistApplication[] applications)
+    {
+        _agronomistApplications.AddRange(applications);
+        return this;
+    }
+
+    public MockDbContextBuilder WithCaseAssignmentEvents(params CaseAssignmentEvent[] events)
+    {
+        _caseAssignmentEvents.AddRange(events);
         return this;
     }
 
@@ -209,6 +223,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.OtpCodes, _otpCodes);
         SetupDbSet(_mockDb, db => db.FirebaseLinkApprovals, _firebaseLinkApprovals);
         SetupDbSet(_mockDb, db => db.AccountDeletionJobs, _accountDeletionJobs);
+        SetupDbSet(_mockDb, db => db.AgronomistApplications, _agronomistApplications);
 
         SetupDbSet(_mockDb, db => db.Farms, _farms);
         SetupDbSet(_mockDb, db => db.CropPeriods, _cropPeriods);
@@ -220,6 +235,7 @@ public class MockDbContextBuilder
         SetupDbSet(_mockDb, db => db.FarmTasks, _farmTasks);
 
         SetupDbSet(_mockDb, db => db.SupportCases, _supportCases);
+        SetupDbSet(_mockDb, db => db.CaseAssignmentEvents, _caseAssignmentEvents);
         SetupDbSet(_mockDb, db => db.CaseContextSnapshots, _caseContextSnapshots);
         SetupDbSet(_mockDb, db => db.CaseMessages, _caseMessages);
         SetupDbSet(_mockDb, db => db.CaseMedia, _caseMedia);

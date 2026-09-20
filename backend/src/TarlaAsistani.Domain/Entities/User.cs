@@ -20,5 +20,6 @@ public class User
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<FirebaseLinkApproval> FirebaseLinkApprovals { get; set; } = new List<FirebaseLinkApproval>();
     public ICollection<UserRoleAssignment> RoleAssignments { get; set; } = new List<UserRoleAssignment>();
+    public ICollection<AgronomistApplication> AgronomistApplications { get; set; } = new List<AgronomistApplication>();
     public AccountDeletionJob? AccountDeletionJob { get; set; }
 }

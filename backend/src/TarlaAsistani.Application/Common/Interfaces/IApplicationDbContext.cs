@@ -13,6 +13,7 @@ public interface IApplicationDbContext
     DbSet<OtpCode> OtpCodes { get; }
     DbSet<FirebaseLinkApproval> FirebaseLinkApprovals { get; }
     DbSet<AccountDeletionJob> AccountDeletionJobs { get; }
+    DbSet<AgronomistApplication> AgronomistApplications { get; }
 
     // ── Farm ────────────────────────────────────────────────
     DbSet<Farm> Farms { get; }
@@ -28,6 +29,7 @@ public interface IApplicationDbContext
 
     // ── Support Cases ────────────────────────────────────────
     DbSet<SupportCase> SupportCases { get; }
+    DbSet<CaseAssignmentEvent> CaseAssignmentEvents { get; }
     DbSet<CaseContextSnapshot> CaseContextSnapshots { get; }
     DbSet<CaseMessage> CaseMessages { get; }
     DbSet<CaseMedia> CaseMedia { get; }

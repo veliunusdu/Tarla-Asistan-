@@ -39,7 +39,8 @@ public record TaskDto(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     bool ExpertReviewRecommended,
-    WeatherPostponeSuggestionDto? WeatherPostponeSuggestion = null
+    WeatherPostponeSuggestionDto? WeatherPostponeSuggestion = null,
+    Guid? CaseId = null
 )
 {
     public static TaskDto FromEntity(FarmTask t) => FromEntity(t, null);
@@ -65,7 +66,8 @@ public record TaskDto(
         t.CreatedAtUtc,
         t.UpdatedAtUtc,
         t.ExpertReviewRecommended,
-        weatherPostponeSuggestion
+        weatherPostponeSuggestion,
+        t.CaseId
     );
 }
 

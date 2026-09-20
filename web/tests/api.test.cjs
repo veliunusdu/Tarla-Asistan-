@@ -127,6 +127,39 @@ test("createFarmTask surfaces an invalid-date response instead of reporting succ
   );
 });
 
+test("createFarmTask sends case_id when caseId is provided", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json(taskResponse("2030-07-20"), { status: 201 });
+  });
+
+  await createFarmTask("farm-1", {
+    ...taskInput,
+    dueDate: "2030-07-20",
+    caseId: "case-123",
+  });
+
+  assert.equal(requests.length, 1);
+  const body = JSON.parse(requests[0].init.body);
+  assert.equal(body.case_id, "case-123");
+});
+
+test("claimCase calls POST /api/v1/cases/{caseId}/claim", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    requests.push({ url, init });
+    return Response.json({ id: "case-123", status: "IN_REVIEW" }, { status: 200 });
+  });
+
+  const { claimCase } = require("../.test-build/lib/api.js");
+  const res = await claimCase("case-123");
+  assert.equal(requests.length, 1);
+  assert.equal(new URL(requests[0].url).pathname, "/api/v1/cases/case-123/claim");
+  assert.equal(requests[0].init.method, "POST");
+  assert.equal(res.status, "IN_REVIEW");
+});
+
 test("loginWithFirebase sends id_token and active_role to /auth/firebase", async (t) => {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {

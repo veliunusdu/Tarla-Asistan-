@@ -7,6 +7,7 @@ using TarlaAsistani.API.Endpoints;
 using TarlaAsistani.Application.Features.Activities.DTOs;
 using TarlaAsistani.Application.Features.Farms.DTOs;
 using TarlaAsistani.Application.Features.Tasks.DTOs;
+using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 using TarlaAsistani.Infrastructure.Persistence;
 using TaskStatus = TarlaAsistani.Domain.Enums.TaskStatus;
@@ -288,6 +289,22 @@ public class MultiTenantCrossUserIntegrationTests : IClassFixture<CustomWebAppli
         await SeedUserAsync(agronomist, "+905551112235", UserRole.Agronomist);
 
         var farmAId = await CreateFarmAsUser(farmerA, "Farmer A Görev Tarlası");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.SupportCases.Add(new SupportCase
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmAId,
+                CreatedById = farmerA,
+                AssignedExpertId = agronomist,
+                Status = CaseStatus.InReview,
+                Title = "İlaçlama Talebi",
+                Description = "Açık vaka"
+            });
+            await db.SaveChangesAsync();
+        }
 
         // 1. Agronomist creates expert task on Farm A -> 201 Created
         using var createTask = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/farms/{farmAId}/tasks");

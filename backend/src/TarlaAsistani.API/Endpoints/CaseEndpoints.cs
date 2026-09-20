@@ -6,6 +6,7 @@ using TarlaAsistani.Application.Features.Cases.Commands;
 using TarlaAsistani.Application.Features.Cases.DTOs;
 using TarlaAsistani.Application.Features.Cases.Queries;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.API.Endpoints;
 
@@ -73,6 +74,7 @@ public static class CaseEndpoints
             [FromQuery] CaseStatus? status,
             [FromQuery] CasePriority? priority,
             [FromQuery] Guid? farmId,
+            [FromQuery] string? scope,
             [FromQuery] int? limit,
             [FromQuery] int? offset,
             IMediator mediator) =>
@@ -86,6 +88,7 @@ public static class CaseEndpoints
                 Status: status,
                 Priority: priority,
                 FarmId: farmId,
+                Scope: scope,
                 Limit: limit ?? 50,
                 Offset: offset ?? 0
             ));
@@ -108,13 +111,61 @@ public static class CaseEndpoints
             var queryUserId = httpContext.ResolveUserId(userId, headerUserId);
             var userRole = httpContext.ResolveUserRole(role, defaultRole: UserRole.Farmer);
 
-            var result = await mediator.Send(new GetCaseByIdQuery(id, queryUserId, userRole));
-            return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Vaka bulunamadı." });
+            try
+            {
+                var result = await mediator.Send(new GetCaseByIdQuery(id, queryUserId, userRole));
+                return result != null ? Results.Ok(result) : Results.NotFound(new { detail = "Vaka bulunamadı." });
+            }
+            catch (ForbiddenException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
         })
         .WithName("GetCaseById")
         .RequireAuthorization("ActiveRoleAssignment")
         .Produces<CaseDetailDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
+
+        // 3.5 POST /api/v1/cases/{id}/claim - Atomically claim case (Agronomist only)
+        group.MapPost("/{id:guid}/claim", async (
+            Guid id,
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            ClaimCaseApiRequest? req,
+            IMediator mediator) =>
+        {
+            var expertId = httpContext.ResolveUserId(req?.UserId, headerUserId);
+            if (expertId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            try
+            {
+                var result = await mediator.Send(new ClaimCaseCommand(id, expertId));
+                return Results.Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new { detail = ex.Message });
+            }
+            catch (ConflictException ex)
+            {
+                return Results.Conflict(new { error = ex.Code ?? "CONFLICT", detail = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { detail = ex.Message });
+            }
+        })
+        .WithName("ClaimCase")
+        .RequireAuthorization("AgronomistContext")
+        .Produces<CaseDetailDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         // 4. PATCH /api/v1/cases/{id}/status - Update case status & priority (Agronomist only)
         group.MapPatch("/{id:guid}/status", async (
@@ -152,6 +203,10 @@ public static class CaseEndpoints
             catch (UnauthorizedAccessException ex)
             {
                 return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
+            catch (ConflictException ex)
+            {
+                return Results.Conflict(new { error = ex.Code ?? "CONFLICT", detail = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
@@ -322,4 +377,8 @@ public record CreateExpertResponseApiRequest(
     bool? CloseCase,
     List<Guid>? MediaIds,
     Guid? ClientOperationId
+);
+
+public record ClaimCaseApiRequest(
+    Guid? UserId = null
 );

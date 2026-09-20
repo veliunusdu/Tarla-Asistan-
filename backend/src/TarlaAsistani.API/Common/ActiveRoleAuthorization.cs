@@ -39,7 +39,7 @@ public class ActiveRoleAuthorizationHandler : AuthorizationHandler<ActiveRoleAss
         HttpContext? httpContext = context.Resource as HttpContext
             ?? (context.Resource is EndpointFilterInvocationContext efc ? efc.HttpContext : null);
 
-        var isProduction = httpContext?.IsProduction() ?? false;
+        var isTesting = httpContext?.IsTesting() ?? false;
 
         // 1. Resolve User ID
         Guid userId = Guid.Empty;
@@ -50,7 +50,7 @@ public class ActiveRoleAuthorizationHandler : AuthorizationHandler<ActiveRoleAss
         {
             userId = parsedId;
         }
-        else if (!isProduction && httpContext != null)
+        else if (isTesting && httpContext != null)
         {
             userId = httpContext.ResolveUserId();
         }
@@ -71,7 +71,7 @@ public class ActiveRoleAuthorizationHandler : AuthorizationHandler<ActiveRoleAss
         {
             activeRole = parsedRole;
         }
-        else if (!isProduction && httpContext != null)
+        else if (isTesting && httpContext != null)
         {
             activeRole = httpContext.GetUserRole();
         }
@@ -79,8 +79,8 @@ public class ActiveRoleAuthorizationHandler : AuthorizationHandler<ActiveRoleAss
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 
-        // In non-production, if activeRole is still null (e.g. tests passing only X-User-Id):
-        if (!activeRole.HasValue && !isProduction)
+        // In isolated testing environment, if activeRole is still null (e.g. tests passing only X-User-Id):
+        if (!activeRole.HasValue && isTesting)
         {
             if (requirement.RequiredRole.HasValue)
             {
@@ -110,7 +110,25 @@ public class ActiveRoleAuthorizationHandler : AuthorizationHandler<ActiveRoleAss
             return;
         }
 
-        // 4. Validate against database user_role_assignments (active assignment required)
+        // 4. Validate user status and active assignment
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null || user.AccountStatus == AccountStatus.Anonymized)
+        {
+            return;
+        }
+
+        if (user.AccountStatus == AccountStatus.DeletionPending)
+        {
+            var path = httpContext?.Request.Path.Value ?? string.Empty;
+            var isAllowedPendingPath = path.StartsWith("/api/v1/users/me/deletion-request", StringComparison.OrdinalIgnoreCase) ||
+                                       path.Equals("/api/v1/auth/me", StringComparison.OrdinalIgnoreCase);
+
+            if (!isAllowedPendingPath)
+            {
+                return;
+            }
+        }
+
         var isRoleAssigned = await db.UserRoleAssignments.AnyAsync(ura =>
             ura.UserId == userId &&
             ura.Role == activeRole.Value &&

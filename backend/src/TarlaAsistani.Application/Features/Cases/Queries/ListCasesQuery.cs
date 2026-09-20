@@ -12,6 +12,7 @@ public record ListCasesQuery(
     CaseStatus? Status = null,
     CasePriority? Priority = null,
     Guid? FarmId = null,
+    string? Scope = null,
     int Limit = 50,
     int Offset = 0
 ) : IRequest<CaseListDto>;
@@ -37,6 +38,33 @@ public class ListCasesQueryHandler : IRequestHandler<ListCasesQuery, CaseListDto
         {
             query = query.Where(sc => sc.Farm.OwnerId == request.UserId);
         }
+        else if (request.Role == UserRole.Agronomist)
+        {
+            if (string.Equals(request.Scope, "pool", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(sc => sc.AssignedExpertId == null && sc.Status != CaseStatus.Closed);
+            }
+            else if (string.Equals(request.Scope, "mine", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(sc => sc.AssignedExpertId == request.UserId);
+            }
+            else
+            {
+                query = query.Where(sc => sc.AssignedExpertId == request.UserId ||
+                                         (sc.AssignedExpertId == null && sc.Status != CaseStatus.Closed));
+            }
+        }
+        else if (request.Role == UserRole.Admin)
+        {
+            if (string.Equals(request.Scope, "pool", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(sc => sc.AssignedExpertId == null && sc.Status != CaseStatus.Closed);
+            }
+            else if (string.Equals(request.Scope, "mine", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(sc => sc.AssignedExpertId == request.UserId);
+            }
+        }
 
         if (request.Status.HasValue)
         {
@@ -57,30 +85,28 @@ public class ListCasesQueryHandler : IRequestHandler<ListCasesQuery, CaseListDto
         var limit = Math.Clamp(request.Limit, 1, 100);
         var offset = Math.Max(request.Offset, 0);
 
-        var items = await query
+        var rawCases = await query
+            .Include(sc => sc.Context)
             .OrderBy(sc => sc.Priority == CasePriority.Critical ? 0 :
                            sc.Priority == CasePriority.High ? 1 :
                            sc.Priority == CasePriority.Medium ? 2 : 3)
             .ThenByDescending(sc => sc.UpdatedAtUtc)
             .Skip(offset)
             .Take(limit)
-            .Select(sc => new CaseSummaryDto(
-                sc.Id,
-                sc.FarmId,
-                sc.Farm.Name,
-                sc.CreatedById,
-                sc.AssignedExpertId,
-                sc.Category,
-                sc.Priority,
-                sc.Status,
-                sc.Title,
-                sc.CreatedAtUtc,
-                sc.UpdatedAtUtc,
-                sc.ClosedAtUtc,
-                sc.Messages.Count,
-                sc.MediaLinks.Count
-            ))
             .ToListAsync(cancellationToken);
+
+        var items = new List<CaseSummaryDto>(rawCases.Count);
+        foreach (var sc in rawCases)
+        {
+            if (request.Role == UserRole.Agronomist && sc.AssignedExpertId != request.UserId)
+            {
+                items.Add(CaseSummaryDto.FromEntityRedacted(sc));
+            }
+            else
+            {
+                items.Add(CaseSummaryDto.FromEntity(sc));
+            }
+        }
 
         return new CaseListDto(items, total, limit, offset);
     }

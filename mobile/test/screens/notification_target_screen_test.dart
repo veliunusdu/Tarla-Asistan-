@@ -19,7 +19,10 @@ class _MockCaseRepo implements CaseRepository {
   Future<String> createCase(CreateCaseInput input) async => 'id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async => [];
 
   @override
   Future<CaseDetail> getCaseById(String caseId) async {
@@ -35,6 +38,9 @@ class _MockCaseRepo implements CaseRepository {
       messages: [],
     );
   }
+
+  @override
+  Future<CaseDetail> claimCase(String caseId) => getCaseById(caseId);
 
   @override
   Future<CaseMessage> sendMessage(
@@ -72,10 +78,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: NotificationTargetScreen(
-          target: target,
-          apiClient: client,
-        ),
+        home: NotificationTargetScreen(target: target, apiClient: client),
       ),
     );
     await tester.pumpAndSettle();
@@ -85,33 +88,34 @@ void main() {
     expect(find.text('Tarlayı sula'), findsOneWidget);
   });
 
-  testWidgets('NotificationTargetScreen renders VakaDetayEkrani for supportCase target', (
-    tester,
-  ) async {
-    final client = ApiClient(
-      httpClient: MockClient((request) async => http.Response('{}', 200)),
-      idTokenProvider: () async => 'token',
-    );
+  testWidgets(
+    'NotificationTargetScreen renders VakaDetayEkrani for supportCase target',
+    (tester) async {
+      final client = ApiClient(
+        httpClient: MockClient((request) async => http.Response('{}', 200)),
+        idTokenProvider: () async => 'token',
+      );
 
-    final target = NotificationTarget(
-      type: NotificationTargetType.supportCase,
-      resourceId: 'case-123',
-    );
+      final target = NotificationTarget(
+        type: NotificationTargetType.supportCase,
+        resourceId: 'case-123',
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: NotificationTargetScreen(
-          target: target,
-          apiClient: client,
-          caseRepository: _MockCaseRepo(),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NotificationTargetScreen(
+            target: target,
+            apiClient: client,
+            caseRepository: _MockCaseRepo(),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(VakaDetayEkrani), findsOneWidget);
-    expect(find.text('Zeytin Güvesi'), findsOneWidget);
-  });
+      expect(find.byType(VakaDetayEkrani), findsOneWidget);
+      expect(find.text('Zeytin Güvesi'), findsOneWidget);
+    },
+  );
 
   testWidgets('NotificationTargetScreen renders proactive advisory content', (
     tester,

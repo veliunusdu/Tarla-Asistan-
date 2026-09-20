@@ -178,7 +178,9 @@ class BackendCaseRepository implements CaseRepository {
         farmName: m['farm_name']?.toString() ?? '',
         category: cat,
         status: CaseStatus.fromString(m['status']?.toString()),
-        title: m['title']?.toString() ?? '',
+        title: (m['title']?.toString().isNotEmpty == true)
+            ? m['title']!.toString()
+            : (m['system_summary']?.toString() ?? ''),
         createdAt:
             DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ??
             DateTime.now(),
@@ -256,14 +258,23 @@ class BackendCaseRepository implements CaseRepository {
       farmName: m['farm_name']?.toString() ?? '',
       category: cat,
       status: CaseStatus.fromString(m['status']?.toString()),
-      title: m['title']?.toString() ?? '',
+      title: (m['title']?.toString().isNotEmpty == true)
+          ? m['title']!.toString()
+          : (m['system_summary']?.toString() ?? ''),
       description: m['description']?.toString() ?? '',
       initialMediaUrls: mediaList,
       messages: messagesList,
       createdAt:
           DateTime.tryParse(m['created_at_utc']?.toString() ?? '') ??
           DateTime.now(),
+      isRedacted: m['is_redacted'] == true,
     );
+  }
+
+  @override
+  Future<CaseDetail> claimCase(String caseId) async {
+    await _api.postJson('/cases/$caseId/claim', {});
+    return getCaseById(caseId);
   }
 
   @override

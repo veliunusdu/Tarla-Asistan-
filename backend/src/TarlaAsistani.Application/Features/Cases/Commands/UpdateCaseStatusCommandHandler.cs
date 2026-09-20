@@ -2,7 +2,9 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using TarlaAsistani.Application.Common.Interfaces;
 using TarlaAsistani.Application.Features.Cases.DTOs;
+using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
+using TarlaAsistani.Domain.Exceptions;
 
 namespace TarlaAsistani.Application.Features.Cases.Commands;
 
@@ -54,21 +56,43 @@ public class UpdateCaseStatusCommandHandler : IRequestHandler<UpdateCaseStatusCo
         }
 
         var now = DateTime.UtcNow;
+
+        if (request.AssignToMe)
+        {
+            TarlaAsistani.Application.Features.Cases.Services.CaseClaimWorkflow.ApplyClaim(
+                supportCase, request.UserId, _db, "Claimed via status update");
+        }
+        else
+        {
+            if (!supportCase.AssignedExpertId.HasValue)
+            {
+                throw new InvalidOperationException("Vaka durumu güncellenmeden önce üstlenilmelidir.");
+            }
+
+            if (supportCase.AssignedExpertId.Value != request.UserId)
+            {
+                throw new UnauthorizedAccessException("Yalnızca vakayı üstlenen uzman durumunu güncelleyebilir.");
+            }
+        }
+
         supportCase.Status = request.Status;
         if (request.Priority.HasValue)
         {
             supportCase.Priority = request.Priority.Value;
         }
 
-        if (request.AssignToMe)
-        {
-            supportCase.AssignedExpertId = request.UserId;
-        }
-
         supportCase.ClosedAtUtc = request.Status == CaseStatus.Closed ? now : null;
         supportCase.UpdatedAtUtc = now;
 
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            var fresh = await TarlaAsistani.Application.Features.Cases.Services.CaseClaimWorkflow.HandleConcurrencyConflictAsync(_db, request.CaseId, request.UserId, cancellationToken);
+            return CaseDetailDto.FromEntity(fresh);
+        }
 
         return CaseDetailDto.FromEntity(supportCase);
     }

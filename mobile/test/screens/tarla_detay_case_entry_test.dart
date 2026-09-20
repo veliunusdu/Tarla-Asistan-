@@ -18,10 +18,16 @@ class DummyCaseRepo implements CaseRepository {
   Future<String> createCase(CreateCaseInput input) async => 'case-id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async => [];
 
   @override
   Future<CaseDetail> getCaseById(String caseId) => throw UnimplementedError();
+
+  @override
+  Future<CaseDetail> claimCase(String caseId) => throw UnimplementedError();
 
   @override
   Future<CaseMessage> sendMessage(
@@ -29,8 +35,7 @@ class DummyCaseRepo implements CaseRepository {
     required String body,
     List<int>? imageBytes,
     String? imageFileName,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
   Future<Map<String, String>> getAuthHeaders() async => {};

@@ -123,6 +123,7 @@ public class CaseCommandHandlerTests
         // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
+
         // Assert
         result.Should().NotBeNull();
         result!.Status.Should().Be(CaseStatus.InReview);
@@ -166,7 +167,8 @@ public class CaseCommandHandlerTests
             Id = caseId,
             FarmId = farmId,
             Farm = farm,
-            Status = CaseStatus.InReview
+            Status = CaseStatus.InReview,
+            AssignedExpertId = agronomistId
         };
 
         var db = new MockDbContextBuilder()
@@ -214,6 +216,7 @@ public class CaseCommandHandlerTests
             FarmId = farm.Id,
             Farm = farm,
             Status = CaseStatus.InReview,
+            AssignedExpertId = expertId
         };
         var device = new DeviceToken
         {
@@ -254,5 +257,101 @@ public class CaseCommandHandlerTests
         dispatchedNotification.Should().NotBeNull();
         dispatchedNotification!.Status.Should().Be(NotificationStatus.Sent);
         dispatchedNotification.SentAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ClaimCase_WhenCaseIsClosedAndAssignedToCaller_ShouldThrowConflictExceptionWithCaseClosed()
+    {
+        // Arrange
+        var expertId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var caseId = Guid.NewGuid();
+        var supportCase = new SupportCase
+        {
+            Id = caseId,
+            FarmId = farmId,
+            Status = CaseStatus.Closed,
+            AssignedExpertId = expertId,
+            ClosedAtUtc = DateTime.UtcNow,
+            Title = "Kapalı Vaka",
+            Description = "Açıklama"
+        };
+        var db = new MockDbContextBuilder()
+            .WithSupportCases(supportCase)
+            .Build();
+
+        var handler = new ClaimCaseCommandHandler(db);
+
+        // Act
+        var act = () => handler.Handle(new ClaimCaseCommand(caseId, expertId), CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<Domain.Exceptions.ConflictException>();
+        ex.Which.Code.Should().Be("CASE_CLOSED");
+    }
+
+    [Fact]
+    public async Task ClaimCase_WhenCaseIsClosedAndUnassigned_ShouldThrowConflictExceptionWithCaseClosed()
+    {
+        // Arrange
+        var expertId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var caseId = Guid.NewGuid();
+        var supportCase = new SupportCase
+        {
+            Id = caseId,
+            FarmId = farmId,
+            Status = CaseStatus.Closed,
+            AssignedExpertId = null,
+            ClosedAtUtc = DateTime.UtcNow,
+            Title = "Kapalı Vaka",
+            Description = "Açıklama"
+        };
+        var db = new MockDbContextBuilder()
+            .WithSupportCases(supportCase)
+            .Build();
+
+        var handler = new ClaimCaseCommandHandler(db);
+
+        // Act
+        var act = () => handler.Handle(new ClaimCaseCommand(caseId, expertId), CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<Domain.Exceptions.ConflictException>();
+        ex.Which.Code.Should().Be("CASE_CLOSED");
+    }
+
+    [Fact]
+    public async Task ClaimCase_WhenCaseIsOpenAndAssignedToCaller_ShouldReturnIdempotently()
+    {
+        // Arrange
+        var expertId = Guid.NewGuid();
+        var farmId = Guid.NewGuid();
+        var caseId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, Name = "Test Farm" };
+        var supportCase = new SupportCase
+        {
+            Id = caseId,
+            FarmId = farmId,
+            Farm = farm,
+            Status = CaseStatus.InReview,
+            AssignedExpertId = expertId,
+            Title = "Açık Vaka",
+            Description = "Açıklama"
+        };
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithSupportCases(supportCase)
+            .Build();
+
+        var handler = new ClaimCaseCommandHandler(db);
+
+        // Act
+        var result = await handler.Handle(new ClaimCaseCommand(caseId, expertId), CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Id.Should().Be(caseId);
+        result.AssignedExpertId.Should().Be(expertId);
     }
 }

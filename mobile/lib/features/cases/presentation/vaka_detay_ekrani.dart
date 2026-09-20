@@ -44,7 +44,8 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
   @override
   void initState() {
     super.initState();
-    _pickerService = widget.imagePickerService ?? const DefaultImagePickerService();
+    _pickerService =
+        widget.imagePickerService ?? const DefaultImagePickerService();
     _loadAuthHeaders();
     _loadCase();
   }
@@ -99,21 +100,21 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
   }
 
   Color _getStatusColor(CaseStatus status) => switch (status) {
-        CaseStatus.waitingFarmer => AppColors.error,
-        CaseStatus.inReview => AppColors.warning,
-        CaseStatus.open => AppColors.primary,
-        CaseStatus.answered => AppColors.success,
-        CaseStatus.closed => Colors.grey,
-      };
+    CaseStatus.waitingFarmer => AppColors.error,
+    CaseStatus.inReview => AppColors.warning,
+    CaseStatus.open => AppColors.primary,
+    CaseStatus.answered => AppColors.success,
+    CaseStatus.closed => Colors.grey,
+  };
 
   IconData _getCategoryIcon(CaseCategory category) => switch (category) {
-        CaseCategory.disease => Icons.coronavirus_outlined,
-        CaseCategory.pest => Icons.pest_control_outlined,
-        CaseCategory.irrigation => Icons.water_drop_outlined,
-        CaseCategory.nutrition => Icons.eco_outlined,
-        CaseCategory.weather => Icons.cloud_outlined,
-        CaseCategory.other => Icons.help_outline,
-      };
+    CaseCategory.disease => Icons.coronavirus_outlined,
+    CaseCategory.pest => Icons.pest_control_outlined,
+    CaseCategory.irrigation => Icons.water_drop_outlined,
+    CaseCategory.nutrition => Icons.eco_outlined,
+    CaseCategory.weather => Icons.cloud_outlined,
+    CaseCategory.other => Icons.help_outline,
+  };
 
   String _formatDateTime(DateTime date) {
     final day = date.day.toString().padLeft(2, '0');
@@ -209,10 +210,7 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          SnackBar(
-            backgroundColor: AppColors.error,
-            content: Text(errorMsg),
-          ),
+          SnackBar(backgroundColor: AppColors.error, content: Text(errorMsg)),
         );
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -239,7 +237,11 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                     color: Colors.black87,
                     height: 200,
                     child: const Center(
-                      child: Icon(Icons.broken_image, color: Colors.white, size: 48),
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.white,
+                        size: 48,
+                      ),
                     ),
                   ),
                 ),
@@ -270,7 +272,11 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
             width: 72,
             height: 72,
             color: Colors.grey.shade200,
-            child: const Icon(Icons.image_not_supported, color: Colors.grey, size: 24),
+            child: const Icon(
+              Icons.image_not_supported,
+              color: Colors.grey,
+              size: 24,
+            ),
           ),
           loadingBuilder: (context, child, progress) {
             if (progress == null) return child;
@@ -409,7 +415,8 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: detail.initialMediaUrls.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 8),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     return _buildMediaThumbnail(detail.initialMediaUrls[index]);
                   },
@@ -450,7 +457,11 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.verified_user_outlined, size: 15, color: AppColors.primary),
+                    const Icon(
+                      Icons.verified_user_outlined,
+                      size: 15,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 4),
                     const Text(
                       'Ziraat Mühendisi',
@@ -460,7 +471,8 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                         color: AppColors.primary,
                       ),
                     ),
-                    if (msg.senderName.isNotEmpty && msg.senderName != 'Ziraat Mühendisi') ...[
+                    if (msg.senderName.isNotEmpty &&
+                        msg.senderName != 'Ziraat Mühendisi') ...[
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -476,10 +488,14 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                     ],
                   ],
                 ),
-                if (msg.messageType == CaseMessageType.additionalInfoRequest) ...[
+                if (msg.messageType ==
+                    CaseMessageType.additionalInfoRequest) ...[
                   const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.warning.withAlpha(30),
                       borderRadius: BorderRadius.circular(4),
@@ -493,10 +509,14 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                       ),
                     ),
                   ),
-                ] else if (msg.messageType == CaseMessageType.expertResponse) ...[
+                ] else if (msg.messageType ==
+                    CaseMessageType.expertResponse) ...[
                   const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.success.withAlpha(30),
                       borderRadius: BorderRadius.circular(4),
@@ -524,7 +544,9 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: msg.mediaUrls.map((url) => _buildMediaThumbnail(url)).toList(),
+                    children: msg.mediaUrls
+                        .map((url) => _buildMediaThumbnail(url))
+                        .toList(),
                   ),
                 ],
                 const SizedBox(height: 4),
@@ -532,10 +554,7 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                   alignment: Alignment.bottomRight,
                   child: Text(
                     _formatDateTime(msg.createdAt),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                   ),
                 ),
               ],
@@ -596,7 +615,9 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: msg.mediaUrls.map((url) => _buildMediaThumbnail(url)).toList(),
+                  children: msg.mediaUrls
+                      .map((url) => _buildMediaThumbnail(url))
+                      .toList(),
                 ),
               ],
               const SizedBox(height: 4),
@@ -604,14 +625,67 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                 alignment: Alignment.bottomRight,
                 child: Text(
                   _formatDateTime(msg.createdAt),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRedactedBanner() {
+    return Container(
+      width: double.infinity,
+      color: Colors.amber.shade50,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.shield_outlined, color: Colors.amber, size: 20),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Bu vaka uzman havuzundadır. Detayları görmek ve yanıtlamak için vakayı üstlenin.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.assignment_ind),
+                label: const Text('Vakayı Üstlen'),
+                onPressed: _isLoading
+                    ? null
+                    : () async {
+                        setState(() => _isLoading = true);
+                        try {
+                          await widget.caseRepository.claimCase(widget.caseId);
+                          await _loadCase();
+                        } catch (e) {
+                          if (mounted) {
+                            setState(() => _isLoading = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Vaka üstlenilemedi: $e')),
+                            );
+                          }
+                        }
+                      },
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -684,7 +758,11 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                             color: AppColors.error,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.close, size: 14, color: Colors.white),
+                          child: const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -711,7 +789,10 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                     decoration: const InputDecoration(
                       hintText: 'Uzmana yanıt yazın...',
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                 ),
@@ -799,7 +880,10 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
                 const SizedBox(height: AppSpacing.md),
                 if (detail.messages.isEmpty)
                   Card(
-                    margin: const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                    margin: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 8,
+                    ),
                     color: _primaryLight.withOpacity(0.5),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -823,7 +907,9 @@ class _VakaDetayEkraniState extends State<VakaDetayEkrani> {
             ),
           ),
         ),
-        if (detail.status == CaseStatus.closed)
+        if (detail.isRedacted)
+          _buildRedactedBanner()
+        else if (detail.status == CaseStatus.closed)
           _buildClosedBanner()
         else
           _buildInputBar(),

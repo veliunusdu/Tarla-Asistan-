@@ -133,12 +133,23 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var farmGuid = Guid.Parse(farm!["id"]!.ToString()!);
             db.Users.Add(new User
             {
                 Id = agronomistId,
                 PhoneNumber = "+905550000009",
                 Role = UserRole.Agronomist,
                 AccountStatus = AccountStatus.Active,
+            });
+            db.SupportCases.Add(new SupportCase
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmGuid,
+                CreatedById = ownerId,
+                AssignedExpertId = agronomistId,
+                Status = CaseStatus.InReview,
+                Title = "Sulama Danışmanlığı",
+                Description = "Açık vaka"
             });
             await db.SaveChangesAsync();
         }
@@ -195,6 +206,16 @@ public class TaskEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
                 new User { Id = ownerId, PhoneNumber = $"+90555{Random.Shared.Next(1000000, 9999999)}", Role = UserRole.Farmer, AccountStatus = AccountStatus.Active },
                 new User { Id = expertId, PhoneNumber = $"+90556{Random.Shared.Next(1000000, 9999999)}", Role = UserRole.Agronomist, AccountStatus = AccountStatus.Active });
             db.Farms.Add(new Farm { Id = farmId, OwnerId = ownerId, Name = "Web date regression farm" });
+            db.SupportCases.Add(new SupportCase
+            {
+                Id = Guid.NewGuid(),
+                FarmId = farmId,
+                CreatedById = ownerId,
+                AssignedExpertId = expertId,
+                Status = CaseStatus.InReview,
+                Title = "Web test vaka",
+                Description = "Açık vaka"
+            });
             await db.SaveChangesAsync();
         }
 

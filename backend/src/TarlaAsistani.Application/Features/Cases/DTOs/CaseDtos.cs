@@ -1,6 +1,7 @@
 using TarlaAsistani.Domain.Entities;
 using TarlaAsistani.Domain.Enums;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TarlaAsistani.Application.Features.Cases.DTOs;
 
@@ -89,41 +90,24 @@ public record CaseMessageDto(
 
 public record CaseSummaryDto(
     Guid Id,
-    Guid FarmId,
-    string FarmName,
-    Guid CreatedById,
-    Guid? AssignedExpertId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? FarmId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FarmName,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? CreatedById,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? AssignedExpertId,
     CaseCategory Category,
     CasePriority Priority,
     CaseStatus Status,
-    string Title,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Title,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     DateTime? ClosedAtUtc,
     int MessageCount,
-    int MediaCount
-);
-
-public record CaseDetailDto(
-    Guid Id,
-    Guid FarmId,
-    string FarmName,
-    Guid CreatedById,
-    Guid? AssignedExpertId,
-    CaseCategory Category,
-    CasePriority Priority,
-    CaseStatus Status,
-    string Title,
-    string Description,
-    DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc,
-    DateTime? ClosedAtUtc,
-    List<CaseMediaDto> Media,
-    List<CaseMessageDto> Messages,
-    CaseContextSnapshotDto? Context = null
+    int MediaCount,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SystemSummary = null,
+    bool IsRedacted = false
 )
 {
-    public static CaseDetailDto FromEntity(SupportCase c) => new(
+    public static CaseSummaryDto FromEntity(SupportCase c) => new(
         c.Id,
         c.FarmId,
         c.Farm?.Name ?? string.Empty,
@@ -133,18 +117,124 @@ public record CaseDetailDto(
         c.Priority,
         c.Status,
         c.Title,
-        c.Description,
         c.CreatedAtUtc,
         c.UpdatedAtUtc,
         c.ClosedAtUtc,
-        c.MediaLinks.Select(ml => CaseMediaDto.FromEntity(ml.Media)).ToList(),
-        c.Messages.Select(m => CaseMessageDto.FromEntity(m)).ToList(),
-        c.Context == null ? null : CaseContextSnapshotDto.FromEntity(c.Context)
+        c.Messages?.Count ?? 0,
+        c.MediaLinks?.Count ?? 0,
+        SystemSummary: null,
+        IsRedacted: false
+    );
+
+    public static CaseSummaryDto FromEntityRedacted(SupportCase c) => new(
+        c.Id,
+        FarmId: null,
+        FarmName: null,
+        CreatedById: null,
+        AssignedExpertId: c.AssignedExpertId,
+        Category: c.Category,
+        Priority: c.Priority,
+        Status: c.Status,
+        Title: null,
+        CreatedAtUtc: c.CreatedAtUtc,
+        UpdatedAtUtc: c.UpdatedAtUtc,
+        ClosedAtUtc: c.ClosedAtUtc,
+        MessageCount: 0,
+        MediaCount: c.MediaLinks?.Count ?? 0,
+        SystemSummary: $"{c.Category} - {c.Priority}",
+        IsRedacted: true
+    );
+}
+
+public record CaseDetailDto(
+    Guid Id,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? FarmId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? FarmName,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? CreatedById,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? AssignedExpertId,
+    CaseCategory Category,
+    CasePriority Priority,
+    CaseStatus Status,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Title,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    DateTime? ClosedAtUtc,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] List<CaseMediaDto>? Media,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] List<CaseMessageDto>? Messages,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CaseContextSnapshotDto? Context = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SystemSummary = null,
+    bool IsRedacted = false
+)
+{
+    public static CaseDetailDto FromEntity(SupportCase c) => new(
+        Id: c.Id,
+        FarmId: c.FarmId,
+        FarmName: c.Farm?.Name ?? string.Empty,
+        CreatedById: c.CreatedById,
+        AssignedExpertId: c.AssignedExpertId,
+        Category: c.Category,
+        Priority: c.Priority,
+        Status: c.Status,
+        Title: c.Title,
+        Description: c.Description,
+        CreatedAtUtc: c.CreatedAtUtc,
+        UpdatedAtUtc: c.UpdatedAtUtc,
+        ClosedAtUtc: c.ClosedAtUtc,
+        Media: c.MediaLinks.Select(ml => CaseMediaDto.FromEntity(ml.Media)).ToList(),
+        Messages: c.Messages.Select(m => CaseMessageDto.FromEntity(m)).ToList(),
+        Context: c.Context == null ? null : CaseContextSnapshotDto.FromEntity(c.Context),
+        SystemSummary: null,
+        IsRedacted: false
+    );
+
+    public static CaseDetailDto FromEntityRedacted(SupportCase c) => new(
+        Id: c.Id,
+        FarmId: null,
+        FarmName: null,
+        CreatedById: null,
+        AssignedExpertId: null,
+        Category: c.Category,
+        Priority: c.Priority,
+        Status: c.Status,
+        Title: null,
+        Description: null,
+        CreatedAtUtc: c.CreatedAtUtc,
+        UpdatedAtUtc: c.UpdatedAtUtc,
+        ClosedAtUtc: c.ClosedAtUtc,
+        Media: null,
+        Messages: null,
+        Context: null,
+        SystemSummary: $"{c.Category} - {c.Priority}",
+        IsRedacted: true
+    );
+}
+
+public record UnassignedCasePoolDto(
+    Guid Id,
+    CaseCategory Category,
+    CasePriority Priority,
+    CaseStatus Status,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc,
+    int MediaCount,
+    string? SystemSummary
+)
+{
+    public static UnassignedCasePoolDto FromEntity(SupportCase c) => new(
+        c.Id,
+        c.Category,
+        c.Priority,
+        c.Status,
+        c.CreatedAtUtc,
+        c.UpdatedAtUtc,
+        c.MediaLinks?.Count ?? 0,
+        $"{c.Category} - {c.Priority}"
     );
 }
 
 public record CaseListDto(
-    List<CaseSummaryDto> Items,
+    IReadOnlyList<CaseSummaryDto> Items,
     int Total,
     int Limit,
     int Offset

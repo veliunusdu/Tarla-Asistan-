@@ -5,12 +5,14 @@ import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import {
+  claimCase,
   createFarmTask,
   fetchCase,
   fetchProtectedMedia,
   requestAdditionalInfo,
   sendExpertResponse,
   updateCaseStatus,
+  ApiError,
   type CasePriority,
   type MediaAsset,
   type SupportCase,
@@ -56,6 +58,28 @@ export default function CaseDetailPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Vaka yüklenemedi."));
   }, [params.caseId, router]);
 
+  async function handleClaimCase() {
+    if (!item) return;
+    setBusy(true);
+    setError("");
+    try {
+      await claimCase(item.id);
+      const updated = await fetchCase(item.id);
+      setItem(updated);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setError("Bu vaka başka bir uzman tarafından üstlenildi veya kapatıldı. Liste yenileniyor…");
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 2000);
+      } else {
+        setError(err instanceof Error ? err.message : "Vaka üstlenilemedi.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitMessage(event: FormEvent, closeCase = false) {
     event.preventDefault();
     if (!message.trim() || !item) return;
@@ -91,7 +115,7 @@ export default function CaseDetailPage() {
 
   async function submitTask(event: FormEvent) {
     event.preventDefault();
-    if (!item || !taskTitle.trim() || !taskDescription.trim() || !taskReason.trim() || !taskDueDate) return;
+    if (!item || !item.farm_id || !taskTitle.trim() || !taskDescription.trim() || !taskReason.trim() || !taskDueDate) return;
 
     setTaskBusy(true);
     setTaskSuccess("");
@@ -104,6 +128,7 @@ export default function CaseDetailPage() {
         priority: taskPriority,
         confidence: taskConfidence,
         dueDate: taskDueDate,
+        caseId: item.id,
       });
       setTaskTitle("");
       setTaskDescription("");
@@ -123,125 +148,145 @@ export default function CaseDetailPage() {
   return (
     <main className="dashboard case-detail-page">
       <Link className="back-link" href="/dashboard">← Vaka listesine dön</Link>
-      <div className="case-detail-grid">
-        <section className="case-main-panel">
+      {item.is_redacted ? (
+        <section className="case-main-panel redacted-case-card">
           <div className="case-card-topline">
             <span className={`priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span>
             <span className={`case-status status-${item.status.toLowerCase()}`}>{STATUS_LABELS[item.status]}</span>
           </div>
-          <h1>{item.title}</h1>
-          <p className="case-description large">{item.description}</p>
-
-          {item.media.length > 0 && (
-            <div className="media-grid">
-              {item.media.map((media) => <ProtectedMedia key={media.id} media={media} />)}
-            </div>
-          )}
-
-          <div className="conversation">
-            <h2>Vaka konuşması</h2>
-            {(item.messages ?? []).length === 0 ? (
-              <p className="muted">Henüz mesaj yok.</p>
-            ) : (
-              item.messages?.map((entry) => (
-                <article className={`message-bubble ${entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "expert" : "farmer"}`} key={entry.id}>
-                  <div className="message-meta">
-                    <strong>{entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Uzman" : "Çiftçi"}</strong>
-                    <span>{entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Ek bilgi isteği" : entry.message_type === "EXPERT_RESPONSE" ? "Uzman yanıtı" : "Mesaj"}</span>
-                    <time>{new Date(entry.created_at_utc).toLocaleString("tr-TR")}</time>
-                  </div>
-                  <p>{entry.body}</p>
-                  {entry.media.map((media) => <ProtectedMedia key={media.id} media={media} compact />)}
-                </article>
-              ))
-            )}
+          <h1>{item.system_summary || "Atama Bekleyen Vaka"}</h1>
+          <p className="case-description large">
+            Bu vaka uzman havuzundadır. Çiftçi bilgileri, tarla bağlamı, fotoğraflar ve mesajlar gizlenmiştir.
+          </p>
+          <div className="claim-box">
+            <p className="muted">Detayları incelemek, çiftçiyle iletişim kurmak ve planlı iş önermek için vakayı üstlenin.</p>
+            {error && <p className="error" role="alert">{error}</p>}
+            <button className="claim-button" disabled={busy} type="button" onClick={handleClaimCase}>
+              {busy ? "Üstleniliyor…" : "Vakayı üstlen"}
+            </button>
           </div>
-
-          {item.status !== "CLOSED" && (
-            <form className="response-form" onSubmit={(event) => submitMessage(event)}>
-              <div className="mode-tabs">
-                <button className={mode === "response" ? "active" : ""} type="button" onClick={() => setMode("response")}>Uzman yanıtı</button>
-                <button className={mode === "request" ? "active" : ""} type="button" onClick={() => setMode("request")}>Ek bilgi iste</button>
-              </div>
-              <label>
-                {mode === "response" ? "Çiftçiye öneriniz" : "İhtiyaç duyduğunuz ek bilgi"}
-                <textarea value={message} onChange={(event) => setMessage(event.target.value)} minLength={2} required />
-              </label>
-              {error && <p className="error" role="alert">{error}</p>}
-              <div className="form-actions">
-                <button disabled={busy} type="submit">{busy ? "Kaydediliyor…" : mode === "response" ? "Yanıtı gönder" : "Bilgi isteğini gönder"}</button>
-                {mode === "response" && (
-                  <button className="close-case-button" disabled={busy} type="button" onClick={(event) => submitMessage(event as unknown as FormEvent, true)}>Yanıtla ve kapat</button>
-                )}
-              </div>
-            </form>
-          )}
         </section>
+      ) : (
+        <div className="case-detail-grid">
+          <section className="case-main-panel">
+            <div className="case-card-topline">
+              <span className={`priority priority-${item.priority.toLowerCase()}`}>{item.priority}</span>
+              <span className={`case-status status-${item.status.toLowerCase()}`}>{STATUS_LABELS[item.status]}</span>
+            </div>
+            <h1>{item.title || item.system_summary || "Vaka Başvurusu"}</h1>
+            <p className="case-description large">{item.description || ""}</p>
 
-        <aside className="case-side-panel">
-          <h2>Tarla bağlamı</h2>
-          {item.context && <ContextSnapshot context={item.context} />}
-          <dl>
-            <div><dt>Tarla</dt><dd>{item.farm_name}</dd></div>
-            <div><dt>Kategori</dt><dd>{item.category}</dd></div>
-            <div><dt>Oluşturulma</dt><dd>{new Date(item.created_at_utc).toLocaleString("tr-TR")}</dd></div>
-          </dl>
-          <label>
-            Vaka önceliği
-            <select value={item.priority} disabled={busy} onChange={(event) => changePriority(event.target.value as CasePriority)}>
-              <option value="LOW">Düşük</option>
-              <option value="MEDIUM">Orta</option>
-              <option value="HIGH">Yüksek</option>
-              <option value="CRITICAL">Kritik</option>
-            </select>
-          </label>
-          {item.status === "OPEN" && (
-            <button disabled={busy} onClick={() => changePriority(item.priority)} type="button">İncelemeye al</button>
-          )}
-          <section className="expert-task-form">
-            <h2>Planlı iş öner</h2>
-            <p className="muted">Bu iş doğrudan çiftçinin İş Planım ekranına eklenir.</p>
-            <form className="response-form" onSubmit={submitTask}>
-              <label>
-                İş başlığı
-                <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} minLength={2} maxLength={160} required />
-              </label>
-              <label>
-                Açıklama
-                <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} minLength={2} maxLength={4000} required />
-              </label>
-              <label>
-                Öneri nedeni
-                <textarea value={taskReason} onChange={(event) => setTaskReason(event.target.value)} minLength={2} maxLength={2000} required />
-              </label>
-              <label>
-                Son tarih
-                <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} required />
-              </label>
-              <label>
-                Öncelik
-                <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as TaskPriority)}>
-                  <option value="LOW">Düşük</option>
-                  <option value="MEDIUM">Orta</option>
-                  <option value="HIGH">Yüksek</option>
-                  <option value="CRITICAL">Kritik</option>
-                </select>
-              </label>
-              <label>
-                Güven düzeyi
-                <select value={taskConfidence} onChange={(event) => setTaskConfidence(event.target.value as TaskConfidence)}>
-                  <option value="LOW">Düşük</option>
-                  <option value="MEDIUM">Orta</option>
-                  <option value="HIGH">Yüksek</option>
-                </select>
-              </label>
-              {taskSuccess && <p className="success" role="status">{taskSuccess}</p>}
-              {error && <p className="error" role="alert">{error}</p>}
-              <button disabled={taskBusy} type="submit">{taskBusy ? "Ekleniyor…" : "Planlı işi ekle"}</button>
-            </form>
+            {(item.media ?? []).length > 0 && (
+              <div className="media-grid">
+                {(item.media ?? []).map((media) => <ProtectedMedia key={media.id} media={media} />)}
+              </div>
+            )}
+
+            <div className="conversation">
+              <h2>Vaka konuşması</h2>
+              {(item.messages ?? []).length === 0 ? (
+                <p className="muted">Henüz mesaj yok.</p>
+              ) : (
+                (item.messages ?? []).map((entry) => (
+                  <article className={`message-bubble ${entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "expert" : "farmer"}`} key={entry.id}>
+                    <div className="message-meta">
+                      <strong>{entry.message_type === "EXPERT_RESPONSE" || entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Uzman" : "Çiftçi"}</strong>
+                      <span>{entry.message_type === "ADDITIONAL_INFO_REQUEST" ? "Ek bilgi isteği" : entry.message_type === "EXPERT_RESPONSE" ? "Uzman yanıtı" : "Mesaj"}</span>
+                      <time>{new Date(entry.created_at_utc).toLocaleString("tr-TR")}</time>
+                    </div>
+                    <p>{entry.body}</p>
+                    {(entry.media ?? []).map((media) => <ProtectedMedia key={media.id} media={media} compact />)}
+                  </article>
+                ))
+              )}
+            </div>
+
+            {item.status !== "CLOSED" && (
+              <form className="response-form" onSubmit={(event) => submitMessage(event)}>
+                <div className="mode-tabs">
+                  <button className={mode === "response" ? "active" : ""} type="button" onClick={() => setMode("response")}>Uzman yanıtı</button>
+                  <button className={mode === "request" ? "active" : ""} type="button" onClick={() => setMode("request")}>Ek bilgi iste</button>
+                </div>
+                <label>
+                  {mode === "response" ? "Çiftçiye öneriniz" : "İhtiyaç duyduğunuz ek bilgi"}
+                  <textarea value={message} onChange={(event) => setMessage(event.target.value)} minLength={2} required />
+                </label>
+                {error && <p className="error" role="alert">{error}</p>}
+                <div className="form-actions">
+                  <button disabled={busy} type="submit">{busy ? "Kaydediliyor…" : mode === "response" ? "Yanıtı gönder" : "Bilgi isteğini gönder"}</button>
+                  {mode === "response" && (
+                    <button className="close-case-button" disabled={busy} type="button" onClick={(event) => submitMessage(event as unknown as FormEvent, true)}>Yanıtla ve kapat</button>
+                  )}
+                </div>
+              </form>
+            )}
           </section>
-        </aside>
-      </div>
+
+          <aside className="case-side-panel">
+            <h2>Tarla bağlamı</h2>
+            {item.context && <ContextSnapshot context={item.context} />}
+            <dl>
+              <div><dt>Tarla</dt><dd>{item.farm_name || "Atama Bekliyor"}</dd></div>
+              <div><dt>Kategori</dt><dd>{item.category}</dd></div>
+              <div><dt>Oluşturulma</dt><dd>{new Date(item.created_at_utc).toLocaleString("tr-TR")}</dd></div>
+            </dl>
+            <label>
+              Vaka önceliği
+              <select value={item.priority} disabled={busy} onChange={(event) => changePriority(event.target.value as CasePriority)}>
+                <option value="LOW">Düşük</option>
+                <option value="MEDIUM">Orta</option>
+                <option value="HIGH">Yüksek</option>
+                <option value="CRITICAL">Kritik</option>
+              </select>
+            </label>
+            {item.status === "OPEN" && (
+              <button disabled={busy} onClick={() => changePriority(item.priority)} type="button">İncelemeye al</button>
+            )}
+            <section className="expert-task-form">
+              <h2>Planlı iş öner</h2>
+              <p className="muted">Bu iş doğrudan çiftçinin İş Planım ekranına eklenir.</p>
+              <form className="response-form" onSubmit={submitTask}>
+                <label>
+                  İş başlığı
+                  <input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} minLength={2} maxLength={160} required />
+                </label>
+                <label>
+                  Açıklama
+                  <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} minLength={2} maxLength={4000} required />
+                </label>
+                <label>
+                  Öneri nedeni
+                  <textarea value={taskReason} onChange={(event) => setTaskReason(event.target.value)} minLength={2} maxLength={2000} required />
+                </label>
+                <label>
+                  Son tarih
+                  <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} required />
+                </label>
+                <label>
+                  Öncelik
+                  <select value={taskPriority} onChange={(event) => setTaskPriority(event.target.value as TaskPriority)}>
+                    <option value="LOW">Düşük</option>
+                    <option value="MEDIUM">Orta</option>
+                    <option value="HIGH">Yüksek</option>
+                    <option value="CRITICAL">Kritik</option>
+                  </select>
+                </label>
+                <label>
+                  Güven düzeyi
+                  <select value={taskConfidence} onChange={(event) => setTaskConfidence(event.target.value as TaskConfidence)}>
+                    <option value="LOW">Düşük</option>
+                    <option value="MEDIUM">Orta</option>
+                    <option value="HIGH">Yüksek</option>
+                  </select>
+                </label>
+                {taskSuccess && <p className="success" role="status">{taskSuccess}</p>}
+                {error && <p className="error" role="alert">{error}</p>}
+                <button disabled={taskBusy} type="submit">{taskBusy ? "Ekleniyor…" : "Planlı işi ekle"}</button>
+              </form>
+            </section>
+          </aside>
+        </div>
+      )}
     </main>
   );
 }

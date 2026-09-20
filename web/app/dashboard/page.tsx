@@ -149,10 +149,10 @@ export default function DashboardPage() {
                   {STATUS_LABELS[item.status]}
                 </span>
               </div>
-              <h2>{item.title}</h2>
+              <h2>{item.title || item.system_summary || "Vaka Başvurusu"}</h2>
               <p className="case-description">{item.category}</p>
               <div className="case-context">
-                <span>{item.farm_name}</span>
+                <span>{item.farm_name || "Atama Bekliyor"}</span>
                 <span>{new Date(item.updated_at_utc).toLocaleString("tr-TR")}</span>
                 {item.message_count > 0 && <span>{item.message_count} mesaj</span>}
                 {item.media_count > 0 && <span>{item.media_count} medya</span>}

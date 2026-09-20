@@ -14,6 +14,7 @@ class CaseDetail {
     this.initialMediaUrls = const [],
     this.messages = const [],
     required this.createdAt,
+    this.isRedacted = false,
   });
 
   final String id;
@@ -26,4 +27,5 @@ class CaseDetail {
   final List<String> initialMediaUrls;
   final List<CaseMessage> messages;
   final DateTime createdAt;
+  final bool isRedacted;
 }

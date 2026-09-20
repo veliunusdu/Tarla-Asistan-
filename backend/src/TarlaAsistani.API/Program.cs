@@ -271,7 +271,7 @@ if (app.Environment.EnvironmentName == "Testing")
 
 app.UseRateLimiter();
 
-if (app.Environment.IsProduction())
+if (app.Environment.EnvironmentName != "Testing")
 {
     app.Use(async (context, next) =>
     {
@@ -279,7 +279,9 @@ if (app.Environment.IsProduction())
         var isPublicRequest = context.Request.Path.StartsWithSegments("/api/v1/auth/firebase") ||
                               context.Request.Path.StartsWithSegments("/api/v1/auth/refresh") ||
                               context.Request.Path.StartsWithSegments("/api/v1/auth/logout") ||
-                              context.Request.Path.StartsWithSegments("/api/v1/market");
+                              context.Request.Path.StartsWithSegments("/api/v1/market") ||
+                              context.Request.Path.StartsWithSegments("/api/v1/health") ||
+                              context.Request.Path.StartsWithSegments("/health");
 
         if (isApiRequest && !isPublicRequest &&
             !HttpMethods.IsOptions(context.Request.Method) &&
@@ -322,6 +324,7 @@ app.MapProactiveAdvisoryEndpoints();
 app.MapMarketEndpoints();
 app.MapFinancialEndpoints();
 app.MapAdminEndpoints();
+app.MapAgronomistApplicationEndpoints();
 
 // 6. Apply EF Core Migrations automatically on startup (in Production container or when AUTO_MIGRATE=true)
 if (app.Environment.IsProduction() || Environment.GetEnvironmentVariable("AUTO_MIGRATE") == "true")

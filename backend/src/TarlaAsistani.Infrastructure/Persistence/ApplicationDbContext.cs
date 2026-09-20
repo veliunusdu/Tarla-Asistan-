@@ -23,6 +23,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
     public DbSet<FirebaseLinkApproval> FirebaseLinkApprovals => Set<FirebaseLinkApproval>();
     public DbSet<AccountDeletionJob> AccountDeletionJobs => Set<AccountDeletionJob>();
+    public DbSet<AgronomistApplication> AgronomistApplications => Set<AgronomistApplication>();
 
     // ── Farm ────────────────────────────────────────────────
     public DbSet<Farm> Farms => Set<Farm>();
@@ -38,6 +39,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
     // ── Support Cases ────────────────────────────────────────
     public DbSet<SupportCase> SupportCases => Set<SupportCase>();
+    public DbSet<CaseAssignmentEvent> CaseAssignmentEvents => Set<CaseAssignmentEvent>();
     public DbSet<CaseContextSnapshot> CaseContextSnapshots => Set<CaseContextSnapshot>();
     public DbSet<CaseMessage> CaseMessages => Set<CaseMessage>();
     public DbSet<CaseMedia> CaseMedia => Set<CaseMedia>();
@@ -203,6 +205,46 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithMany(u => u.FirebaseLinkApprovals)
                   .HasForeignKey(fla => fla.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(fla => fla.ApprovedByUser)
+                  .WithMany()
+                  .HasForeignKey(fla => fla.ApprovedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // AGRONOMIST APPLICATION
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<AgronomistApplication>(entity =>
+        {
+            entity.ToTable("agronomist_applications");
+            entity.HasKey(a => a.Id);
+
+            entity.HasIndex(a => a.UserId)
+                  .HasDatabaseName("ix_agronomist_applications_user_id");
+            entity.HasIndex(a => a.UserId)
+                  .IsUnique()
+                  .HasFilter("\"Status\" = 'Pending'")
+                  .HasDatabaseName("uq_agronomist_applications_one_pending_per_user");
+            entity.HasIndex(a => a.Status)
+                  .HasDatabaseName("ix_agronomist_applications_status");
+
+            entity.Property(a => a.Status)
+                  .HasConversion<string>()
+                  .HasDefaultValue(AgronomistApplicationStatus.Pending);
+
+            entity.Property(a => a.ApplicantNote).HasMaxLength(2000);
+            entity.Property(a => a.ReviewReason).HasMaxLength(1000);
+
+            entity.HasOne(a => a.User)
+                  .WithMany(u => u.AgronomistApplications)
+                  .HasForeignKey(a => a.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(a => a.ReviewedByUser)
+                  .WithMany()
+                  .HasForeignKey(a => a.ReviewedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ══════════════════════════════════════════════════════
@@ -434,6 +476,14 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithMany()
                   .HasForeignKey(t => t.CreatedById)
                   .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(t => t.CaseId)
+                  .HasDatabaseName("ix_tasks_case_id");
+
+            entity.HasOne(t => t.Case)
+                  .WithMany(sc => sc.Tasks)
+                  .HasForeignKey(t => t.CaseId)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ══════════════════════════════════════════════════════
@@ -482,6 +532,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
             entity.Property(sc => sc.Status)
                   .HasConversion<string>()
                   .HasDefaultValue(CaseStatus.Open);
+            entity.Property(sc => sc.AssignedExpertId)
+                  .IsConcurrencyToken();
 
             entity.HasOne(sc => sc.Farm)
                   .WithMany()
@@ -508,6 +560,50 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                   .WithOne(cm => cm.Case)
                   .HasForeignKey(cm => cm.CaseId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(sc => sc.AssignmentEvents)
+                  .WithOne(ae => ae.Case)
+                  .HasForeignKey(ae => ae.CaseId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ══════════════════════════════════════════════════════
+        // CASE ASSIGNMENT EVENT
+        // ══════════════════════════════════════════════════════
+        modelBuilder.Entity<CaseAssignmentEvent>(entity =>
+        {
+            entity.ToTable("case_assignment_events");
+            entity.HasKey(ae => ae.Id);
+
+            entity.HasIndex(ae => new { ae.CaseId, ae.ChangedAtUtc })
+                  .HasDatabaseName("ix_case_assignment_events_case_changed");
+
+            entity.Property(ae => ae.ChangeType)
+                  .HasConversion<string>()
+                  .HasMaxLength(50)
+                  .IsRequired();
+
+            entity.Property(ae => ae.Reason).HasMaxLength(500);
+
+            entity.HasOne(ae => ae.Case)
+                  .WithMany(sc => sc.AssignmentEvents)
+                  .HasForeignKey(ae => ae.CaseId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ae => ae.PreviousExpert)
+                  .WithMany()
+                  .HasForeignKey(ae => ae.PreviousExpertId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(ae => ae.NewExpert)
+                  .WithMany()
+                  .HasForeignKey(ae => ae.NewExpertId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(ae => ae.ChangedByUser)
+                  .WithMany()
+                  .HasForeignKey(ae => ae.ChangedByUserId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ══════════════════════════════════════════════════════

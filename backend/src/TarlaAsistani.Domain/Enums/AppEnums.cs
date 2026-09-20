@@ -218,3 +218,17 @@ public enum AccountDeletionStatus
     RetryRequired,
     Completed,
 }
+
+public enum AgronomistApplicationStatus
+{
+    Pending,
+    Approved,
+    Rejected,
+}
+
+public enum CaseAssignmentChangeType
+{
+    Claim,
+    Reassign,
+    Release,
+}

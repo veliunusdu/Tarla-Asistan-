@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using TarlaAsistani.Domain.Enums;
 
 namespace TarlaAsistani.Domain.Entities;
@@ -10,6 +11,7 @@ public class SupportCase
 
     public Guid CreatedById { get; set; }
 
+    [ConcurrencyCheck]
     public Guid? AssignedExpertId { get; set; }
 
     public CaseCategory Category { get; set; }
@@ -39,5 +41,10 @@ public class SupportCase
     public ICollection<CaseMessage> Messages { get; set; } = new List<CaseMessage>();
 
     public ICollection<CaseMedia> MediaLinks { get; set; } = new List<CaseMedia>();
+
     public CaseContextSnapshot? Context { get; set; }
+
+    public ICollection<FarmTask> Tasks { get; set; } = new List<FarmTask>();
+
+    public ICollection<CaseAssignmentEvent> AssignmentEvents { get; set; } = new List<CaseAssignmentEvent>();
 }

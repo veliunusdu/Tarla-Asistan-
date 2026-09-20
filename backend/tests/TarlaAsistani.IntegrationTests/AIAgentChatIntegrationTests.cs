@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using TarlaAsistani.Application.Common.AI;
 using TarlaAsistani.Application.Common.Interfaces;
@@ -37,8 +39,16 @@ public class AIAgentWebApplicationFactory : WebApplicationFactory<Program>
         builder.UseSetting("AI:Provider", "gemini");
         builder.UseSetting("AI:AgentEnabled", "true");
 
+        builder.ConfigureLogging(logging =>
+        {
+            logging.ClearProviders();
+            logging.AddDebug();
+            logging.AddFilter(static (_, _) => false);
+        });
+
         builder.ConfigureServices(services =>
         {
+            services.RemoveAll<ILoggerProvider>();
             var dbContextDescriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
             if (dbContextDescriptor != null) services.Remove(dbContextDescriptor);

@@ -47,7 +47,8 @@ public static class TaskEndpoints
                 Confidence: req.Confidence ?? TaskConfidence.High,
                 DueDate: req.DueDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
                 CropPeriodId: req.CropPeriodId,
-                CreatedByRole: userRole
+                CreatedByRole: userRole,
+                CaseId: req.CaseId
             );
 
             var validationResult = await validator.ValidateAsync(command);
@@ -245,6 +246,62 @@ public static class TaskEndpoints
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict);
 
+        // 6. GET /api/v1/expert/tasks - Expert task inbox across farms
+        var expertTasks = app.MapGroup("/api/v1/expert/tasks")
+                             .WithTags("Daily Tasks");
+
+        expertTasks.MapGet("", async (
+            HttpContext httpContext,
+            [FromHeader(Name = "X-User-Id")] Guid? headerUserId,
+            [FromHeader(Name = "X-User-Role")] string? headerRole,
+            [FromQuery] string? scope,
+            [FromQuery] TaskStatus? status,
+            [FromQuery] DateOnly? dueFrom,
+            [FromQuery] DateOnly? dueTo,
+            [FromQuery] bool? overdue,
+            [FromQuery] Guid? farmId,
+            [FromQuery] Guid? caseId,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            IMediator mediator) =>
+        {
+            var userId = httpContext.ResolveUserId(headerUserId: headerUserId);
+            var userRole = httpContext.ResolveUserRole(headerRole: headerRole, defaultRole: UserRole.Agronomist);
+            if (userId == Guid.Empty)
+            {
+                return Results.Json(new { detail = "Kimlik doğrulanmadı." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var query = new ListExpertTasksQuery(
+                ExpertId: userId,
+                Role: userRole,
+                Scope: scope ?? "mine",
+                Status: status,
+                DueFrom: dueFrom,
+                DueTo: dueTo,
+                Overdue: overdue,
+                FarmId: farmId,
+                CaseId: caseId,
+                Page: page.GetValueOrDefault(1),
+                PageSize: pageSize.GetValueOrDefault(20)
+            );
+
+            try
+            {
+                var result = await mediator.Send(query);
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        })
+        .WithName("ListExpertTasks")
+        .RequireAuthorization("AgronomistContext")
+        .Produces<ExpertTaskListDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
+
         return app;
     }
 }
@@ -257,7 +314,8 @@ public record CreateExpertTaskApiRequest(
     TaskPriority? Priority,
     TaskConfidence? Confidence,
     DateOnly? DueDate,
-    Guid? CropPeriodId
+    Guid? CropPeriodId,
+    Guid? CaseId = null
 );
 
 public record UpdateTaskStatusApiRequest(

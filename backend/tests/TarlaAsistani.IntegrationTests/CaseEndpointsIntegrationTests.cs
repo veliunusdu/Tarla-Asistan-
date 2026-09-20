@@ -59,6 +59,26 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
                     }
                 }
             );
+
+            db.UserRoleAssignments.AddRange(
+                new UserRoleAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = farmerId,
+                    Role = UserRole.Farmer,
+                    GrantedAtUtc = DateTime.UtcNow,
+                    GrantReason = "Test seed"
+                },
+                new UserRoleAssignment
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = agronomistId,
+                    Role = UserRole.Agronomist,
+                    GrantedAtUtc = DateTime.UtcNow,
+                    GrantReason = "Test seed"
+                }
+            );
+
             await db.SaveChangesAsync();
         }
 
@@ -100,6 +120,13 @@ public class CaseEndpointsIntegrationTests : IClassFixture<CustomWebApplicationF
         createdCase.Context.Should().NotBeNull();
         createdCase.Context!.FarmName.Should().Be("Vaka Test Tarlası");
         createdCase.Context.CropName.Should().Be("Domates");
+
+        // 2.5 Claim the Case as Agronomist
+        var claimResponse = await _client.PostAsJsonAsync(
+            $"/api/v1/cases/{createdCase.Id}/claim",
+            new ClaimCaseApiRequest(agronomistId),
+            CustomWebApplicationFactory.JsonOptions);
+        claimResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // 3. Add a Message to Case
         var addMessageRequest = new CreateCaseMessageApiRequest(

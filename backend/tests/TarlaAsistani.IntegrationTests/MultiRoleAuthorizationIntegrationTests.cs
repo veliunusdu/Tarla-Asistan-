@@ -627,10 +627,11 @@ public class MultiRoleAuthorizationIntegrationTests : IClassFixture<CustomWebApp
                 Id = caseId,
                 FarmId = farmId,
                 CreatedById = userId,
+                AssignedExpertId = activeAgroId,
                 Category = CaseCategory.Disease,
                 Title = "Stale Token Test Vaka",
                 Description = "Aciklama",
-                Status = CaseStatus.Open,
+                Status = CaseStatus.InReview,
                 CreatedAtUtc = DateTime.UtcNow
             };
 

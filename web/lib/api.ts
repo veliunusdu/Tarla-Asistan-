@@ -114,6 +114,7 @@ export type CreateFarmTaskInput = {
   priority: TaskPriority;
   confidence: TaskConfidence;
   dueDate: string;
+  caseId?: string;
 };
 
 export type MediaAsset = {
@@ -167,38 +168,42 @@ export type CaseContextSnapshot = {
 
 export type SupportCase = {
   id: string;
-  farm_id: string;
-  farm_name: string;
-  created_by_id: string;
-  assigned_expert_id: string | null;
+  farm_id?: string | null;
+  farm_name?: string | null;
+  created_by_id?: string | null;
+  assigned_expert_id?: string | null;
   category: string;
   priority: CasePriority;
   status: CaseStatus;
-  title: string;
-  description: string;
-  media: MediaAsset[];
+  title?: string | null;
+  description?: string | null;
+  media?: MediaAsset[];
   messages?: CaseMessage[];
-  closed_at_utc: string | null;
+  closed_at_utc?: string | null;
   created_at_utc: string;
   updated_at_utc: string;
-  context: CaseContextSnapshot | null;
+  context?: CaseContextSnapshot | null;
+  system_summary?: string | null;
+  is_redacted?: boolean;
 };
 
 export type CaseSummary = {
   id: string;
-  farm_id: string;
-  farm_name: string;
-  created_by_id: string;
-  assigned_expert_id: string | null;
+  farm_id?: string | null;
+  farm_name?: string | null;
+  created_by_id?: string | null;
+  assigned_expert_id?: string | null;
   category: string;
   priority: CasePriority;
   status: CaseStatus;
-  title: string;
+  title?: string | null;
   created_at_utc: string;
   updated_at_utc: string;
-  closed_at_utc: string | null;
+  closed_at_utc?: string | null;
   message_count: number;
   media_count: number;
+  system_summary?: string | null;
+  is_redacted?: boolean;
 };
 
 async function authenticatedRequest<T>(path: string, init: RequestInit): Promise<T> {
@@ -270,6 +275,12 @@ export function sendExpertResponse(caseId: string, body: string, closeCase: bool
   });
 }
 
+export function claimCase(caseId: string) {
+  return authenticatedRequest<SupportCase>(`/cases/${caseId}/claim`, {
+    method: "POST",
+  });
+}
+
 export function createFarmTask(farmId: string, input: CreateFarmTaskInput) {
   return authenticatedRequest<FarmTask>(`/farms/${farmId}/tasks`, {
     method: "POST",
@@ -280,6 +291,7 @@ export function createFarmTask(farmId: string, input: CreateFarmTaskInput) {
       priority: input.priority,
       confidence: input.confidence,
       due_date: input.dueDate,
+      case_id: input.caseId,
     }),
   });
 }

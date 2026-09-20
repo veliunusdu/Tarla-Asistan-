@@ -8,6 +8,7 @@ abstract interface class CaseRepository {
   Future<String> createCase(CreateCaseInput input);
   Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status});
   Future<CaseDetail> getCaseById(String caseId);
+  Future<CaseDetail> claimCase(String caseId);
   Future<CaseMessage> sendMessage(
     String caseId, {
     required String body,

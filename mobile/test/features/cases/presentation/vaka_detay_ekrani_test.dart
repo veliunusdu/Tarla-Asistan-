@@ -14,15 +14,73 @@ import 'package:mobile/features/cases/domain/models/create_case_input.dart';
 import 'package:mobile/features/cases/presentation/vaka_detay_ekrani.dart';
 
 final kTestImage = Uint8List.fromList(<int>[
-  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-  0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-  0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
-  0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-  0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-  0x42, 0x60, 0x82,
+  0x89,
+  0x50,
+  0x4E,
+  0x47,
+  0x0D,
+  0x0A,
+  0x1A,
+  0x0A,
+  0x00,
+  0x00,
+  0x00,
+  0x0D,
+  0x49,
+  0x48,
+  0x44,
+  0x52,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1F,
+  0x15,
+  0xC4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0A,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9C,
+  0x63,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0D,
+  0x0A,
+  0x2D,
+  0xB4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4E,
+  0x44,
+  0xAE,
+  0x42,
+  0x60,
+  0x82,
 ]);
 
 class MockChatCaseRepository implements CaseRepository {
@@ -30,6 +88,7 @@ class MockChatCaseRepository implements CaseRepository {
     required this.detail,
     this.shouldFailSend = false,
     this.shouldFailLoad = false,
+    this.shouldFailClaim = false,
   });
 
   CaseDetail detail;
@@ -38,18 +97,45 @@ class MockChatCaseRepository implements CaseRepository {
   String? sentImageFileName;
   bool shouldFailSend;
   bool shouldFailLoad;
+  bool shouldFailClaim;
+  int claimCaseCallCount = 0;
 
   @override
   Future<String> createCase(CreateCaseInput input) async => 'id';
 
   @override
-  Future<List<CaseSummary>> getCases({String? farmId, CaseStatus? status}) async => [];
+  Future<List<CaseSummary>> getCases({
+    String? farmId,
+    CaseStatus? status,
+  }) async => [];
 
   @override
   Future<CaseDetail> getCaseById(String caseId) async {
     if (shouldFailLoad) {
       throw Exception('Detay yüklenemedi');
     }
+    return detail;
+  }
+
+  @override
+  Future<CaseDetail> claimCase(String caseId) async {
+    claimCaseCallCount++;
+    if (shouldFailClaim) {
+      throw Exception('Vaka başka bir uzman tarafından üstlenildi.');
+    }
+    detail = CaseDetail(
+      id: caseId,
+      farmId: 'farm-1',
+      farmName: 'Büyük Tarla',
+      category: detail.category,
+      status: CaseStatus.inReview,
+      title: 'Yaprak Yanıklığı (Tam Detay)',
+      description: 'Tam vaka detay açıklaması',
+      initialMediaUrls: detail.initialMediaUrls,
+      messages: detail.messages,
+      createdAt: detail.createdAt,
+      isRedacted: false,
+    );
     return detail;
   }
 
@@ -128,15 +214,14 @@ void main() {
     ],
   );
 
-  testWidgets('renders case details, expert message bubble, and allows reply', (tester) async {
+  testWidgets('renders case details, expert message bubble, and allows reply', (
+    tester,
+  ) async {
     final repo = MockChatCaseRepository(detail: sampleDetail);
 
     await tester.pumpWidget(
       MaterialApp(
-        home: VakaDetayEkrani(
-          caseId: 'case-100',
-          caseRepository: repo,
-        ),
+        home: VakaDetayEkrani(caseId: 'case-100', caseRepository: repo),
       ),
     );
     await tester.pumpAndSettle();
@@ -147,7 +232,10 @@ void main() {
     expect(find.text('Ziraat Mühendisi'), findsWidgets);
 
     // Send reply
-    await tester.enterText(find.byType(TextField), 'Bakırlı preparat kullandım.');
+    await tester.enterText(
+      find.byType(TextField),
+      'Bakırlı preparat kullandım.',
+    );
     await tester.tap(find.byIcon(Icons.send));
     await tester.pumpAndSettle();
 
@@ -172,19 +260,21 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: VakaDetayEkrani(
-          caseId: 'case-200',
-          caseRepository: repo,
-        ),
+        home: VakaDetayEkrani(caseId: 'case-200', caseRepository: repo),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Bu sorun bildiriminiz çözümlenip kapatılmıştır.'), findsOneWidget);
+    expect(
+      find.text('Bu sorun bildiriminiz çözümlenip kapatılmıştır.'),
+      findsOneWidget,
+    );
     expect(find.byType(TextField), findsNothing);
   });
 
-  testWidgets('shows error state when case fails to load and allows retry', (tester) async {
+  testWidgets('shows error state when case fails to load and allows retry', (
+    tester,
+  ) async {
     final repo = MockChatCaseRepository(
       detail: sampleDetail,
       shouldFailLoad: true,
@@ -192,10 +282,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: VakaDetayEkrani(
-          caseId: 'case-100',
-          caseRepository: repo,
-        ),
+        home: VakaDetayEkrani(caseId: 'case-100', caseRepository: repo),
       ),
     );
     await tester.pumpAndSettle();
@@ -210,7 +297,9 @@ void main() {
     expect(find.text('Yaprak Yanıklığı'), findsOneWidget);
   });
 
-  testWidgets('shows snackbar on send error and retains message text', (tester) async {
+  testWidgets('shows snackbar on send error and retains message text', (
+    tester,
+  ) async {
     final repo = MockChatCaseRepository(
       detail: sampleDetail,
       shouldFailSend: true,
@@ -218,10 +307,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: VakaDetayEkrani(
-          caseId: 'case-100',
-          caseRepository: repo,
-        ),
+        home: VakaDetayEkrani(caseId: 'case-100', caseRepository: repo),
       ),
     );
     await tester.pumpAndSettle();
@@ -234,7 +320,9 @@ void main() {
     expect(find.text('Test hata mesajı'), findsOneWidget);
   });
 
-  testWidgets('allows picking photo and sending along with message', (tester) async {
+  testWidgets('allows picking photo and sending along with message', (
+    tester,
+  ) async {
     final repo = MockChatCaseRepository(detail: sampleDetail);
     final mockPicker = MockChatImagePickerService(
       imageToReturn: PickedImageData(
@@ -276,4 +364,87 @@ void main() {
     expect(repo.sentImageBytes, isNotNull);
     expect(repo.sentImageFileName, 'test_leaf.png');
   });
+
+  testWidgets(
+    'shows Vakayı Üstlen button on redacted case and claims successfully via CaseRepository',
+    (tester) async {
+      final redactedCase = CaseDetail(
+        id: 'case-redacted-1',
+        farmId: '',
+        farmName: '',
+        category: CaseCategory.pest,
+        status: CaseStatus.open,
+        title: 'Hastalık / Zararlı Vakası',
+        description: '',
+        createdAt: DateTime.now(),
+        isRedacted: true,
+      );
+      final CaseRepository repo = MockChatCaseRepository(detail: redactedCase);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VakaDetayEkrani(
+            caseId: 'case-redacted-1',
+            caseRepository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vakayı Üstlen'), findsOneWidget);
+      expect(find.textContaining('Bu vaka uzman havuzundadır'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+
+      await tester.tap(find.text('Vakayı Üstlen'));
+      await tester.pumpAndSettle();
+
+      expect((repo as MockChatCaseRepository).claimCaseCallCount, 1);
+      expect(find.text('Vakayı Üstlen'), findsNothing);
+      expect(find.text('Yaprak Yanıklığı (Tam Detay)'), findsOneWidget);
+      expect(find.text('Tam vaka detay açıklaması'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'retains redacted state and shows error message when claim fails',
+    (tester) async {
+      final redactedCase = CaseDetail(
+        id: 'case-redacted-2',
+        farmId: '',
+        farmName: '',
+        category: CaseCategory.pest,
+        status: CaseStatus.open,
+        title: 'Hastalık / Zararlı Vakası',
+        description: '',
+        createdAt: DateTime.now(),
+        isRedacted: true,
+      );
+      final CaseRepository repo = MockChatCaseRepository(
+        detail: redactedCase,
+        shouldFailClaim: true,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VakaDetayEkrani(
+            caseId: 'case-redacted-2',
+            caseRepository: repo,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Vakayı Üstlen'), findsOneWidget);
+
+      await tester.tap(find.text('Vakayı Üstlen'));
+      await tester.pumpAndSettle();
+
+      expect((repo as MockChatCaseRepository).claimCaseCallCount, 1);
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.textContaining('Vaka üstlenilemedi'), findsOneWidget);
+      expect(find.text('Vakayı Üstlen'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+    },
+  );
 }

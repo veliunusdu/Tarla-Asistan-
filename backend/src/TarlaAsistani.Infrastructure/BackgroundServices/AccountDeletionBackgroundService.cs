@@ -40,7 +40,7 @@ public class AccountDeletionBackgroundService : BackgroundService
         }
     }
 
-    private async Task ProcessPendingDeletionsAsync(CancellationToken ct)
+    public async Task ProcessPendingDeletionsAsync(CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
@@ -78,36 +78,75 @@ public class AccountDeletionBackgroundService : BackgroundService
                     token.RevokedAtUtc = now;
                 }
 
-                // 2. Delete user's media files from storage
-                var userMedia = await db.MediaAssets
-                    .Where(m => m.OwnerId == user.Id)
-                    .ToListAsync(ct);
-
-                foreach (var media in userMedia)
+                // 2. Delete user's media files from storage (skip if already completed)
+                var mediaDeleteFailed = false;
+                if (job.MediaDeletedAtUtc == null)
                 {
-                    try
+                    var userMedia = await db.MediaAssets
+                        .Where(m => m.OwnerId == user.Id)
+                        .ToListAsync(ct);
+
+                    foreach (var media in userMedia)
                     {
-                        await storage.DeleteAsync(media.StorageKey, ct);
+                        try
+                        {
+                            await storage.DeleteAsync(media.StorageKey, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            mediaDeleteFailed = true;
+                            _logger.LogWarning(ex, "Failed to delete storage file {StorageKey} for user {UserId}", media.StorageKey, user.Id);
+                        }
                     }
-                    catch (Exception ex)
+                    if (!mediaDeleteFailed)
                     {
-                        _logger.LogWarning(ex, "Failed to delete storage file {StorageKey} for user {UserId}", media.StorageKey, user.Id);
+                        job.MediaDeletedAtUtc = DateTime.UtcNow;
                     }
                 }
-                job.MediaDeletedAtUtc = now;
 
                 // 3. Revoke and delete Firebase account if linked
-                if (!string.IsNullOrEmpty(user.FirebaseUid))
+                var firebaseDeleteFailed = false;
+                var firebaseUid = user.FirebaseUid ?? job.FirebaseUidSnapshot;
+                if (!string.IsNullOrEmpty(firebaseUid))
                 {
-                    try
+                    if (job.FirebaseTokensRevokedAtUtc == null)
                     {
-                        await firebaseAuth.RevokeUserSessionsAsync(user.FirebaseUid, ct);
-                        await firebaseAuth.DeleteUserAsync(user.FirebaseUid, ct);
+                        try
+                        {
+                            await firebaseAuth.RevokeUserSessionsAsync(firebaseUid, ct);
+                            job.FirebaseTokensRevokedAtUtc = DateTime.UtcNow;
+                        }
+                        catch (Exception ex)
+                        {
+                            firebaseDeleteFailed = true;
+                            _logger.LogWarning(ex, "Failed to revoke external Firebase Auth sessions for {Uid} (user {UserId})", firebaseUid, user.Id);
+                        }
                     }
-                    catch (Exception ex)
+
+                    if (!firebaseDeleteFailed && job.FirebaseAuthDeletedAtUtc == null)
                     {
-                        _logger.LogWarning(ex, "Failed to delete external Firebase Auth user {Uid} for user {UserId}", user.FirebaseUid, user.Id);
+                        try
+                        {
+                            await firebaseAuth.DeleteUserAsync(firebaseUid, ct);
+                            job.FirebaseAuthDeletedAtUtc = DateTime.UtcNow;
+                        }
+                        catch (Exception ex)
+                        {
+                            firebaseDeleteFailed = true;
+                            _logger.LogWarning(ex, "Failed to delete external Firebase Auth user {Uid} for user {UserId}", firebaseUid, user.Id);
+                        }
                     }
+                }
+
+                if (mediaDeleteFailed || firebaseDeleteFailed || (!string.IsNullOrEmpty(firebaseUid) && job.FirebaseAuthDeletedAtUtc == null))
+                {
+                    job.Status = AccountDeletionStatus.RetryRequired;
+                    job.LastErrorCode = (mediaDeleteFailed || job.MediaDeletedAtUtc == null) ? "MEDIA_DELETION_FAILED" : "FIREBASE_DELETION_FAILED";
+                    job.NextRetryAtUtc = now.AddMinutes(15);
+                    job.ProcessingStartedAtUtc = null;
+                    await db.SaveChangesAsync(ct);
+                    _logger.LogWarning("Account deletion partially failed for job {JobId}; scheduled for retry.", job.Id);
+                    continue;
                 }
 
                 // 4. Deactivate all device tokens

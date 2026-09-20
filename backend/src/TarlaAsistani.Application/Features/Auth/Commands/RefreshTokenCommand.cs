@@ -46,6 +46,27 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, T
             throw new UnauthorizedAccessException("Refresh oturumu geçersiz veya süresi doldu.");
         }
 
+        if (stored.User.AccountStatus == AccountStatus.DeletionPending)
+        {
+            stored.RevokedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var activeJob = await _db.AccountDeletionJobs
+                .FirstOrDefaultAsync(j => j.UserId == stored.UserId &&
+                                         (j.Status == AccountDeletionStatus.Pending ||
+                                          j.Status == AccountDeletionStatus.Processing ||
+                                          j.Status == AccountDeletionStatus.RetryRequired),
+                                     cancellationToken);
+            throw new TarlaAsistani.Domain.Exceptions.AccountDeletionPendingException(stored.UserId, activeJob?.Id, activeJob?.Status);
+        }
+
+        if (stored.User.AccountStatus == AccountStatus.Anonymized)
+        {
+            stored.RevokedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedAccessException("Bu hesap silinmiştir.");
+        }
+
         // Verify active role is still granted and not revoked
         var isRoleActive = await _db.UserRoleAssignments
             .AnyAsync(ura => ura.UserId == stored.UserId && ura.Role == stored.ActiveRole && ura.RevokedAtUtc == null, cancellationToken);

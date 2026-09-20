@@ -15,8 +15,14 @@ public class FirebaseLinkApproval
 
     /// <summary>
     /// Identity of the approver (e.g. admin email or system name). Max 120 chars.
+    /// Deprecated in favor of ApprovedByUserId.
     /// </summary>
     public string ApprovedBy { get; set; } = null!;
+
+    /// <summary>
+    /// Admin user ID who approved this link.
+    /// </summary>
+    public Guid? ApprovedByUserId { get; set; }
 
     public DateTime ApprovedAtUtc { get; set; }
 
@@ -31,4 +37,5 @@ public class FirebaseLinkApproval
 
     // Navigation
     public User User { get; set; } = null!;
+    public User? ApprovedByUser { get; set; }
 }

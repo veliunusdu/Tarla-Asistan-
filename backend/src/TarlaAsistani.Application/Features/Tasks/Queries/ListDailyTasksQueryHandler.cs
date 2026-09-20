@@ -62,6 +62,35 @@ public class ListDailyTasksQueryHandler : IRequestHandler<ListDailyTasksQuery, D
             return null;
         }
 
+        // For Agronomist: return only expert's scoped tasks, do not auto-generate tasks or expose farmer's weather alerts
+        if (request.Role == UserRole.Agronomist)
+        {
+            var expertTasks = await _db.FarmTasks
+                .Where(t => t.FarmId == request.FarmId &&
+                            (t.CreatedById == request.UserId || (t.CaseId != null && _db.SupportCases.Any(c => c.Id == t.CaseId && c.AssignedExpertId == request.UserId))))
+                .OrderBy(t => t.DueDate)
+                .ThenBy(t => t.CreatedAtUtc)
+                .ToListAsync(cancellationToken);
+
+            var visibleExpertDtos = expertTasks
+                .Where(t => t.DueDate >= request.TargetDate && ActiveStatuses.Contains(t.Status))
+                .Select(t => TaskDto.FromEntity(t))
+                .ToList();
+
+            var overdueExpertDtos = expertTasks
+                .Where(t => t.Status == TaskStatus.Overdue || (t.DueDate < request.TargetDate && ActiveStatuses.Contains(t.Status)))
+                .Select(t => TaskDto.FromEntity(t))
+                .ToList();
+
+            return new DailyTaskListDto(
+                Date: request.TargetDate,
+                Items: visibleExpertDtos,
+                CriticalWeatherAlerts: [],
+                Overdue: overdueExpertDtos,
+                VisibleLimit: 3
+            );
+        }
+
         // 2. Automatically generate daily tasks if today
         await TaskEngine.EnsureDailyTasksAsync(_db, farm, request.TargetDate, cancellationToken);
 

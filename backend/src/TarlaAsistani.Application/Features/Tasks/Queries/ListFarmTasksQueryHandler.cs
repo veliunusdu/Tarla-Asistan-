@@ -32,8 +32,16 @@ public class ListFarmTasksQueryHandler
             return null;
         }
 
-        return await _db.FarmTasks
-            .Where(t => t.FarmId == request.FarmId)
+        var tasksQuery = _db.FarmTasks
+            .Where(t => t.FarmId == request.FarmId);
+
+        if (request.Role == UserRole.Agronomist)
+        {
+            tasksQuery = tasksQuery.Where(t => t.CreatedById == request.UserId ||
+                                              (t.CaseId != null && _db.SupportCases.Any(c => c.Id == t.CaseId && c.AssignedExpertId == request.UserId)));
+        }
+
+        return await tasksQuery
             .OrderBy(t => t.DueDate)
             .ThenBy(t => t.CreatedAtUtc)
             .Select(t => TaskDto.FromEntity(t))

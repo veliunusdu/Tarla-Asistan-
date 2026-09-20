@@ -105,9 +105,18 @@ public class FirebaseLoginCommandHandlerTests
             Role = UserRole.Agronomist,
             AccountStatus = AccountStatus.Active
         };
+        var agroAssignment1 = new UserRoleAssignment
+        {
+            Id = Guid.NewGuid(),
+            UserId = agronomist.Id,
+            Role = UserRole.Agronomist,
+            GrantedAtUtc = DateTime.UtcNow
+        };
+        agronomist.RoleAssignments.Add(agroAssignment1);
 
         var db = new MockDbContextBuilder()
             .WithUsers(agronomist)
+            .WithUserRoleAssignments(agroAssignment1)
             .Build();
 
         var config = CreateConfig();
@@ -163,6 +172,7 @@ public class FirebaseLoginCommandHandlerTests
             Role = UserRole.Agronomist,
             GrantedAtUtc = DateTime.UtcNow
         };
+        agronomist.RoleAssignments.Add(agroAssignment);
 
         var db = new MockDbContextBuilder()
             .WithUsers(agronomist)
@@ -387,5 +397,128 @@ public class FirebaseLoginCommandHandlerTests
         first.User.PhoneNumber.Should().StartWith("firebase-");
         second.User.PhoneNumber.Should().StartWith("firebase-");
         second.User.PhoneNumber.Should().NotBe(first.User.PhoneNumber);
+    }
+
+    [Fact]
+    public async Task Handle_WhenUserIsDeletionPending_ShouldThrowAccountDeletionPendingExceptionWithoutReactivating()
+    {
+        // Arrange
+        const string idToken = "firebase_pending_user_token";
+        const string uid = "pending_uid_123";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, "+905551113355", "pending@example.com", "Bekleyen Kullanici"));
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = "+905551113355",
+            FirebaseUid = uid,
+            Role = UserRole.Farmer,
+            AccountStatus = AccountStatus.DeletionPending
+        };
+
+        var deletionJob = new AccountDeletionJob
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Status = AccountDeletionStatus.Pending
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .WithAccountDeletionJobs(deletionJob)
+            .Build();
+
+        var handler = new FirebaseLoginCommandHandler(
+            db,
+            _firebaseAuthMock.Object,
+            _jwtServiceMock.Object,
+            CreateConfig());
+
+        // Act
+        var act = () => handler.Handle(new FirebaseLoginCommand(idToken), CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AccountDeletionPendingException>();
+        ex.Which.RequestId.Should().Be(deletionJob.Id);
+        user.AccountStatus.Should().Be(AccountStatus.DeletionPending);
+    }
+
+    [Fact]
+    public async Task Handle_WhenExistingUserHasDifferentFirebaseUid_ShouldThrowUnauthorized()
+    {
+        // Arrange
+        var idToken = "firebase_token";
+        var attackerUid = "attacker_uid_999";
+        var existingUid = "legit_uid_111";
+        var phone = "+905551112233";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(attackerUid, phone, null, "Attacker"));
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = phone,
+            FirebaseUid = existingUid,
+            Role = UserRole.Farmer,
+            AccountStatus = AccountStatus.Active
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .Build();
+
+        var handler = new FirebaseLoginCommandHandler(
+            db,
+            _firebaseAuthMock.Object,
+            _jwtServiceMock.Object,
+            CreateConfig());
+
+        // Act
+        var act = () => handler.Handle(new FirebaseLoginCommand(idToken), CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<UnauthorizedAccessException>()
+            .WithMessage("*başka bir Firebase kimliği*");
+    }
+
+    [Fact]
+    public async Task Handle_WhenUserHasLegacyAgronomistRoleWithoutAssignment_ShouldThrowForbiddenWhenRequestingAgronomist()
+    {
+        // Arrange
+        var idToken = "firebase_token";
+        var uid = "agro_uid_111";
+        var phone = "+905551112244";
+
+        _firebaseAuthMock.Setup(f => f.VerifyIdTokenAsync(idToken, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FirebaseTokenInfo(uid, phone, null, "Legacy Agro"));
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            PhoneNumber = phone,
+            FirebaseUid = uid,
+            Role = UserRole.Agronomist, // Legacy role in users table
+            AccountStatus = AccountStatus.Active
+            // Note: NO active UserRoleAssignment for Agronomist!
+        };
+
+        var db = new MockDbContextBuilder()
+            .WithUsers(user)
+            .Build();
+
+        var handler = new FirebaseLoginCommandHandler(
+            db,
+            _firebaseAuthMock.Object,
+            _jwtServiceMock.Object,
+            CreateConfig());
+
+        // Act
+        var act = () => handler.Handle(new FirebaseLoginCommand(idToken, ActiveRole: UserRole.Agronomist), CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<ForbiddenException>();
     }
 }

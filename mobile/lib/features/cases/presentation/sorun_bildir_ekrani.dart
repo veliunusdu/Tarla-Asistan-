@@ -10,7 +10,6 @@ import '../../../features/ai_assistant/data/voice_input_service.dart';
 import '../../../features/fields/data/tarla_repository.dart';
 import '../../../models/tarla.dart';
 import '../../../services/api_client.dart';
-import '../../../services/database_helper.dart';
 import '../data/case_repository.dart';
 import '../domain/models/case_category.dart';
 import '../domain/models/create_case_input.dart';

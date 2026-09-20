@@ -20,8 +20,18 @@ public class TaskCommandHandlerTests
         var farmId = Guid.NewGuid();
         var expertId = Guid.NewGuid();
         var farm = new Farm { Id = farmId, Name = "Tarla 1" };
+        var supportCase = new SupportCase
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farmId,
+            AssignedExpertId = expertId,
+            Status = CaseStatus.InReview,
+            Title = "Açık Vaka",
+            Description = "Açık vaka açıklaması"
+        };
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
+            .WithSupportCases(supportCase)
             .Build();
 
         var handler = new CreateExpertTaskCommandHandler(db);
@@ -47,6 +57,54 @@ public class TaskCommandHandlerTests
     }
 
     [Fact]
+    public async Task CreateExpertTask_WithCaseId_ShouldPersistAndReturnCaseId()
+    {
+        // Arrange
+        var farmId = Guid.NewGuid();
+        var expertId = Guid.NewGuid();
+        var caseId = Guid.NewGuid();
+        var farm = new Farm { Id = farmId, Name = "Tarla 1" };
+        var supportCase = new SupportCase
+        {
+            Id = caseId,
+            FarmId = farmId,
+            Farm = farm,
+            AssignedExpertId = expertId,
+            Status = CaseStatus.InReview,
+            Title = "Açık Vaka",
+            Description = "Açık vaka açıklaması"
+        };
+        var db = new MockDbContextBuilder()
+            .WithFarms(farm)
+            .WithSupportCases(supportCase)
+            .Build();
+
+        var handler = new CreateExpertTaskCommandHandler(db);
+        var command = new CreateExpertTaskCommand(
+            FarmId: farmId,
+            CreatedById: expertId,
+            Title: "Vaka Odaklı İlaçlama",
+            Description: "Hastalık tespit edilen parsele fungisit uygulayın",
+            Reason: "Vaka teşhis sonucu",
+            Priority: TaskPriority.High,
+            Confidence: TaskConfidence.High,
+            DueDate: new DateOnly(2026, 5, 10),
+            CaseId: caseId
+        );
+
+        // Act
+        var result = await handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.CaseId.Should().Be(caseId);
+
+        var persisted = db.FarmTasks.FirstOrDefault(t => t.Id == result.Id);
+        persisted.Should().NotBeNull();
+        persisted!.CaseId.Should().Be(caseId);
+    }
+
+    [Fact]
     public async Task CreateExpertTask_WhenPushServiceProvided_ShouldDispatchPushNotificationToActiveDevices()
     {
         // Arrange
@@ -66,9 +124,20 @@ public class TaskCommandHandlerTests
         pushMock.Setup(p => p.SendNotificationAsync(Moq.It.IsAny<Notification>(), "fcm-device-token-12345", Moq.It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
+        var supportCase = new SupportCase
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farmId,
+            AssignedExpertId = expertId,
+            Status = CaseStatus.InReview,
+            Title = "Açık Vaka",
+            Description = "Açık vaka açıklaması"
+        };
+
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
             .WithDeviceTokens(device)
+            .WithSupportCases(supportCase)
             .Build();
 
         var handler = new CreateExpertTaskCommandHandler(db, pushMock.Object);
@@ -110,9 +179,20 @@ public class TaskCommandHandlerTests
         pushMock.Setup(p => p.SendNotificationAsync(It.IsAny<Notification>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
+        var supportCase = new SupportCase
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farmId,
+            AssignedExpertId = expertId,
+            Status = CaseStatus.InReview,
+            Title = "Açık Vaka",
+            Description = "Açık vaka açıklaması"
+        };
+
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
             .WithDeviceTokens(device1, device2, device3)
+            .WithSupportCases(supportCase)
             .Build();
 
         var handler = new CreateExpertTaskCommandHandler(db, pushMock.Object);
@@ -168,17 +248,28 @@ public class TaskCommandHandlerTests
     {
         // Arrange
         var farmId = Guid.NewGuid();
+        var expertId = Guid.NewGuid();
         var farm = new Farm { Id = farmId, Name = "Tarla 1" };
         var wrongCropPeriodId = Guid.NewGuid();
+        var supportCase = new SupportCase
+        {
+            Id = Guid.NewGuid(),
+            FarmId = farmId,
+            AssignedExpertId = expertId,
+            Status = CaseStatus.InReview,
+            Title = "Açık Vaka",
+            Description = "Açık vaka açıklaması"
+        };
 
         var db = new MockDbContextBuilder()
             .WithFarms(farm)
+            .WithSupportCases(supportCase)
             .Build();
 
         var handler = new CreateExpertTaskCommandHandler(db);
         var command = new CreateExpertTaskCommand(
             FarmId: farmId,
-            CreatedById: Guid.NewGuid(),
+            CreatedById: expertId,
             Title: "Test",
             Description: "Test",
             Reason: "Test",
